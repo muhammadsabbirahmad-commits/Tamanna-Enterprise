@@ -40,11 +40,11 @@ private fun AddPurchaseScreen(initialProductCode: String, onSaved: () -> Unit) {
     val products = remember { ProductStorage.getProducts(context) }
 
     var productCode by remember { mutableStateOf(initialProductCode) }
-    var quantity by remember { mutableStateOf("") }
-    var purchasePrice by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf(intent.getIntExtra(MemoScannerActivity.EXTRA_QUANTITY, 0).takeIf { it > 0 }?.toString().orEmpty()) }
+    var purchasePrice by remember { mutableStateOf(intent.getDoubleExtra(MemoScannerActivity.EXTRA_PURCHASE_PRICE, 0.0).takeIf { it > 0 }?.toString().orEmpty()) }
     var supplier by remember { mutableStateOf("") }
     var memoNumber by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf(if (intent.getBooleanExtra(MemoScannerActivity.EXTRA_MEMO_VERIFIED_DATA, false)) "মেমো থেকে পাওয়া পরিমাণ ও ক্রয়মূল্য বসানো হয়েছে—সংরক্ষণের আগে যাচাই করুন।" else "") }
 
     val selectedProduct = products.firstOrNull {
         it.code.equals(productCode.trim(), ignoreCase = true)
@@ -55,6 +55,10 @@ private fun AddPurchaseScreen(initialProductCode: String, onSaved: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("নতুন ক্রয়")
+
+        if (intent.getBooleanExtra(MemoScannerActivity.EXTRA_MEMO_VERIFIED_DATA, false)) {
+            Text("⚠️ মেমো OCR যাচাই: তথ্য স্বয়ংক্রিয়ভাবে শনাক্ত হয়েছে। ভুল থাকলে সংরক্ষণের আগে সংশোধন করুন।")
+        }
 
         OutlinedTextField(
             value = productCode,
