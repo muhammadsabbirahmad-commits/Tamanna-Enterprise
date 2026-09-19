@@ -91,6 +91,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".partner.PartnerLedgerActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".finance.FinanceActivity"
             android:exported="false" />
 
