@@ -31,6 +31,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.DashboardActivity
+import com.tamanna.enterprise.sync.CloudSyncManager
 
 class LoginActivity : ComponentActivity() {
 
@@ -57,7 +58,9 @@ class LoginActivity : ComponentActivity() {
                 auth.signInWithCredential(credential)
                     .addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
-                            googleOnSuccess?.invoke()
+                            CloudSyncManager.pullThenSync(this@LoginActivity) {
+                                googleOnSuccess?.invoke()
+                            }
                         } else {
                             googleOnError?.invoke(
                                 task.exception?.localizedMessage
