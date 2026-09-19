@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ class PartnerLedgerActivity : ComponentActivity() {
 private fun day(value: String) = value.substringBefore(" ")
 private fun inRange(value: String, from: String, to: String) = day(value) in from..to
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PartnerLedgerScreen(activity: ComponentActivity, partnerId: Long) {
     val partner = PartnerStorage.getPartners(activity).firstOrNull { it.id == partnerId }
