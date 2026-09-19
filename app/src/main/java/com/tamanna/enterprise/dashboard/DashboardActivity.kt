@@ -130,52 +130,51 @@ fun DashboardScreen(
                 Text("প্রধান মেনু", style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Button(onClick = onProductClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("📦  পণ্য ব্যবস্থাপনা")
-                }
+                DashboardMenuRow(
+                    items = listOf(
+                        "📦" to ("পণ্য" to onProductClick),
+                        "🛒" to ("ক্রয়" to onPurchaseClick),
+                        "🧾" to ("বিক্রয়" to onSalesClick)
+                    )
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(onClick = onPurchaseClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("🛒  ক্রয় ব্যবস্থাপনা")
-                }
+                DashboardMenuRow(
+                    items = listOf(
+                        "📦" to ("স্টক" to onStockClick),
+                        "📊" to ("রিপোর্ট" to onReportsClick),
+                        "💰" to ("লাভ" to onProfitClick)
+                    )
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(onClick = onSalesClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("🧾  বিক্রয় ব্যবস্থাপনা")
-                }
+                DashboardMenuRow(
+                    items = listOf(
+                        "📷" to ("স্ক্যান" to onScannerClick),
+                        "⚙️" to ("সেটিংস" to {})
+                    )
+                )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Button(onClick = onStockClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("📦  স্টক ব্যবস্থাপনা")
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Button(onClick = onReportsClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("📊  স্টক ও রিপোর্ট")
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Button(onClick = onProfitClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("💰  লাভের হিসাব")
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Button(onClick = onScannerClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("📷  বারকোড / মেমো স্ক্যান")
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
-                    Text("⚙️  সেটিংস")
-                }
             }
+        }
+    }
+}
+
+@Composable
+private fun DashboardMenuRow(
+    items: List<Pair<String, Pair<String, () -> Unit>>>
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items.forEach { (icon, item) ->
+            DashboardMenuButton(icon, item.first, item.second, Modifier.weight(1f))
+        }
+        repeat(3 - items.size) {
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
