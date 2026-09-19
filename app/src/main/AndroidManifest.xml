@@ -59,6 +59,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".settings.SettingsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
 
