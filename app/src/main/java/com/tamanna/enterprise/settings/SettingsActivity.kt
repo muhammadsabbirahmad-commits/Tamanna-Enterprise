@@ -3,6 +3,8 @@ package com.tamanna.enterprise.settings
 import android.app.Activity
 import android.content.Context
 import android.os.Bundle
+import android.Manifest
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,6 +63,13 @@ class SettingsActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
     private var googleOnSuccess: (() -> Unit)? = null
     private var googleOnError: ((String) -> Unit)? = null
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                com.tamanna.enterprise.notifications.NotificationScheduler.scheduleDaily(this)
+            }
+        }
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -123,7 +132,14 @@ class SettingsActivity : ComponentActivity() {
                     val client = GoogleSignIn.getClient(this, gso)
                     googleSignInLauncher.launch(client.signInIntent)
                 },
-                googleEmail = auth.currentUser?.email
+                googleEmail = auth.currentUser?.email,
+                onEnableNotifications = {
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        com.tamanna.enterprise.notifications.NotificationScheduler.scheduleDaily(this)
+                    }
+                }
             )
         }
     }
@@ -244,6 +260,16 @@ private fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Google ব্যাকআপ ও সিঙ্ক")
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                Text("নোটিফিকেশন", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text("প্রতিদিন রাত ৯টায় বিক্রয়, লাভ, কম স্টক ও ক্রেতার বাকি সম্পর্কে আপডেট পাবেন।", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onEnableNotifications, modifier = Modifier.fillMaxWidth()) {
+                    Text("নোটিফিকেশন চালু করুন")
                 }
 
                 Spacer(Modifier.height(20.dp))
