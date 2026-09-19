@@ -15,6 +15,7 @@ import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
+import com.tamanna.enterprise.finance.ExpenseStorage
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -51,6 +52,12 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val purchasedUnits = rangePurchases.sumOf { it.quantity }
     val stockUnits = products.sumOf { it.stockQuantity }
     val partnerPercentage = partners.sumOf { it.percentage }
+    val expenses = if (validRange) ExpenseStorage.getExpenses(activity).filter { it.date in from..to } else emptyList()
+    val damages = if (validRange) ExpenseStorage.getDamages(activity).filter { it.date in from..to } else emptyList()
+    val withdrawals = if (validRange) ExpenseStorage.getWithdrawals(activity).filter { it.date in from..to } else emptyList()
+    val institutionExpenses = expenses.sumOf { it.amount }
+    val damageLoss = damages.sumOf { it.totalLoss }
+    val netProfit = profit - institutionExpenses - damageLoss
     val expenses = if (validRange) ExpenseStorage.getExpenses(activity).filter { it.date in from..to } else emptyList()
     val damages = if (validRange) ExpenseStorage.getDamages(activity).filter { it.date in from..to } else emptyList()
     val withdrawals = if (validRange) ExpenseStorage.getWithdrawals(activity).filter { it.date in from..to } else emptyList()
