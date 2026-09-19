@@ -41,13 +41,6 @@ class LoginActivity : ComponentActivity() {
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode != Activity.RESULT_OK) {
-                googleOnError?.invoke("Google অ্যাকাউন্ট নির্বাচন বাতিল হয়েছে। আবার চেষ্টা করুন।")
-                googleOnSuccess = null
-                googleOnError = null
-                return@registerForActivityResult
-            }
-
             try {
                 val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
                     .getResult(ApiException::class.java)
@@ -75,7 +68,13 @@ class LoginActivity : ComponentActivity() {
                         googleOnError = null
                     }
             } catch (e: ApiException) {
-                googleOnError?.invoke("Google অ্যাকাউন্ট নির্বাচন ব্যর্থ হয়েছে। কোড: ${e.statusCode}")
+                val message = when (e.statusCode) {
+                    12501 -> "Google অ্যাকাউন্ট নির্বাচন বাতিল হয়েছে।"
+                    10 -> "Google লগইন কনফিগারেশন ভুল। এই APK-এর SHA-1 Firebase-এ যোগ করা আছে কি না পরীক্ষা করতে হবে।"
+                    7 -> "Google সার্ভারে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ পরীক্ষা করুন।"
+                    else -> "Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"
+                }
+                googleOnError?.invoke(message)
                 googleOnSuccess = null
                 googleOnError = null
             } catch (e: Exception) {
