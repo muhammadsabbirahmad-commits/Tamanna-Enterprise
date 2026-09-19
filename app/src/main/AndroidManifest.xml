@@ -77,6 +77,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".partner.PartnerActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".security.LoginActivity"
             android:exported="false" />
 
