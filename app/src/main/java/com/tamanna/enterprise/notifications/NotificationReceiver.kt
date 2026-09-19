@@ -26,7 +26,7 @@ class NotificationReceiver : BroadcastReceiver() {
 
         val receivable = CustomerDueStorage.getBalances(context).values.sum()
         val parts = mutableListOf<String>()
-        if (low > 0) parts += "কম স্টক $lowটি"
+        if (low > 0) parts += "কম স্টক $lowি"
         if (receivable > 0) parts += "ক্রেতার বাকি ৳%.2f".format(Locale.getDefault(), receivable)
         parts += "আজ বিক্রয় ৳%.2f, লাভ ৳%.2f".format(Locale.getDefault(), todaySales, todayProfit)
 
