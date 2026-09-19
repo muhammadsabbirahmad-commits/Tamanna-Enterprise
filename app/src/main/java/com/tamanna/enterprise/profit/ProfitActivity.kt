@@ -3,26 +3,17 @@ package com.tamanna.enterprise.profit
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.product.ProductStorage
+import com.tamanna.enterprise.partner.PartnerStorage
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -45,6 +36,7 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val sales = remember(refresh) { SalesStorage.getSales(activity) }
     val purchases = remember(refresh) { PurchaseStorage.getPurchases(activity) }
     val products = remember(refresh) { ProductStorage.getProducts(activity) }
+    val partners = remember(refresh) { PartnerStorage.getPartners(activity) }
 
     val validRange = from.isNotBlank() && to.isNotBlank() && from <= to
     val rangeSales = if (validRange) sales.filter { it.date.substringBefore(" ") in from..to } else emptyList()
@@ -57,43 +49,21 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val soldUnits = rangeSales.sumOf { it.quantity }
     val purchasedUnits = rangePurchases.sumOf { it.quantity }
     val stockUnits = products.sumOf { it.stockQuantity }
+    val partnerPercentage = partners.sumOf { it.percentage }
 
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Text("লাভের হিসাব", style = MaterialTheme.typography.headlineMedium)
-                Text("তারিখের পরিসর অনুযায়ী বিক্রয় ও লাভ", style = MaterialTheme.typography.bodyMedium)
+                Text("তারিখের পরিসর অনুযায়ী বিক্রয় ও লাভ")
                 Spacer(Modifier.height(16.dp))
-
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = from,
-                        onValueChange = { from = it },
-                        label = { Text("শুরু") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = to,
-                        onValueChange = { to = it },
-                        label = { Text("শেষ") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(from, { from = it }, label = { Text("শুরু") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(to, { to = it }, label = { Text("শেষ") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
-
                 Spacer(Modifier.height(10.dp))
-                Button(
-                    onClick = { refresh++ },
-                    enabled = validRange,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("হিসাব দেখুন") }
-
+                Button(onClick = { refresh++ }, enabled = validRange, modifier = Modifier.fillMaxWidth()) { Text("হিসাব দেখুন") }
                 Spacer(Modifier.height(16.dp))
-
                 if (!validRange) {
                     Text("সঠিক তারিখ দিন: YYYY-MM-DD এবং শুরু তারিখ শেষ তারিখের আগে/সমান হতে হবে।")
                 } else {
@@ -104,6 +74,30 @@ private fun ProfitScreen(activity: ComponentActivity) {
                     SummaryCard("বিক্রি হয়েছে", "$soldUnits ইউনিট".replace("$", ""))
                     SummaryCard("ক্রয় হয়েছে", "$purchasedUnits ইউনিট".replace("$", ""))
                     SummaryCard("বর্তমান স্টক", "$stockUnits ইউনিট".replace("$", ""))
+
+                    if (partners.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        Text("পার্টনারদের লাভ বণ্টন", style = MaterialTheme.typography.titleLarge)
+                        Text("মোট নির্ধারিত অংশ: %.2f%%".format(Locale.US, partnerPercentage))
+                        if (partnerPercentage > 100.0001) {
+                            Text("সতর্কতা: পার্টনারদের শতাংশ ১০০%-এর বেশি।", color = MaterialTheme.colorScheme.error)
+                        }
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.heightIn(max = 420.dp)) {
+                            items(partners, key = { it.id }) { partner ->
+                                val share = PartnerStorage.profitShare(profit, partner)
+                                Card(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text(partner.name, style = MaterialTheme.typography.titleMedium)
+                                        Text("বিনিয়োগ: ৳ %.2f".format(Locale.US, partner.investment))
+                                        Text("লাভের অংশ: %.2f%%".format(Locale.US, partner.percentage))
+                                        Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, share))
+                                    }
+                                }
+                            }
+                        }
+                        val unallocated = profit * (100.0 - partnerPercentage) / 100.0
+                        Text("অবণ্টিত লাভ: ৳ %.2f".format(Locale.US, unallocated))
+                    }
                 }
             }
         }
@@ -113,10 +107,7 @@ private fun ProfitScreen(activity: ComponentActivity) {
 @Composable
 private fun SummaryCard(title: String, value: String) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(title)
             Text(value, style = MaterialTheme.typography.titleMedium)
         }
