@@ -50,7 +50,7 @@ private fun StockAlertScreen() {
         ) {
             item {
                 Text(
-                    "কম স্টক: \${low.size}টি  •  মেয়াদ শেষ: \${expired.size}টি  •  ৩০ দিনের মধ্যে: \${soon.size}টি",
+                    "কম স্টক: ${low.size}টি  •  মেয়াদ শেষ: ${expired.size}টি  •  ৩০ দিনের মধ্যে: ${soon.size}টি",
                     style = MaterialTheme.typography.titleMedium
                 )
             }
@@ -63,8 +63,8 @@ private fun StockAlertScreen() {
                 Card(onClick = { selected = p }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(p.name, style = MaterialTheme.typography.titleMedium)
-                        Text("কোড: \${p.code}  •  স্টক: \${p.stockQuantity}")
-                        Text("Batch: \${meta.batch.ifBlank { "নেই" }}  •  Expiry: \${meta.expiryDate.ifBlank { "নেই" }}")
+                        Text("কোড: ${p.code}  •  স্টক: ${p.stockQuantity}")
+                        Text("Batch: ${meta.batch.ifBlank { "নেই" }}  •  Expiry: ${meta.expiryDate.ifBlank { "নেই" }}")
                         if (isLow || isExpired || isSoon) {
                             Text(
                                 buildString {
