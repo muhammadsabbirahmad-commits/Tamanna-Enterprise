@@ -75,6 +75,9 @@ class DashboardActivity : ComponentActivity() {
                 },
                 onProfitClick = {
                     startActivity(Intent(this, ProfitActivity::class.java))
+                },
+                onScannerClick = {
+                    startActivity(Intent(this, SalesScanActivity::class.java))
                 }
             )
         }
@@ -92,7 +95,8 @@ fun DashboardScreen(
     onSalesClick: () -> Unit,
     onStockClick: () -> Unit,
     onReportsClick: () -> Unit,
-    onProfitClick: () -> Unit
+    onProfitClick: () -> Unit,
+    onScannerClick: () -> Unit
 ) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -160,7 +164,7 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onScannerClick, modifier = Modifier.fillMaxWidth()) {
                     Text("📷  বারকোড / মেমো স্ক্যান")
                 }
 
