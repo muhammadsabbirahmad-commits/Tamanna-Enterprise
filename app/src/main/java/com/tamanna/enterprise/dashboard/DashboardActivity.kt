@@ -8,12 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -107,25 +101,25 @@ fun DashboardScreen(
                 NavigationBarItem(
                     selected = true,
                     onClick = {},
-                    icon = { Icon(Icons.Default.Home, null) },
+                    icon = { Text("⌂", style = MaterialTheme.typography.titleLarge) },
                     label = { Text("হোম") }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onSalesClick,
-                    icon = { Icon(Icons.Default.ShoppingCart, null) },
+                    icon = { Text("🛒", style = MaterialTheme.typography.titleMedium) },
                     label = { Text("বিক্রয়") }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onReportsClick,
-                    icon = { Icon(Icons.Default.Assessment, null) },
+                    icon = { Text("📊", style = MaterialTheme.typography.titleMedium) },
                     label = { Text("রিপোর্ট") }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onSettingsClick,
-                    icon = { Icon(Icons.Default.Settings, null) },
+                    icon = { Text("⚙", style = MaterialTheme.typography.titleMedium) },
                     label = { Text("সেটিংস") }
                 )
             }
@@ -137,7 +131,7 @@ fun DashboardScreen(
                 containerColor = MaterialTheme.colorScheme.tertiary,
                 contentColor = MaterialTheme.colorScheme.onTertiary
             ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = "স্ক্যান")
+                Text("▦", style = MaterialTheme.typography.headlineSmall)
             }
         },
         floatingActionButtonPosition = FabPosition.Center
