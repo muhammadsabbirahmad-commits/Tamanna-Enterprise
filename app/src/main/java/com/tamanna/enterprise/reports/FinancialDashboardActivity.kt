@@ -43,6 +43,7 @@ data class DailyFinance(
     val profit: Double
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FinancialDashboardScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
