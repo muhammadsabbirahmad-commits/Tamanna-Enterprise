@@ -17,6 +17,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".sales.NewSaleActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".sales.SalesActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".product.ProductActivity"
             android:exported="false" />
 
