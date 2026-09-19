@@ -54,61 +54,7 @@ object SettingsStorage {
             .putString(KEY_SHOP_NAME, name.trim().ifBlank { DEFAULT_SHOP_NAME })
             .apply()
     }
-    private fun signInWithGoogle(
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        lifecycleScope.launch {
-            try {
-                val googleIdOption = GetGoogleIdOption.Builder()
-                    .setServerClientId(getString(com.tamanna.enterprise.R.string.default_web_client_id))
-                    .setFilterByAuthorizedAccounts(false)
-                    .build()
 
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
-
-                val result = credentialManager.getCredential(
-                    context = this@SettingsActivity,
-                    request = request
-                )
-
-                val credential = result.credential
-                if (credential is CustomCredential &&
-                    credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) {
-                    val googleIdTokenCredential = try {
-                        GoogleIdTokenCredential.createFrom(credential.data)
-                    } catch (e: GoogleIdTokenParsingException) {
-                        onError("Google অ্যাকাউন্টের তথ্য পড়া যায়নি।")
-                        return@launch
-                    }
-
-                    val firebaseCredential = GoogleAuthProvider.getCredential(
-                        googleIdTokenCredential.idToken,
-                        null
-                    )
-
-                    auth.signInWithCredential(firebaseCredential)
-                        .addOnCompleteListener(this@SettingsActivity) { task ->
-                            if (task.isSuccessful) onSuccess()
-                            else onError(
-                                task.exception?.localizedMessage
-                                    ?: "Firebase Google লগইন ব্যর্থ হয়েছে।"
-                            )
-                        }
-                } else {
-                    onError("Google লগইনের জন্য সঠিক credential পাওয়া যায়নি।")
-                }
-            } catch (e: GetCredentialException) {
-                onError("Google অ্যাকাউন্ট সংযোগ বাতিল হয়েছে বা ব্যর্থ হয়েছে। আবার চেষ্টা করুন।")
-            } catch (e: Exception) {
-                onError(e.localizedMessage ?: "Google অ্যাকাউন্ট সংযোগে একটি সমস্যা হয়েছে।")
-            }
-        }
-    }
-}
 
 class SettingsActivity : ComponentActivity() {
 
@@ -271,4 +217,59 @@ private fun SettingsScreen(
             }
         }
     }
+    private fun signInWithGoogle(
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        lifecycleScope.launch {
+            try {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setServerClientId(getString(com.tamanna.enterprise.R.string.default_web_client_id))
+                    .setFilterByAuthorizedAccounts(false)
+                    .build()
+
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+
+                val result = credentialManager.getCredential(
+                    context = this@SettingsActivity,
+                    request = request
+                )
+
+                val credential = result.credential
+                if (credential is CustomCredential &&
+                    credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    val googleIdTokenCredential = try {
+                        GoogleIdTokenCredential.createFrom(credential.data)
+                    } catch (e: GoogleIdTokenParsingException) {
+                        onError("Google অ্যাকাউন্টের তথ্য পড়া যায়নি।")
+                        return@launch
+                    }
+
+                    val firebaseCredential = GoogleAuthProvider.getCredential(
+                        googleIdTokenCredential.idToken,
+                        null
+                    )
+
+                    auth.signInWithCredential(firebaseCredential)
+                        .addOnCompleteListener(this@SettingsActivity) { task ->
+                            if (task.isSuccessful) { onSuccess(); recreate() }
+                            else onError(
+                                task.exception?.localizedMessage
+                                    ?: "Firebase Google লগইন ব্যর্থ হয়েছে।"
+                            )
+                        }
+                } else {
+                    onError("Google লগইনের জন্য সঠিক credential পাওয়া যায়নি।")
+                }
+            } catch (e: GetCredentialException) {
+                onError("Google অ্যাকাউন্ট সংযোগ বাতিল হয়েছে বা ব্যর্থ হয়েছে। আবার চেষ্টা করুন।")
+            } catch (e: Exception) {
+                onError(e.localizedMessage ?: "Google অ্যাকাউন্ট সংযোগে একটি সমস্যা হয়েছে।")
+            }
+        }
+    }
+
 }
