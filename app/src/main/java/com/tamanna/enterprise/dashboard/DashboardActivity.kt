@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.finance.FinanceActivity
+import com.tamanna.enterprise.due.CustomerDueActivity
 import com.tamanna.enterprise.partner.PartnerActivity
 import com.tamanna.enterprise.product.ProductActivity
 import com.tamanna.enterprise.product.ProductStorage
@@ -59,6 +60,7 @@ class DashboardActivity : ComponentActivity() {
                     onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
                     onPartnerClick = { startActivity(Intent(this, PartnerActivity::class.java)) },
                     onFinanceClick = { startActivity(Intent(this, FinanceActivity::class.java)) },
+                    onDueClick = { startActivity(Intent(this, CustomerDueActivity::class.java)) },
                     shopName = SettingsStorage.getShopName(this)
                 )
             }
@@ -93,6 +95,7 @@ fun DashboardScreen(
     onSettingsClick: () -> Unit,
     onPartnerClick: () -> Unit,
     onFinanceClick: () -> Unit,
+    onDueClick: () -> Unit,
     shopName: String
 ) {
     Scaffold(
@@ -165,7 +168,7 @@ fun DashboardScreen(
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "📊" to ("রিপোর্ট" to onReportsClick), "💰" to ("লাভ" to onProfitClick)))
                 Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("🤝" to ("পার্টনার" to onPartnerClick), "💸" to ("খরচ/উত্তোলন" to onFinanceClick)))
+                DashboardMenuRow(listOf("🤝" to ("পার্টনার" to onPartnerClick), "💸" to ("খরচ/উত্তোলন" to onFinanceClick), "👤" to ("ক্রেতার বাকি" to onDueClick)))
                 Spacer(Modifier.height(90.dp))
             }
         }
