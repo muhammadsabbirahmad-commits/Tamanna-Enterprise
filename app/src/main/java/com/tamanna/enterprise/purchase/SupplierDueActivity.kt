@@ -22,6 +22,7 @@ class SupplierDueActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SupplierDueScreen() {
     val context = LocalContext.current
