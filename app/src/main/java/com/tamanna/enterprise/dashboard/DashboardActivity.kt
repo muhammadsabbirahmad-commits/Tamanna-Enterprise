@@ -102,7 +102,12 @@ fun DashboardScreen(
 ) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+            ) {
                 Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
                 Text("Shop Management System", style = MaterialTheme.typography.bodyMedium)
 
@@ -156,7 +161,6 @@ fun DashboardScreen(
                         "⚙️" to ("সেটিংস" to {})
                     )
                 )
-
             }
         }
     }
@@ -171,10 +175,34 @@ private fun DashboardMenuRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items.forEach { (icon, item) ->
-            DashboardMenuButton(icon, item.first, item.second, Modifier.weight(1f))
+            DashboardMenuButton(
+                icon = icon,
+                title = item.first,
+                onClick = item.second,
+                modifier = Modifier.weight(1f)
+            )
         }
         repeat(3 - items.size) {
             Spacer(modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun DashboardMenuButton(
+    icon: String,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(86.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(icon, style = MaterialTheme.typography.headlineSmall)
+            Text(title, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -187,7 +215,9 @@ fun DashboardCard(
 ) {
     Card(modifier = modifier) {
         Column(
-            modifier = Modifier.padding(14.dp).fillMaxWidth(),
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(title, style = MaterialTheme.typography.bodyMedium)
