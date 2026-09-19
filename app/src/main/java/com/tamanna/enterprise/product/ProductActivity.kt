@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -62,6 +63,7 @@ fun ProductScreen(
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var stockProduct by remember { mutableStateOf<Product?>(null) }
     var deleteProduct by remember { mutableStateOf<Product?>(null) }
+    var selectedProduct by remember { mutableStateOf<Product?>(null) }
     val context = LocalContext.current
 
     MaterialTheme {
@@ -86,26 +88,10 @@ fun ProductScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(products, key = { it.code }) { item ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
+                            Card(modifier = Modifier.fillMaxWidth().clickable { selectedProduct = item }) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                     Text(item.name, style = MaterialTheme.typography.titleMedium)
-                                    Text("Code: " + item.code)
-                                    Text("ক্রয়মূল্য: ৳ " + item.purchasePrice)
-                                    Text("বিক্রয়মূল্য: ৳ " + item.salePrice)
-                                    Text("স্টক: " + item.stockQuantity)
-
-                                    Button(onClick = { editingProduct = item }) {
-                                        Text("Edit")
-                                    }
-                                    Button(onClick = { stockProduct = item }) {
-                                        Text("Stock In / Out")
-                                    }
-                                    Button(onClick = { deleteProduct = item }) {
-                                        Text("Delete")
-                                    }
+                                    Text("কোড: " + item.code, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
@@ -133,6 +119,33 @@ fun ProductScreen(
             onSaved = {
                 stockProduct = null
                 onProductsChanged()
+            }
+        )
+    }
+
+    selectedProduct?.let { product ->
+        AlertDialog(
+            onDismissRequest = { selectedProduct = null },
+            title = { Text(product.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("কোড: " + product.code)
+                    Text("ক্রয়মূল্য: ৳ " + product.purchasePrice)
+                    Text("বিক্রয়মূল্য: ৳ " + product.salePrice)
+                    Text("স্টক: " + product.stockQuantity)
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(onClick = { selectedProduct = null; editingProduct = product }) { Text("Edit") }
+                    Button(onClick = { selectedProduct = null; stockProduct = product }) { Text("Stock") }
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(onClick = { selectedProduct = null; deleteProduct = product }) { Text("Delete") }
+                    Button(onClick = { selectedProduct = null }) { Text("বন্ধ") }
+                }
             }
         )
     }
