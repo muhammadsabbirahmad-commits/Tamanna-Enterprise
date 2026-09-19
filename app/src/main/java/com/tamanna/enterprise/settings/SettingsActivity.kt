@@ -56,92 +56,12 @@ object SettingsStorage {
     }
 }
 
-class SettingsActivity : ComponentActivity() {
-
-    private lateinit var auth: FirebaseAuth
-    private lateinit var credentialManager: CredentialManager
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        auth = FirebaseAuth.getInstance()
-        credentialManager = CredentialManager.create(this)
-        super.onCreate(savedInstanceState)
-
-        setContent {
-            SettingsScreen(
-                initialShopName = SettingsStorage.getShopName(this),
-                onSave = { name ->
-                    SettingsStorage.saveShopName(this, name)
-                    finish()
-                },
-                onCancel = { finish() },
-                onGoogleSignIn = { onSuccess, onError -> signInWithGoogle(onSuccess, onError) },
-                googleEmail = auth.currentUser?.email
-            )
-        }
-    }
-
-    private fun signInWithGoogle(
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        lifecycleScope.launch {
-            try {
-                val googleIdOption = GetGoogleIdOption.Builder()
-                    .setServerClientId(getString(com.tamanna.enterprise.R.string.default_web_client_id))
-                    .setFilterByAuthorizedAccounts(false)
-                    .build()
-
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleIdOption)
-                    .build()
-
-                val result = credentialManager.getCredential(
-                    context = this@SettingsActivity,
-                    request = request
-                )
-
-                val credential = result.credential
-                if (credential is CustomCredential &&
-                    credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) {
-                    val googleIdTokenCredential = try {
-                        GoogleIdTokenCredential.createFrom(credential.data)
-                    } catch (e: GoogleIdTokenParsingException) {
-                        onError("Google অ্যাকাউন্টের তথ্য পড়া যায়নি।")
-                        return@launch
-                    }
-
-                    val firebaseCredential = GoogleAuthProvider.getCredential(
-                        googleIdTokenCredential.idToken,
-                        null
-                    )
-
-                    auth.signInWithCredential(firebaseCredential)
-                        .addOnCompleteListener(this@SettingsActivity) { task ->
-                            if (task.isSuccessful) { onSuccess(); recreate() }
-                            else onError(
-                                task.exception?.localizedMessage
-                                    ?: "Firebase Google লগইন ব্যর্থ হয়েছে।"
-                            )
-                        }
-                } else {
-                    onError("Google লগইনের জন্য সঠিক credential পাওয়া যায়নি।")
-                }
-            } catch (e: GetCredentialException) {
-                onError("Google অ্যাকাউন্ট সংযোগ বাতিল হয়েছে বা ব্যর্থ হয়েছে। আবার চেষ্টা করুন।")
-            } catch (e: Exception) {
-                onError(e.localizedMessage ?: "Google অ্যাকাউন্ট সংযোগে একটি সমস্যা হয়েছে।")
-            }
-        }
-    }
-}
-
 @Composable
 private fun SettingsScreen(
     initialShopName: String,
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
-    onGoogleSignIn: ((() -> Unit), (String) -> Unit) -> Unit,
+    onGoogleSignIn: () -> Unit,
     googleEmail: String?
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -210,15 +130,7 @@ private fun SettingsScreen(
                         onClick = {
                             googleError = ""
                             googleLoading = true
-                            onGoogleSignIn(
-                                {
-                                    googleLoading = false
-                                },
-                                {
-                                    googleLoading = false
-                                    googleError = it
-                                }
-                            )
+                            onGoogleSignIn()
                         },
                         enabled = !googleLoading,
                         modifier = Modifier.fillMaxWidth()
