@@ -68,13 +68,13 @@ private fun PurchaseScreen(onAddPurchase: () -> Unit) {
                             Card(modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Text(purchase.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: \${purchase.productCode}")
-                                    Text("তারিখ: \${purchase.date}")
-                                    Text("পরিমাণ: \${purchase.quantity}")
-                                    Text("ক্রয়মূল্য: ৳ \${"%.2f".format(purchase.purchasePrice)}")
-                                    Text("মোট: ৳ \${"%.2f".format(purchase.quantity * purchase.purchasePrice)}")
-                                    if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: \${purchase.supplier}")
-                                    if (purchase.memoNumber.isNotBlank()) Text("মেমো: \${purchase.memoNumber}")
+                                    Text("কোড: ${purchase.productCode}")
+                                    Text("তারিখ: ${purchase.date}")
+                                    Text("পরিমাণ: ${purchase.quantity}")
+                                    Text("ক্রয়মূল্য: ৳ ${"%.2f".format(purchase.purchasePrice)}")
+                                    Text("মোট: ৳ ${"%.2f".format(purchase.quantity * purchase.purchasePrice)}")
+                                    if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: ${purchase.supplier}")
+                                    if (purchase.memoNumber.isNotBlank()) Text("মেমো: ${purchase.memoNumber}")
                                 }
                             }
                         }
