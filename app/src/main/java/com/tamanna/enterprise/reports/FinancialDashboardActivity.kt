@@ -13,20 +13,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.sales.SalesStorage
-import com.tamanna.enterprise.settings.SettingsStorage
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)\nclass FinancialDashboardActivity : ComponentActivity() {
+@OptIn(ExperimentalMaterial3Api::class)
+class FinancialDashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -81,7 +80,7 @@ private fun FinancialDashboardScreen() {
     val withdrawalTotal = rw.sumOf { it.amount }
     val partnerRemaining = kotlin.math.max(0.0, totalPartnerShare - withdrawalTotal)
 
-    val daily = remember(rs, rp) {
+    val daily = remember(rs, rp, fromDate, toDate) {
         val start = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(fromDate) }.getOrNull()
         val end = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(toDate) }.getOrNull()
         if (start == null || end == null) emptyList() else {
@@ -140,7 +139,7 @@ private fun FinancialDashboardScreen() {
 @Composable
 private fun MetricCard(title: String, amount: Double) {
     Card(
-        Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
