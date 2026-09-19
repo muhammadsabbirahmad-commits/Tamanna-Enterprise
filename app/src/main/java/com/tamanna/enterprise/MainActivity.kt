@@ -3,9 +3,11 @@ package com.tamanna.enterprise
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.security.LoginActivity
 import com.tamanna.enterprise.security.SecurityStorage
+import com.tamanna.enterprise.sync.CloudSyncManager
 
 class MainActivity : ComponentActivity() {
 
@@ -13,6 +15,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         SecurityStorage.ensureInitialized(this)
+        if (FirebaseAuth.getInstance().currentUser != null) {
+            CloudSyncManager.start(this)
+        }
+
         val destination = if (SecurityStorage.isLoginEnabled(this) && !SecurityStorage.isLoggedIn(this)) {
             LoginActivity::class.java
         } else {
@@ -20,7 +26,6 @@ class MainActivity : ComponentActivity() {
         }
 
         startActivity(Intent(this, destination))
-
         finish()
     }
 }
