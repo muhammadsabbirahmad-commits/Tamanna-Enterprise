@@ -73,6 +73,7 @@ private fun AddPurchaseScreen(
     }
     var supplier by remember { mutableStateOf("") }
     var memoNumber by remember { mutableStateOf("") }
+    var paid by remember { mutableStateOf("") }
     var message by remember {
         mutableStateOf(
             if (memoVerified) {
@@ -144,15 +145,28 @@ private fun AddPurchaseScreen(
             singleLine = true
         )
 
+        OutlinedTextField(
+            value = paid,
+            onValueChange = { paid = it.filter { ch -> ch.isDigit() || ch == '.' } },
+            label = { Text("এখন পরিশোধ (৳)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
         Button(
             onClick = {
                 val qty = quantity.toIntOrNull()
                 val price = purchasePrice.toDoubleOrNull()
+                val paidAmount = paid.toDoubleOrNull() ?: 0.0
+                val totalAmount = (qty ?: 0) * (price ?: 0.0)
+                val dueAmount = totalAmount - paidAmount
 
                 when {
                     selectedProduct == null -> message = "সঠিক পণ্য কোড দিন।"
                     qty == null || qty <= 0 -> message = "সঠিক পরিমাণ দিন।"
                     price == null || price < 0 -> message = "সঠিক ক্রয়মূল্য দিন।"
+                    paidAmount < 0 || paidAmount > totalAmount -> message = "পরিশোধের পরিমাণ মোট ক্রয়মূল্যের মধ্যে দিন।"
+                    dueAmount > 0 && supplier.trim().isBlank() -> message = "বাকি ক্রয়ের জন্য সরবরাহকারীর নাম দিন।"
                     else -> {
                         ProductStorage.updateProduct(
                             context,
@@ -175,6 +189,14 @@ private fun AddPurchaseScreen(
                                 memoNumber = memoNumber.trim()
                             )
                         )
+                        if (dueAmount > 0 && supplier.trim().isNotBlank()) {
+                            SupplierDueStorage.addPurchaseDue(
+                                context,
+                                supplier.trim(),
+                                dueAmount,
+                                "ক্রয়: " + selectedProduct.name + " x" + qty + if (memoNumber.isBlank()) "" else " • মেমো " + memoNumber.trim()
+                            )
+                        }
                         onSaved()
                     }
                 }
