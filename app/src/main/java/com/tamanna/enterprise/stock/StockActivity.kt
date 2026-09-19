@@ -3,6 +3,7 @@ package com.tamanna.enterprise.stock
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,12 +32,14 @@ class StockActivity : ComponentActivity() {
         super.onResume()
         setContent { StockScreen() }
     }
+    selectedProduct?.let { p -> AlertDialog(onDismissRequest = { selectedProduct = null }, title = { Text(p.name) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + p.code); Text("স্টক: " + p.stockQuantity + " ইউনিট"); Text("ক্রয়মূল্য: ৳ %.2f".format(p.purchasePrice)); Text("বিক্রয়মূল্য: ৳ %.2f".format(p.salePrice)); Text(when { p.stockQuantity <= 0 -> "স্ট্যাটাস: স্টক শেষ"; p.stockQuantity <= 5 -> "স্ট্যাটাস: কম স্টক"; else -> "স্ট্যাটাস: পর্যাপ্ত স্টক" }) } }, confirmButton = { Button({ selectedProduct = null }) { Text("বন্ধ") } }) }
 }
 
 @Composable
 private fun StockScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var query by remember { mutableStateOf("") }
+    var selectedProduct by remember { mutableStateOf<Product?>(null) }
     val products = ProductStorage.getProducts(context)
     val filtered = products.filter {
         query.isBlank() ||
@@ -67,20 +70,10 @@ private fun StockScreen() {
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(filtered, key = { it.code }) { product ->
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(14.dp)) {
+                            Card(Modifier.fillMaxWidth().clickable { selectedProduct = product }) {
+                                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                     Text(product.name, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: " + product.code)
-                                    Text("স্টক: " + product.stockQuantity + " ইউনিট")
-                                    Text("ক্রয়মূল্য: ৳ %.2f".format(product.purchasePrice))
-                                    Text("বিক্রয়মূল্য: ৳ %.2f".format(product.salePrice))
-                                    Text(
-                                        when {
-                                            product.stockQuantity <= 0 -> "স্ট্যাটাস: স্টক শেষ"
-                                            product.stockQuantity <= 5 -> "স্ট্যাটাস: কম স্টক"
-                                            else -> "স্ট্যাটাস: পর্যাপ্ত স্টক"
-                                        }
-                                    )
+                                    Text("কোড: " + product.code + "  •  স্টক: " + product.stockQuantity, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
