@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 
 class StockActivity : ComponentActivity() {
@@ -83,5 +84,7 @@ private fun StockScreen() {
                 }
             }
         }
-    }    selectedProduct?.let { p -> AlertDialog(onDismissRequest = { selectedProduct = null }, title = { Text(p.name) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + p.code); Text("স্টক: " + p.stockQuantity + " ইউনিট"); Text("ক্রয়মূল্য: ৳ %.2f".format(p.purchasePrice)); Text("বিক্রয়মূল্য: ৳ %.2f".format(p.salePrice)); Text(when { p.stockQuantity <= 0 -> "স্ট্যাটাস: স্টক শেষ"; p.stockQuantity <= 5 -> "স্ট্যাটাস: কম স্টক"; else -> "স্ট্যাটাস: পর্যাপ্ত স্টক" }) } }, confirmButton = { Button({ selectedProduct = null }) { Text("বন্ধ") } }) }
+    }
+
+    selectedProduct?.let { p -> AlertDialog(onDismissRequest = { selectedProduct = null }, title = { Text(p.name) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + p.code); Text("স্টক: " + p.stockQuantity + " ইউনিট"); Text("ক্রয়মূল্য: ৳ %.2f".format(p.purchasePrice)); Text("বিক্রয়মূল্য: ৳ %.2f".format(p.salePrice)); Text(when { p.stockQuantity <= 0 -> "স্ট্যাটাস: স্টক শেষ"; p.stockQuantity <= 5 -> "স্ট্যাটাস: কম স্টক"; else -> "স্ট্যাটাস: পর্যাপ্ত স্টক" }) } }, confirmButton = { Button({ selectedProduct = null }) { Text("বন্ধ") } }) }
 }
