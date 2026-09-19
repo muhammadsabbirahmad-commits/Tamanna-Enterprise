@@ -8,6 +8,7 @@ import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.security.LoginActivity
 import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.sync.CloudSyncManager
+import com.tamanna.enterprise.notifications.NotificationScheduler
 
 class MainActivity : ComponentActivity() {
 
@@ -15,6 +16,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         SecurityStorage.ensureInitialized(this)
+        NotificationScheduler.scheduleDaily(this)
         if (FirebaseAuth.getInstance().currentUser != null) {
             CloudSyncManager.start(this)
         }
