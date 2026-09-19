@@ -30,11 +30,12 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
+import java.util.Locale
 
 class MemoScannerActivity : ComponentActivity() {
     private var status by mutableStateOf("ছবি বা PDF নির্বাচন করুন")
     private var recognizedText by mutableStateOf("")
-    private var matches by mutableStateOf<List<Product>>(emptyList())
+    private var matches by mutableStateOf<List<MemoMatch>>(emptyList())
 
     private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) processImage(uri)
@@ -53,13 +54,15 @@ class MemoScannerActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text("ক্রয় মেমো স্ক্যান", style = MaterialTheme.typography.headlineSmall)
-                    Text("মেমোর ছবি বা PDF থেকে লেখা পড়ে সংরক্ষিত পণ্য কোডের সাথে হুবহু মিল খোঁজা হবে।")
+                    Text("পণ্য কোড মিলিয়ে মেমো থেকে পরিমাণ ও প্রতি-ইউনিট ক্রয়মূল্যের সম্ভাব্য তথ্য বের করা হবে। সংরক্ষণের আগে আপনি যাচাই/সংশোধন করতে পারবেন।")
+
                     Button(onClick = { imagePicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
                         Text("মেমোর ছবি নির্বাচন করুন")
                     }
                     Button(onClick = { pdfPicker.launch("application/pdf") }, modifier = Modifier.fillMaxWidth()) {
                         Text("মেমোর PDF নির্বাচন করুন")
                     }
+
                     Text(status)
 
                     if (recognizedText.isNotBlank()) {
@@ -68,21 +71,31 @@ class MemoScannerActivity : ComponentActivity() {
                     }
 
                     if (matches.isNotEmpty()) {
-                        Text("মিল পাওয়া পণ্য", style = MaterialTheme.typography.titleMedium)
+                        Text("মিল ও মেমো-তথ্য যাচাই", style = MaterialTheme.typography.titleMedium)
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(matches, key = { it.code }) { product ->
+                            items(matches, key = { it.product.code }) { match ->
                                 Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(product.name, style = MaterialTheme.typography.titleMedium)
-                                        Text("কোড: " + product.code)
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(match.product.name, style = MaterialTheme.typography.titleMedium)
+                                        Text("কোড: " + match.product.code)
+                                        Text("মেমো থেকে পরিমাণ: " + (match.quantity?.toString() ?: "নিশ্চিতভাবে শনাক্ত হয়নি"))
+                                        Text("মেমো থেকে প্রতি-ইউনিট ক্রয়মূল্য: " + (match.unitPrice?.let { "৳ %.2f".format(Locale.US, it) } ?: "নিশ্চিতভাবে শনাক্ত হয়নি"))
+                                        Text(
+                                            if (match.quantity != null && match.unitPrice != null)
+                                                "✓ কোড, পরিমাণ ও ক্রয়মূল্য পাওয়া গেছে — সংরক্ষণের আগে যাচাই করুন।"
+                                            else
+                                                "⚠️ কোড মিলেছে, কিন্তু পরিমাণ/ক্রয়মূল্যের তথ্য নিশ্চিত নয়।"
+                                        )
                                         Button(onClick = {
-                                            setResult(
-                                                Activity.RESULT_OK,
-                                                Intent().putExtra(EXTRA_PRODUCT_CODE, product.code)
-                                            )
+                                            val intent = Intent()
+                                                .putExtra(EXTRA_PRODUCT_CODE, match.product.code)
+                                                .putExtra(EXTRA_QUANTITY, match.quantity ?: 0)
+                                                .putExtra(EXTRA_PURCHASE_PRICE, match.unitPrice ?: 0.0)
+                                                .putExtra(EXTRA_MEMO_VERIFIED_DATA, true)
+                                            setResult(Activity.RESULT_OK, intent)
                                             finish()
                                         }) {
-                                            Text("এই পণ্য দিয়ে ক্রয় যোগ করুন")
+                                            Text("এই তথ্য যাচাই করে ক্রয় যোগ করুন")
                                         }
                                     }
                                 }
@@ -147,13 +160,24 @@ class MemoScannerActivity : ComponentActivity() {
                     status = "কোনো লেখা শনাক্ত করা যায়নি।"
                     return@addOnSuccessListener
                 }
+
                 val products = ProductStorage.getProducts(this)
-                val exactMatches = products.filter { product -> recognizedText.contains(product.code) }
-                matches = exactMatches
-                status = if (exactMatches.isEmpty()) {
+                val found = products.mapNotNull { product ->
+                    if (!recognizedText.contains(product.code)) return@mapNotNull null
+                    val line = recognizedText.lineSequence()
+                        .firstOrNull { it.contains(product.code) }
+                        .orEmpty()
+                    MemoMatch(
+                        product = product,
+                        quantity = extractQuantity(line),
+                        unitPrice = extractUnitPrice(line, recognizedText)
+                    )
+                }
+                matches = found
+                status = if (found.isEmpty()) {
                     "OCR সম্পন্ন হয়েছে, কিন্তু সংরক্ষিত পণ্য কোডের সাথে হুবহু মিল পাওয়া যায়নি।"
                 } else {
-                    exactMatches.size.toString() + "টি পণ্য কোডের হুবহু মিল পাওয়া গেছে।"
+                    found.size.toString() + "টি পণ্য কোড মিলেছে। এখন মেমোর পরিমাণ ও ক্রয়মূল্য যাচাই করুন।"
                 }
             }
             .addOnFailureListener {
@@ -161,7 +185,46 @@ class MemoScannerActivity : ComponentActivity() {
             }
     }
 
+    private fun extractQuantity(line: String): Int? {
+        val normalized = normalizeDigits(line)
+        val labeled = Regex("""(?i)(qty|quantity|pcs|piece|pieces|পরিমাণ|পিস|সংখ্যা)s*[:=-]?s*(d+)""")
+            .find(normalized)?.groupValues?.getOrNull(2)?.toIntOrNull()
+        if (labeled != null && labeled > 0) return labeled
+        return null
+    }
+
+    private fun extractUnitPrice(line: String, fullText: String): Double? {
+        val normalizedLine = normalizeDigits(line)
+        val labeled = Regex("""(?i)(units*price|rate|price|purchases*price|ক্রয়মূল্য|ক্রয়মূল্য|দর|মূল্য)s*[:=-]?s*(?:৳|tk|bdt)?s*(d+(?:.d+)?)""")
+            .find(normalizedLine)?.groupValues?.getOrNull(1)?.toDoubleOrNull()
+        if (labeled != null && labeled >= 0) return labeled
+
+        val nearby = normalizeDigits(fullText)
+            .lineSequence()
+            .firstOrNull { it.contains(line) && Regex("""d+(?:.d+)?""").findAll(it).count() >= 2 }
+        val nums = Regex("""d+(?:.d+)?""").findAll(nearby.orEmpty()).map { it.value.toDoubleOrNull() }.filterNotNull().toList()
+        return nums.lastOrNull()?.takeIf { it >= 0 }
+    }
+
+    private fun normalizeDigits(value: String): String =
+        value.map {
+            when (it) {
+                '০' -> '0'; '১' -> '1'; '২' -> '2'; '৩' -> '3'; '৪' -> '4'
+                '৫' -> '5'; '৬' -> '6'; '৭' -> '7'; '৮' -> '8'; '৯' -> '9'
+                else -> it
+            }
+        }.joinToString("")
+
+    data class MemoMatch(
+        val product: Product,
+        val quantity: Int?,
+        val unitPrice: Double?
+    )
+
     companion object {
         const val EXTRA_PRODUCT_CODE = "memo_product_code"
+        const val EXTRA_QUANTITY = "memo_quantity"
+        const val EXTRA_PURCHASE_PRICE = "memo_purchase_price"
+        const val EXTRA_MEMO_VERIFIED_DATA = "memo_verified_data"
     }
 }
