@@ -25,7 +25,10 @@ object CloudSyncManager {
         "tamanna_enterprise_purchases",
         "tamanna_enterprise_finance",
         "tamanna_enterprise_partners",
-        "tamanna_enterprise_settings"
+        "tamanna_enterprise_settings",
+        "tamanna_customer_due",
+        "tamanna_supplier_due",
+        "tamanna_inventory_meta"
     )
 
     private val started = AtomicBoolean(false)
