@@ -33,6 +33,7 @@ import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.settings.SettingsActivity
 import com.tamanna.enterprise.settings.SettingsStorage
 import com.tamanna.enterprise.settings.ThemeStorage
+import com.tamanna.enterprise.search.GlobalSearchActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,6 +68,7 @@ class DashboardActivity : ComponentActivity() {
                     onFinanceClick = { startActivity(Intent(this, FinanceActivity::class.java)) },
                     onDueClick = { startActivity(Intent(this, CustomerDueActivity::class.java)) },
                     onSupplierDueClick = { startActivity(Intent(this, SupplierDueActivity::class.java)) },
+                    onGlobalSearchClick = { startActivity(Intent(this, GlobalSearchActivity::class.java)) },
                     shopName = SettingsStorage.getShopName(this)
                 )
             }
@@ -105,6 +107,7 @@ fun DashboardScreen(
     onFinanceClick: () -> Unit,
     onDueClick: () -> Unit,
     onSupplierDueClick: () -> Unit,
+    onGlobalSearchClick: () -> Unit,
     shopName: String
 ) {
     Scaffold(
@@ -177,7 +180,7 @@ fun DashboardScreen(
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "⚠" to ("স্টক সতর্কতা" to onStockAlertClick), "📊" to ("রিপোর্ট" to onReportsClick)))
                 Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("📈" to ("আর্থিক ড্যাশবোর্ড" to onFinancialDashboardClick)))
+                DashboardMenuRow(listOf("📈" to ("আর্থিক ড্যাশবোর্ড" to onFinancialDashboardClick), "🔎" to ("গ্লোবাল সার্চ" to onGlobalSearchClick)))
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("💰" to ("লাভ" to onProfitClick)))
                 Spacer(Modifier.height(10.dp))
