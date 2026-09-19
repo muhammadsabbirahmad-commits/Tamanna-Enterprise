@@ -91,6 +91,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".sync.CloudBackupActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".partner.PartnerActivity"
             android:exported="false" />
 
