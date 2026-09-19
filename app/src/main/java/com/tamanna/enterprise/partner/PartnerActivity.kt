@@ -3,6 +3,7 @@ package com.tamanna.enterprise.partner
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,7 @@ private fun PartnerScreen(activity: ComponentActivity) {
     var investment by remember { mutableStateOf("") }
     var percentage by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
+    var selectedPartner by remember { mutableStateOf<Partner?>(null) }
 
     val totalInvestment = partners.sumOf { it.investment }
     val totalPercentage = partners.sumOf { it.percentage }
@@ -66,20 +68,27 @@ private fun PartnerScreen(activity: ComponentActivity) {
                 Spacer(Modifier.height(12.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(partners, key = { it.id }) { p ->
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp)) {
+                        Card(Modifier.fillMaxWidth().clickable { selectedPartner = p }) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                 Text(p.name, style = MaterialTheme.typography.titleMedium)
-                                Text("বিনিয়োগ: ৳ ${"%.2f".format(Locale.US, p.investment)}")
-                                Text("লাভের অংশ: ${"%.2f".format(Locale.US, p.percentage)}%")
-                                TextButton(onClick = {
-                                    PartnerStorage.deletePartner(activity, p.id)
-                                    partners = PartnerStorage.getPartners(activity)
-                                }) { Text("মুছে ফেলুন") }
+                                Text("বিনিয়োগ ও লাভের অংশ দেখতে ট্যাপ করুন", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
                 }
             }
         }
+    }
+    selectedPartner?.let { p ->
+        AlertDialog(
+            onDismissRequest = { selectedPartner = null },
+            title = { Text(p.name) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("বিনিয়োগ: ৳ " + "%.2f".format(Locale.US, p.investment))
+                Text("লাভের অংশ: " + "%.2f".format(Locale.US, p.percentage) + "%")
+            }},
+            confirmButton = { Button(onClick = { selectedPartner = null }) { Text("বন্ধ") } },
+            dismissButton = { Button(onClick = { PartnerStorage.deletePartner(activity, p.id); partners = PartnerStorage.getPartners(activity); selectedPartner = null }) { Text("মুছে ফেলুন") } }
+        )
     }
 }
