@@ -30,6 +30,7 @@ import com.tamanna.enterprise.profit.ProfitActivity
 import com.tamanna.enterprise.stock.StockActivity
 import com.tamanna.enterprise.sales.SalesActivity
 import com.tamanna.enterprise.sales.SalesStorage
+import com.tamanna.enterprise.sales.SalesScanActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
