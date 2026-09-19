@@ -1,0 +1,15 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/data/{document} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    // No other Firestore documents are accessible from the Android client.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
