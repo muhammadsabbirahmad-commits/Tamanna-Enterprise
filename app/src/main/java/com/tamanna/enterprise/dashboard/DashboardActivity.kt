@@ -26,6 +26,7 @@ import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseActivity
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.reports.ReportsActivity
+import com.tamanna.enterprise.profit.ProfitActivity
 import com.tamanna.enterprise.stock.StockActivity
 import com.tamanna.enterprise.sales.SalesActivity
 import com.tamanna.enterprise.sales.SalesStorage
@@ -70,6 +71,9 @@ class DashboardActivity : ComponentActivity() {
                 },
                 onReportsClick = {
                     startActivity(Intent(this, ReportsActivity::class.java))
+                },
+                onProfitClick = {
+                    startActivity(Intent(this, ProfitActivity::class.java))
                 }
             )
         }
@@ -86,7 +90,8 @@ fun DashboardScreen(
     onPurchaseClick: () -> Unit,
     onSalesClick: () -> Unit,
     onStockClick: () -> Unit,
-    onReportsClick: () -> Unit
+    onReportsClick: () -> Unit,
+    onProfitClick: () -> Unit
 ) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -148,7 +153,7 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onProfitClick, modifier = Modifier.fillMaxWidth()) {
                     Text("💰  লাভের হিসাব")
                 }
 
