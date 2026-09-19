@@ -5,8 +5,8 @@ import android.content.Intent
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import androidx.core.content.FileProvider
-import com.tamanna.enterprise.purchase.PurchaseStorage
-import com.tamanna.enterprise.sales.SalesStorage
+import com.tamanna.enterprise.purchase.Purchase
+import com.tamanna.enterprise.sales.Sale
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -16,8 +16,8 @@ object ReportPdfExporter {
         context: Context,
         fromDate: String,
         toDate: String,
-        sales: List<SalesStorage.Sale>,
-        purchases: List<PurchaseStorage.Purchase>,
+        sales: List<Sale>,
+        purchases: List<Purchase>,
         currentStockUnits: Int,
         stockValueAtPurchase: Double
     ) {
@@ -51,19 +51,19 @@ object ReportPdfExporter {
 
         canvas.drawText("Tamanna Enterprise - Report", 32f, y, titlePaint)
         y += 24f
-        line("Period: @@{fromDate} to @@{toDate}")
+        line("Period: ${fromDate} to ${toDate}")
         line("Sales: ৳ %.2f | Purchases: ৳ %.2f".format(Locale.getDefault(), salesAmount, purchaseAmount))
         line("Profit: ৳ %.2f | Sold: %d | Purchased: %d".format(
             Locale.getDefault(), profit, sales.sumOf { it.quantity }, purchases.sumOf { it.quantity }
         ))
-        line("Current stock: @@{currentStockUnits} units | Stock cost: ৳ %.2f".format(
+        line("Current stock: ${currentStockUnits} units | Stock cost: ৳ %.2f".format(
             Locale.getDefault(), stockValueAtPurchase
         ))
         y += 10f
         line("SALES DETAILS", true)
         if (sales.isEmpty()) line("No sales in selected period.")
         sales.forEach {
-            line("@@{it.date} | @@{it.productCode} | @@{it.productName} | Qty @@{it.quantity} | Sale ৳ %.2f | Profit ৳ %.2f".format(
+            line("${it.date} | ${it.productCode} | ${it.productName} | Qty ${it.quantity} | Sale ৳ %.2f | Profit ৳ %.2f".format(
                 Locale.getDefault(), it.quantity * it.salePrice, it.quantity * (it.salePrice - it.purchasePrice)
             ))
         }
@@ -71,18 +71,18 @@ object ReportPdfExporter {
         line("PURCHASE DETAILS", true)
         if (purchases.isEmpty()) line("No purchases in selected period.")
         purchases.forEach {
-            line("@@{it.date} | @@{it.productCode} | @@{it.productName} | Qty @@{it.quantity} | Cost ৳ %.2f | Memo @@{it.memoNumber}".format(
+            line("${it.date} | ${it.productCode} | ${it.productName} | Qty ${it.quantity} | Cost ৳ %.2f | Memo ${it.memoNumber}".format(
                 Locale.getDefault(), it.quantity * it.purchasePrice
             ))
         }
 
         pdf.finishPage(page)
         val dir = File(context.cacheDir, "reports").apply { mkdirs() }
-        val file = File(dir, "tamanna_report_@@{fromDate}_to_@@{toDate}.pdf")
+        val file = File(dir, "tamanna_report_${fromDate}_to_${toDate}.pdf")
         FileOutputStream(file).use { pdf.writeTo(it) }
         pdf.close()
 
-        val uri = FileProvider.getUriForFile(context, "@@{context.packageName}.fileprovider", file)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val share = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(Intent.EXTRA_STREAM, uri)
