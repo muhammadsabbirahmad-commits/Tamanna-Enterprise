@@ -3,7 +3,6 @@ package com.tamanna.enterprise.partner
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import java.security.MessageDigest
 
 data class Partner(
     val id: Long,
@@ -40,14 +39,12 @@ object PartnerStorage {
     fun savePartners(context: Context, partners: List<Partner>) {
         val array = JSONArray()
         partners.forEach {
-            array.put(
-                JSONObject().apply {
-                    put("id", it.id)
-                    put("name", it.name)
-                    put("investment", it.investment)
-                    put("percentage", it.percentage)
-                }
-            )
+            array.put(JSONObject().apply {
+                put("id", it.id)
+                put("name", it.name)
+                put("investment", it.investment)
+                put("percentage", it.percentage)
+            })
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_PARTNERS, array.toString()).apply()
