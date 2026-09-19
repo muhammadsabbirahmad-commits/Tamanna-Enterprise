@@ -42,6 +42,27 @@ object ProductStorage {
         return true
     }
 
+    fun updateProduct(context: Context, product: Product) {
+        val products = getProducts(context).map {
+            if (it.code.equals(product.code, ignoreCase = true)) product else it
+        }
+        saveProducts(context, products)
+    }
+
+    fun updateStock(context: Context, code: String, newStock: Int) {
+        val products = getProducts(context).map {
+            if (it.code.equals(code, ignoreCase = true)) it.copy(stockQuantity = newStock) else it
+        }
+        saveProducts(context, products)
+    }
+
+    fun deleteProduct(context: Context, code: String) {
+        val products = getProducts(context).filterNot {
+            it.code.equals(code, ignoreCase = true)
+        }
+        saveProducts(context, products)
+    }
+
     private fun saveProducts(context: Context, products: List<Product>) {
         val array = JSONArray()
         products.forEach {
