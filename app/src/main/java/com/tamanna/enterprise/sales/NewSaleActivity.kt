@@ -31,6 +31,10 @@ class NewSaleActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { NewSaleScreen(initialProductCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()) { finish() } }
     }
+
+    companion object {
+        const val EXTRA_PRODUCT_CODE = "product_code"
+    }
 }
 
 @Composable
