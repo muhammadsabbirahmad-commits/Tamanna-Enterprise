@@ -81,6 +81,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".finance.FinanceActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".security.LoginActivity"
             android:exported="false" />
 
