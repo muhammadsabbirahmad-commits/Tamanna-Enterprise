@@ -9,6 +9,14 @@
         android:theme="@style/Theme.TamannaEnterprise">
 
         <activity
+            android:name=".purchase.AddPurchaseActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".purchase.PurchaseActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".product.ProductActivity"
             android:exported="false" />
 
