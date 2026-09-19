@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 class ProductActivity : ComponentActivity() {
@@ -61,7 +62,7 @@ fun ProductScreen(
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var stockProduct by remember { mutableStateOf<Product?>(null) }
     var deleteProduct by remember { mutableStateOf<Product?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -86,7 +87,10 @@ fun ProductScreen(
                     ) {
                         items(products, key = { it.code }) { item ->
                             Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     Text(item.name, style = MaterialTheme.typography.titleMedium)
                                     Text("Code: " + item.code)
                                     Text("ক্রয়মূল্য: ৳ " + item.purchasePrice)
@@ -143,10 +147,14 @@ fun ProductScreen(
                     ProductStorage.deleteProduct(context, product.code)
                     deleteProduct = null
                     onProductsChanged()
-                }) { Text("Delete") }
+                }) {
+                    Text("Delete")
+                }
             },
             dismissButton = {
-                Button(onClick = { deleteProduct = null }) { Text("Cancel") }
+                Button(onClick = { deleteProduct = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -158,6 +166,7 @@ fun EditProductDialog(
     onDismiss: () -> Unit,
     onSaved: () -> Unit
 ) {
+    val context = LocalContext.current
     var name by remember(product.code) { mutableStateOf(product.name) }
     var purchase by remember(product.code) { mutableStateOf(product.purchasePrice.toString()) }
     var sale by remember(product.code) { mutableStateOf(product.salePrice.toString()) }
@@ -167,25 +176,48 @@ fun EditProductDialog(
         title = { Text("পণ্য Edit") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("পণ্যের নাম") })
-                OutlinedTextField(purchase, { purchase = it }, label = { Text("ক্রয়মূল্য") })
-                OutlinedTextField(sale, { sale = it }, label = { Text("বিক্রয়মূল্য") })
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("পণ্যের নাম") }
+                )
+                OutlinedTextField(
+                    purchase,
+                    { purchase = it },
+                    label = { Text("ক্রয়মূল্য") }
+                )
+                OutlinedTextField(
+                    sale,
+                    { sale = it },
+                    label = { Text("বিক্রয়মূল্য") }
+                )
             }
         },
         confirmButton = {
             Button(onClick = {
                 val p = purchase.toDoubleOrNull()
                 val s = sale.toDoubleOrNull()
+
                 if (name.isNotBlank() && p != null && p >= 0 && s != null && s >= 0) {
                     ProductStorage.updateProduct(
-                        context = androidx.compose.ui.platform.LocalContext.current,
-                        product = product.copy(name = name.trim(), purchasePrice = p, salePrice = s)
+                        context = context,
+                        product = product.copy(
+                            name = name.trim(),
+                            purchasePrice = p,
+                            salePrice = s
+                        )
                     )
                     onSaved()
                 }
-            }) { Text("Save") }
+            }) {
+                Text("Save")
+            }
         },
-        dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
 
@@ -195,7 +227,7 @@ fun StockDialog(
     onDismiss: () -> Unit,
     onSaved: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var quantity by remember(product.code) { mutableStateOf("") }
     var add by remember(product.code) { mutableStateOf(true) }
 
@@ -205,23 +237,45 @@ fun StockDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("বর্তমান স্টক: " + product.stockQuantity)
-                Button(onClick = { add = true }) { Text("Stock In") }
-                Button(onClick = { add = false }) { Text("Stock Out") }
-                OutlinedTextField(quantity, { quantity = it }, label = { Text("পরিমাণ") })
+                Button(onClick = { add = true }) {
+                    Text("Stock In")
+                }
+                Button(onClick = { add = false }) {
+                    Text("Stock Out")
+                }
+                OutlinedTextField(
+                    quantity,
+                    { quantity = it },
+                    label = { Text("পরিমাণ") }
+                )
             }
         },
         confirmButton = {
             Button(onClick = {
                 val q = quantity.toIntOrNull()
+
                 if (q != null && q > 0) {
-                    val newStock = if (add) product.stockQuantity + q else product.stockQuantity - q
+                    val newStock =
+                        if (add) product.stockQuantity + q
+                        else product.stockQuantity - q
+
                     if (newStock >= 0) {
-                        ProductStorage.updateStock(context, product.code, newStock)
+                        ProductStorage.updateStock(
+                            context,
+                            product.code,
+                            newStock
+                        )
                         onSaved()
                     }
                 }
-            }) { Text("Save") }
+            }) {
+                Text("Save")
+            }
         },
-        dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
