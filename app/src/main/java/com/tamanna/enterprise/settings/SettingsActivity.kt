@@ -16,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,6 +67,8 @@ private fun SettingsScreen(
     onSave: (String) -> Unit,
     onCancel: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentUser = com.tamanna.enterprise.security.SecurityStorage.getCurrentUser(context)
     var shopName by remember { mutableStateOf(initialShopName) }
 
     MaterialTheme {
@@ -88,6 +91,36 @@ private fun SettingsScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                var loginEnabled by remember { mutableStateOf(com.tamanna.enterprise.security.SecurityStorage.isLoginEnabled(context)) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("লগইন নিরাপত্তা", style = MaterialTheme.typography.titleMedium)
+                        Text("চালু করলে অ্যাপ খোলার সময় ইউজার লগইন লাগবে।", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = loginEnabled,
+                        onCheckedChange = {
+                            loginEnabled = it
+                            com.tamanna.enterprise.security.SecurityStorage.setLoginEnabled(context, it)
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                if (currentUser?.role == com.tamanna.enterprise.security.SecurityStorage.ROLE_ADMIN) {
+                    Button(
+                        onClick = { context.startActivity(android.content.Intent(context, com.tamanna.enterprise.security.UserManagementActivity::class.java)) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("ইউজার ব্যবস্থাপনা")
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
