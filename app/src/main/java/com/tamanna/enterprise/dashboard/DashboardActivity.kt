@@ -25,6 +25,7 @@ import com.tamanna.enterprise.sales.SalesScanActivity
 import com.tamanna.enterprise.settings.SettingsActivity
 import com.tamanna.enterprise.settings.SettingsStorage
 import com.tamanna.enterprise.partner.PartnerActivity
+import com.tamanna.enterprise.finance.FinanceActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -53,6 +54,7 @@ class DashboardActivity : ComponentActivity() {
                 onScannerClick = { startActivity(Intent(this, SalesScanActivity::class.java)) },
                 onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
                 onPartnerClick = { startActivity(Intent(this, PartnerActivity::class.java)) },
+                onFinanceClick = { startActivity(Intent(this, FinanceActivity::class.java)) },
                 shopName = SettingsStorage.getShopName(this)
             )
         }
@@ -74,6 +76,7 @@ fun DashboardScreen(
     onScannerClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onPartnerClick: () -> Unit,
+    onFinanceClick: () -> Unit,
     shopName: String
 ) {
     MaterialTheme {
@@ -99,6 +102,8 @@ fun DashboardScreen(
                 DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "📊" to ("রিপোর্ট" to onReportsClick), "💰" to ("লাভ" to onProfitClick)))
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("📷" to ("স্ক্যান" to onScannerClick), "🤝" to ("পার্টনার" to onPartnerClick), "⚙️" to ("সেটিংস" to onSettingsClick)))
+                Spacer(Modifier.height(10.dp))
+                DashboardMenuRow(listOf("💸" to ("খরচ/উত্তোলন" to onFinanceClick)))
             }
         }
     }
