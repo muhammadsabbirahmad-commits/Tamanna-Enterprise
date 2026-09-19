@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 class CustomerDueActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
