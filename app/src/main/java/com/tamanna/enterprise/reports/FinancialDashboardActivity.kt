@@ -26,7 +26,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-class FinancialDashboardActivity : ComponentActivity() {
+@OptIn(ExperimentalMaterial3Api::class)\nclass FinancialDashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -76,7 +76,7 @@ private fun FinancialDashboardScreen() {
     val netProfit = grossProfit - expenseTotal - damageTotal
     val purchaseTotal = rp.sumOf { it.quantity * it.purchasePrice }
     val dueCollection = 0.0
-    val receivable = com.tamanna.enterprise.due.CustomerDueStorage.getBalances(context).sumOf { it.balance }
+    val receivable = com.tamanna.enterprise.due.CustomerDueStorage.getBalances(context).values.sum()
     val totalPartnerShare = partners.sumOf { PartnerStorage.profitShare(kotlin.math.max(0.0, netProfit), it) }
     val withdrawalTotal = rw.sumOf { it.amount }
     val partnerRemaining = kotlin.math.max(0.0, totalPartnerShare - withdrawalTotal)
@@ -168,8 +168,8 @@ private fun FinanceChart(data: List<DailyFinance>) {
                 val width = (right - left) / (data.size.coerceAtLeast(1))
                 val scale = (bottom - top) / maxValue.toFloat()
 
-                drawLine(Offset(left, bottom), Offset(right, bottom), color = androidx.compose.ui.graphics.Color.Gray, strokeWidth = 2f)
-                drawLine(Offset(left, top), Offset(left, bottom), color = androidx.compose.ui.graphics.Color.Gray, strokeWidth = 2f)
+                drawLine(color = androidx.compose.ui.graphics.Color.Gray, start = Offset(left, bottom), end = Offset(right, bottom), strokeWidth = 2f)
+                drawLine(color = androidx.compose.ui.graphics.Color.Gray, start = Offset(left, top), end = Offset(left, bottom), strokeWidth = 2f)
 
                 fun point(i: Int, value: Double): Offset {
                     val x = left + width * i + width / 2f
@@ -178,9 +178,9 @@ private fun FinanceChart(data: List<DailyFinance>) {
                 }
 
                 for (i in 1 until data.size) {
-                    drawLine(point(i - 1, data[i - 1].sales), point(i, data[i].sales), color = androidx.compose.ui.graphics.Color(0xFF2E7D32), strokeWidth = 5f)
-                    drawLine(point(i - 1, data[i - 1].purchase), point(i, data[i].purchase), color = androidx.compose.ui.graphics.Color(0xFF1565C0), strokeWidth = 5f)
-                    drawLine(point(i - 1, data[i - 1].profit), point(i, data[i].profit), color = androidx.compose.ui.graphics.Color(0xFFF9A825), strokeWidth = 5f)
+                    drawLine(color = androidx.compose.ui.graphics.Color(0xFF2E7D32), start = point(i - 1, data[i - 1].sales), end = point(i, data[i].sales), strokeWidth = 5f)
+                    drawLine(color = androidx.compose.ui.graphics.Color(0xFF1565C0), start = point(i - 1, data[i - 1].purchase), end = point(i, data[i].purchase), strokeWidth = 5f)
+                    drawLine(color = androidx.compose.ui.graphics.Color(0xFFF9A825), start = point(i - 1, data[i - 1].profit), end = point(i, data[i].profit), strokeWidth = 5f)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
