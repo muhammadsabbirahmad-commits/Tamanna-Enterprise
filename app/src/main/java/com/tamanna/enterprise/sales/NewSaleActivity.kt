@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -91,6 +92,7 @@ private fun NewSaleScreen(
     var mobile by remember { mutableStateOf("") }
     var discount by remember { mutableStateOf("0") }
     var paid by remember { mutableStateOf("0") }
+    var paymentMethod by remember { mutableStateOf("Cash") }
     var message by remember { mutableStateOf("") }
 
     val matches = products.filter {
@@ -210,8 +212,22 @@ private fun NewSaleScreen(
                 OutlinedTextField(value = paid, onValueChange = { paid = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("জমা ৳") }, modifier = Modifier.weight(1f), singleLine = true)
             }
 
+            Text("সাবটোটাল ৳ " + String.format(Locale.getDefault(), "%.2f", subtotal) +
+                "  •  ছাড় ৳ " + String.format(Locale.getDefault(), "%.2f", discountAmount))
             Text("মোট ৳ " + String.format(Locale.getDefault(), "%.2f", total) +
+                "  •  জমা ৳ " + String.format(Locale.getDefault(), "%.2f", paidAmount) +
                 "  •  বাকি ৳ " + String.format(Locale.getDefault(), "%.2f", due))
+
+            Text("পেমেন্ট মাধ্যম", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Cash", "bKash", "Bank", "Due").forEach { method ->
+                    FilterChip(
+                        selected = paymentMethod == method,
+                        onClick = { paymentMethod = method },
+                        label = { Text(method) }
+                    )
+                }
+            }
 
             Button(
                 onClick = {
@@ -237,6 +253,18 @@ private fun NewSaleScreen(
                             )
                         )
                     }
+                    InvoicePdfUtil.shareInvoice(
+                        context = context,
+                        cart = cart.map { InvoiceLine(it.product.name, it.quantity, it.unitPrice) },
+                        customer = customer.trim(),
+                        mobile = mobile.trim(),
+                        subtotal = subtotal,
+                        discount = discountAmount,
+                        total = total,
+                        paid = paidAmount,
+                        due = due,
+                        paymentMethod = paymentMethod
+                    )
                     onSaved()
                 },
                 modifier = Modifier.fillMaxWidth()
