@@ -32,6 +32,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
+import com.tamanna.enterprise.due.CustomerDueStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -235,8 +236,18 @@ private fun NewSaleScreen(
                         message = "কমপক্ষে একটি পণ্য কার্টে যোগ করুন।"
                         return@Button
                     }
+                    if (due > 0.0 && customer.trim().isBlank()) {
+                        message = "বাকি বিক্রয়ের জন্য ক্রেতার নাম দিন।"
+                        return@Button
+                    }
                     val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                     val customerText = customer.trim() + if (mobile.isNotBlank()) " • " + mobile.trim() else ""
+                    if (due > 0.0) {
+                        CustomerDueStorage.addSaleDue(
+                            context, customer.trim(), mobile.trim(), due,
+                            "বিক্রয়: " + cart.joinToString(", ") { it.product.name + " x" + it.quantity }
+                        )
+                    }
                     cart.forEachIndexed { index, item ->
                         ProductStorage.updateStock(context, item.product.code, item.product.stockQuantity - item.quantity)
                         SalesStorage.addSale(
