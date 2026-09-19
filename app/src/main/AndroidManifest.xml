@@ -3,6 +3,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -120,6 +121,10 @@
 
         <activity
             android:name=".security.UserManagementActivity"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notifications.NotificationReceiver"
             android:exported="false" />
 
         <activity
