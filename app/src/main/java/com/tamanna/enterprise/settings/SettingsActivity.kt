@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +34,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.sync.CloudSyncManager
+import com.tamanna.enterprise.dashboard.TamannaTheme
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -140,8 +142,9 @@ private fun SettingsScreen(
     }
     var googleLoading by remember { mutableStateOf(false) }
     var googleError by remember { mutableStateOf("") }
+    var selectedTheme by remember { mutableStateOf(ThemeStorage.getTheme(context)) }
 
-    MaterialTheme {
+    TamannaTheme(selectedTheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(20.dp)
@@ -220,6 +223,34 @@ private fun SettingsScreen(
                     if (googleError.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
                         Text(googleError, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                Text("অ্যাপের থিম", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(10.dp))
+                Text("পছন্দের রঙ নির্বাচন করুন", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "green" to "সবুজ",
+                        "blue" to "নীল",
+                        "purple" to "বেগুনি",
+                        "dark" to "ডার্ক"
+                    ).forEach { (key, label) ->
+                        FilterChip(
+                            selected = selectedTheme == key,
+                            onClick = {
+                                selectedTheme = key
+                                ThemeStorage.saveTheme(context, key)
+                            },
+                            label = { Text(label) }
+                        )
                     }
                 }
 
