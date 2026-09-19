@@ -25,6 +25,7 @@ import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.reports.ReportsActivity
 import com.tamanna.enterprise.profit.ProfitActivity
 import com.tamanna.enterprise.stock.StockActivity
+import com.tamanna.enterprise.stock.StockAlertActivity
 import com.tamanna.enterprise.sales.SalesActivity
 import com.tamanna.enterprise.sales.SalesScanActivity
 import com.tamanna.enterprise.sales.SalesStorage
@@ -55,6 +56,7 @@ class DashboardActivity : ComponentActivity() {
                     onPurchaseClick = { startActivity(Intent(this, PurchaseActivity::class.java)) },
                     onSalesClick = { startActivity(Intent(this, SalesActivity::class.java)) },
                     onStockClick = { startActivity(Intent(this, StockActivity::class.java)) },
+                    onStockAlertClick = { startActivity(Intent(this, StockAlertActivity::class.java)) },
                     onReportsClick = { startActivity(Intent(this, ReportsActivity::class.java)) },
                     onProfitClick = { startActivity(Intent(this, ProfitActivity::class.java)) },
                     onScannerClick = { startActivity(Intent(this, SalesScanActivity::class.java)) },
@@ -91,6 +93,7 @@ fun DashboardScreen(
     onPurchaseClick: () -> Unit,
     onSalesClick: () -> Unit,
     onStockClick: () -> Unit,
+    onStockAlertClick: () -> Unit,
     onReportsClick: () -> Unit,
     onProfitClick: () -> Unit,
     onScannerClick: () -> Unit,
@@ -169,7 +172,9 @@ fun DashboardScreen(
                 Spacer(Modifier.height(12.dp))
                 DashboardMenuRow(listOf("📦" to ("পণ্য" to onProductClick), "🛒" to ("ক্রয়" to onPurchaseClick), "🧾" to ("বিক্রয়" to onSalesClick)))
                 Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "📊" to ("রিপোর্ট" to onReportsClick), "💰" to ("লাভ" to onProfitClick)))
+                DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "⚠" to ("স্টক সতর্কতা" to onStockAlertClick), "📊" to ("রিপোর্ট" to onReportsClick)))
+                Spacer(Modifier.height(10.dp))
+                DashboardMenuRow(listOf("💰" to ("লাভ" to onProfitClick)))
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("🤝" to ("পার্টনার" to onPartnerClick), "💸" to ("খরচ/উত্তোলন" to onFinanceClick), "👤" to ("ক্রেতার বাকি" to onDueClick)))
                 Spacer(Modifier.height(10.dp))
