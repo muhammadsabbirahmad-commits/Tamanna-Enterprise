@@ -29,16 +29,16 @@ import java.util.Locale
 class NewSaleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { NewSaleScreen { finish() } }
+        setContent { NewSaleScreen(initialProductCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()) { finish() } }
     }
 }
 
 @Composable
-private fun NewSaleScreen(onSaved: () -> Unit) {
+private fun NewSaleScreen(initialProductCode: String, onSaved: () -> Unit) {
     val context = LocalContext.current
     val products = remember { ProductStorage.getProducts(context) }
 
-    var productCode by remember { mutableStateOf("") }
+    var productCode by remember { mutableStateOf(initialProductCode) }
     var quantity by remember { mutableStateOf("") }
     var salePrice by remember { mutableStateOf("") }
     var customer by remember { mutableStateOf("") }
