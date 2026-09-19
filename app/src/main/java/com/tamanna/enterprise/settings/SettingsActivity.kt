@@ -32,6 +32,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.tamanna.enterprise.sync.CloudSyncManager
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -77,10 +78,12 @@ class SettingsActivity : ComponentActivity() {
                 auth.signInWithCredential(credential)
                     .addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
-                            googleOnSuccess?.invoke()
-                            googleOnSuccess = null
-                            googleOnError = null
-                            recreate()
+                            CloudSyncManager.pullThenSync(this@SettingsActivity) {
+                                googleOnSuccess?.invoke()
+                                googleOnSuccess = null
+                                googleOnError = null
+                                recreate()
+                            }
                         } else {
                             googleOnError?.invoke(
                                 task.exception?.localizedMessage ?: "Firebase Google সংযোগ ব্যর্থ হয়েছে।"
