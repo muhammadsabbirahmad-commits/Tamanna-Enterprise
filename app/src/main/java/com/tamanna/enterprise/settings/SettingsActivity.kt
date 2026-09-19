@@ -152,7 +152,8 @@ private fun SettingsScreen(
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
     onGoogleSignIn: ((() -> Unit), (String) -> Unit) -> Unit,
-    googleEmail: String?
+    googleEmail: String?,
+    onEnableNotifications: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentUser = com.tamanna.enterprise.security.SecurityStorage.getCurrentUser(context)
