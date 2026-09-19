@@ -25,6 +25,8 @@ import com.tamanna.enterprise.product.ProductActivity
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseActivity
 import com.tamanna.enterprise.purchase.PurchaseStorage
+import com.tamanna.enterprise.reports.ReportsActivity
+import com.tamanna.enterprise.stock.StockActivity
 import com.tamanna.enterprise.sales.SalesActivity
 import com.tamanna.enterprise.sales.SalesStorage
 import java.text.SimpleDateFormat
@@ -62,6 +64,12 @@ class DashboardActivity : ComponentActivity() {
                 },
                 onSalesClick = {
                     startActivity(Intent(this, SalesActivity::class.java))
+                },
+                onStockClick = {
+                    startActivity(Intent(this, StockActivity::class.java))
+                },
+                onReportsClick = {
+                    startActivity(Intent(this, ReportsActivity::class.java))
                 }
             )
         }
@@ -76,7 +84,9 @@ fun DashboardScreen(
     totalStock: Int,
     onProductClick: () -> Unit,
     onPurchaseClick: () -> Unit,
-    onSalesClick: () -> Unit
+    onSalesClick: () -> Unit,
+    onStockClick: () -> Unit,
+    onReportsClick: () -> Unit
 ) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -126,7 +136,13 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onStockClick, modifier = Modifier.fillMaxWidth()) {
+                    Text("📦  স্টক ব্যবস্থাপনা")
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Button(onClick = onReportsClick, modifier = Modifier.fillMaxWidth()) {
                     Text("📊  স্টক ও রিপোর্ট")
                 }
 
