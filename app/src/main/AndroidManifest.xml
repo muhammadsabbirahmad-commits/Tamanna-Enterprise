@@ -99,6 +99,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".reports.FinancialCalendarActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".partner.PartnerActivity"
             android:exported="false" />
 
