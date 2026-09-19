@@ -44,7 +44,17 @@ class PurchaseActivity : ComponentActivity() {
         if (requestCode == REQUEST_MEMO_SCAN && resultCode == RESULT_OK) {
             val code = data?.getStringExtra(MemoScannerActivity.EXTRA_PRODUCT_CODE).orEmpty()
             if (code.isNotBlank()) {
-                startActivity(Intent(this, AddPurchaseActivity::class.java).putExtra(AddPurchaseActivity.EXTRA_PRODUCT_CODE, code))
+                val quantity = data?.getIntExtra(MemoScannerActivity.EXTRA_QUANTITY, 0) ?: 0
+                val purchasePrice = data?.getDoubleExtra(MemoScannerActivity.EXTRA_PURCHASE_PRICE, 0.0) ?: 0.0
+                val memoVerified = data?.getBooleanExtra(MemoScannerActivity.EXTRA_MEMO_VERIFIED_DATA, false) ?: false
+
+                startActivity(
+                    Intent(this, AddPurchaseActivity::class.java)
+                        .putExtra(AddPurchaseActivity.EXTRA_PRODUCT_CODE, code)
+                        .putExtra(AddPurchaseActivity.EXTRA_QUANTITY, quantity)
+                        .putExtra(AddPurchaseActivity.EXTRA_PURCHASE_PRICE, purchasePrice)
+                        .putExtra(AddPurchaseActivity.EXTRA_MEMO_VERIFIED_DATA, memoVerified)
+                )
             }
         }
     }
