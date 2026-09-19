@@ -81,5 +81,7 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                 }
             }
         }
-    }    selectedSale?.let { sale -> AlertDialog(onDismissRequest = { selectedSale = null }, title = { Text(sale.productName) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + sale.productCode); Text("তারিখ: " + sale.date); Text("পরিমাণ: " + sale.quantity + " ইউনিট"); Text("একক বিক্রয়মূল্য: ৳ " + "%.2f".format(sale.salePrice)); Text("মোট বিক্রয়: ৳ " + "%.2f".format(sale.quantity * sale.salePrice)); Text("লাভ: ৳ " + "%.2f".format(sale.quantity * (sale.salePrice-sale.purchasePrice))); if(sale.customer.isNotBlank()) Text("ক্রেতা: " + sale.customer) } }, confirmButton = { Button({ selectedSale = null }) { Text("বন্ধ") } }) }
+    }
+
+    selectedSale?.let { sale -> AlertDialog(onDismissRequest = { selectedSale = null }, title = { Text(sale.productName) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + sale.productCode); Text("তারিখ: " + sale.date); Text("পরিমাণ: " + sale.quantity + " ইউনিট"); Text("একক বিক্রয়মূল্য: ৳ " + "%.2f".format(sale.salePrice)); Text("মোট বিক্রয়: ৳ " + "%.2f".format(sale.quantity * sale.salePrice)); Text("লাভ: ৳ " + "%.2f".format(sale.quantity * (sale.salePrice-sale.purchasePrice))); if(sale.customer.isNotBlank()) Text("ক্রেতা: " + sale.customer) } }, confirmButton = { Button({ selectedSale = null }) { Text("বন্ধ") } }) }
 }
