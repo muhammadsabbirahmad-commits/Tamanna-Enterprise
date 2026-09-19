@@ -1,5 +1,6 @@
 package com.tamanna.enterprise.product
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,13 +23,24 @@ class ProductActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            ProductScreen()
+            ProductScreen(
+                onAddProductClick = {
+                    startActivity(
+                        Intent(
+                            this,
+                            AddProductActivity::class.java
+                        )
+                    )
+                }
+            )
         }
     }
 }
 
 @androidx.compose.runtime.Composable
-fun ProductScreen() {
+fun ProductScreen(
+    onAddProductClick: () -> Unit
+) {
 
     MaterialTheme {
 
@@ -55,7 +67,7 @@ fun ProductScreen() {
                 )
 
                 Button(
-                    onClick = { },
+                    onClick = onAddProductClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("নতুন পণ্য যোগ করুন")
