@@ -9,6 +9,10 @@
         android:theme="@style/Theme.TamannaEnterprise">
 
         <activity
+            android:name=".product.ProductActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".dashboard.DashboardActivity"
             android:exported="false" />
 
