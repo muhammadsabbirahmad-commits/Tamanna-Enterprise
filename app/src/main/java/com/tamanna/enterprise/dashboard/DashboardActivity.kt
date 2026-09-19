@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.product.ProductActivity
 import com.tamanna.enterprise.purchase.PurchaseActivity
+import com.tamanna.enterprise.sales.SalesActivity
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,6 +35,9 @@ class DashboardActivity : ComponentActivity() {
                 },
                 onPurchaseClick = {
                     startActivity(Intent(this, PurchaseActivity::class.java))
+                },
+                onSalesClick = {
+                    startActivity(Intent(this, SalesActivity::class.java))
                 }
             )
         }
@@ -43,7 +47,8 @@ class DashboardActivity : ComponentActivity() {
 @Composable
 fun DashboardScreen(
     onProductClick: () -> Unit,
-    onPurchaseClick: () -> Unit
+    onPurchaseClick: () -> Unit,
+    onSalesClick: () -> Unit
 ) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -89,7 +94,7 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onSalesClick, modifier = Modifier.fillMaxWidth()) {
                     Text("🧾  বিক্রয় ব্যবস্থাপনা")
                 }
 
