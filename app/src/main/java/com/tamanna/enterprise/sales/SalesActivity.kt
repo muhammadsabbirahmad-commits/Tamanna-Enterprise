@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,12 +38,14 @@ class SalesActivity : ComponentActivity() {
             }
         }
     }
+    selectedSale?.let { sale -> AlertDialog(onDismissRequest = { selectedSale = null }, title = { Text(sale.productName) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + sale.productCode); Text("তারিখ: " + sale.date); Text("পরিমাণ: " + sale.quantity + " ইউনিট"); Text("একক বিক্রয়মূল্য: ৳ " + "%.2f".format(sale.salePrice)); Text("মোট বিক্রয়: ৳ " + "%.2f".format(sale.quantity * sale.salePrice)); Text("লাভ: ৳ " + "%.2f".format(sale.quantity * (sale.salePrice-sale.purchasePrice))); if(sale.customer.isNotBlank()) Text("ক্রেতা: " + sale.customer) } }, confirmButton = { Button({ selectedSale = null }) { Text("বন্ধ") } }) }
 }
 
 @Composable
 private fun SalesScreen(onNewSale: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var sales by remember { mutableStateOf(SalesStorage.getSales(context)) }
+    var selectedSale by remember { mutableStateOf<Sale?>(null) }
 
     LaunchedEffect(Unit) {
         sales = SalesStorage.getSales(context)
@@ -66,16 +69,10 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(sales, key = { it.id }) { sale ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(14.dp)) {
+                            Card(modifier = Modifier.fillMaxWidth().clickable { selectedSale = sale }) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                     Text(sale.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: " + sale.productCode)
-                                    Text("তারিখ: " + sale.date)
-                                    Text("পরিমাণ: " + sale.quantity)
-                                    Text("বিক্রয়মূল্য: ৳ " + "%.2f".format(sale.salePrice))
-                                    Text("মোট বিক্রয়: ৳ " + "%.2f".format(sale.quantity * sale.salePrice))
-                                    Text("লাভ: ৳ " + "%.2f".format(sale.quantity * (sale.salePrice - sale.purchasePrice)))
-                                    if (sale.customer.isNotBlank()) Text("ক্রেতা: " + sale.customer)
+                                    Text("কোড: " + sale.productCode + "  •  " + sale.date, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
