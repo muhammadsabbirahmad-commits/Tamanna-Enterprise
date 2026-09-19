@@ -20,6 +20,7 @@ import com.tamanna.enterprise.partner.PartnerActivity
 import com.tamanna.enterprise.product.ProductActivity
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseActivity
+import com.tamanna.enterprise.purchase.SupplierDueActivity
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.reports.ReportsActivity
 import com.tamanna.enterprise.profit.ProfitActivity
@@ -61,6 +62,7 @@ class DashboardActivity : ComponentActivity() {
                     onPartnerClick = { startActivity(Intent(this, PartnerActivity::class.java)) },
                     onFinanceClick = { startActivity(Intent(this, FinanceActivity::class.java)) },
                     onDueClick = { startActivity(Intent(this, CustomerDueActivity::class.java)) },
+                    onSupplierDueClick = { startActivity(Intent(this, SupplierDueActivity::class.java)) },
                     shopName = SettingsStorage.getShopName(this)
                 )
             }
@@ -96,6 +98,7 @@ fun DashboardScreen(
     onPartnerClick: () -> Unit,
     onFinanceClick: () -> Unit,
     onDueClick: () -> Unit,
+    onSupplierDueClick: () -> Unit,
     shopName: String
 ) {
     Scaffold(
@@ -169,6 +172,8 @@ fun DashboardScreen(
                 DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "📊" to ("রিপোর্ট" to onReportsClick), "💰" to ("লাভ" to onProfitClick)))
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("🤝" to ("পার্টনার" to onPartnerClick), "💸" to ("খরচ/উত্তোলন" to onFinanceClick), "👤" to ("ক্রেতার বাকি" to onDueClick)))
+                Spacer(Modifier.height(10.dp))
+                DashboardMenuRow(listOf("🏭" to ("সরবরাহকারীর বাকি" to onSupplierDueClick)))
                 Spacer(Modifier.height(90.dp))
             }
         }
