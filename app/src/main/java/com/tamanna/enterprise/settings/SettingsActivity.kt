@@ -232,6 +232,22 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            android.content.Intent(
+                                context,
+                                com.tamanna.enterprise.sync.CloudBackupActivity::class.java
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Google ব্যাকআপ ও সিঙ্ক")
+                }
+
+                Spacer(Modifier.height(20.dp))
+
                 Text("অ্যাপের থিম", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(10.dp))
                 Text("পছন্দের রঙ নির্বাচন করুন", style = MaterialTheme.typography.bodySmall)
