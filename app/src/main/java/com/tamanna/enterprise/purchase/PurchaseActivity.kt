@@ -31,15 +31,29 @@ class PurchaseActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         setContent {
-            PurchaseScreen {
-                startActivity(Intent(this, AddPurchaseActivity::class.java))
+            PurchaseScreen(
+                onAddPurchase = { startActivity(Intent(this, AddPurchaseActivity::class.java)) },
+                onMemoScan = { startActivityForResult(Intent(this, MemoScannerActivity::class.java), REQUEST_MEMO_SCAN) }
+            )
+        }
+    }
+
+    @Deprecated("Use Activity Result API in a future cleanup")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_MEMO_SCAN && resultCode == RESULT_OK) {
+            val code = data?.getStringExtra(MemoScannerActivity.EXTRA_PRODUCT_CODE).orEmpty()
+            if (code.isNotBlank()) {
+                startActivity(Intent(this, AddPurchaseActivity::class.java).putExtra(AddPurchaseActivity.EXTRA_PRODUCT_CODE, code))
             }
         }
     }
+
+    companion object { private const val REQUEST_MEMO_SCAN = 7101 }
 }
 
 @Composable
-private fun PurchaseScreen(onAddPurchase: () -> Unit) {
+private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var purchases by remember { mutableStateOf(PurchaseStorage.getPurchases(context)) }
 
@@ -50,16 +64,11 @@ private fun PurchaseScreen(onAddPurchase: () -> Unit) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("ক্রয় ব্যবস্থাপনা", style = MaterialTheme.typography.headlineSmall)
-                    Button(onClick = onAddPurchase) { Text("নতুন ক্রয়") }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onAddPurchase, modifier = Modifier.weight(1f)) { Text("নতুন ক্রয়") }
+                    Button(onClick = onMemoScan, modifier = Modifier.weight(1f)) { Text("মেমো স্ক্যান") }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
                 if (purchases.isEmpty()) {
                     Text("এখনো কোনো ক্রয় রেকর্ড নেই।")
                 } else {
@@ -68,13 +77,13 @@ private fun PurchaseScreen(onAddPurchase: () -> Unit) {
                             Card(modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Text(purchase.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: ${purchase.productCode}")
-                                    Text("তারিখ: ${purchase.date}")
-                                    Text("পরিমাণ: ${purchase.quantity}")
-                                    Text("ক্রয়মূল্য: ৳ ${"%.2f".format(purchase.purchasePrice)}")
-                                    Text("মোট: ৳ ${"%.2f".format(purchase.quantity * purchase.purchasePrice)}")
-                                    if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: ${purchase.supplier}")
-                                    if (purchase.memoNumber.isNotBlank()) Text("মেমো: ${purchase.memoNumber}")
+                                    Text("কোড: " + purchase.productCode)
+                                    Text("তারিখ: " + purchase.date)
+                                    Text("পরিমাণ: " + purchase.quantity)
+                                    Text("ক্রয়মূল্য: ৳ " + "%.2f".format(purchase.purchasePrice))
+                                    Text("মোট: ৳ " + "%.2f".format(purchase.quantity * purchase.purchasePrice))
+                                    if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: " + purchase.supplier)
+                                    if (purchase.memoNumber.isNotBlank()) Text("মেমো: " + purchase.memoNumber)
                                 }
                             }
                         }
