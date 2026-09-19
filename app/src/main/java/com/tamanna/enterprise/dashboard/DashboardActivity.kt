@@ -1,0 +1,160 @@
+package com.tamanna.enterprise.dashboard
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+class DashboardActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            DashboardScreen()
+        }
+    }
+}
+
+@Composable
+fun DashboardScreen() {
+    MaterialTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+
+                Text(
+                    text = "Tamanna Enterprise",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = "Shop Management System",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    DashboardCard(
+                        title = "আজকের বিক্রয়",
+                        value = "৳ 0",
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    DashboardCard(
+                        title = "আজকের ক্রয়",
+                        value = "৳ 0",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    DashboardCard(
+                        title = "আজকের লাভ",
+                        value = "৳ 0",
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    DashboardCard(
+                        title = "মোট স্টক",
+                        value = "0",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "প্রধান মেনু",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("📦  পণ্য ব্যবস্থাপনা")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("🛒  ক্রয় ব্যবস্থাপনা")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("🧾  বিক্রয় ব্যবস্থাপনা")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("📊  স্টক ও রিপোর্ট")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("💰  লাভের হিসাব")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("📷  বারকোড / মেমো স্ক্যান")
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("⚙️  সেটিংস")
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardCard(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
