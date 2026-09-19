@@ -24,6 +24,7 @@ import com.tamanna.enterprise.purchase.SupplierDueActivity
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.reports.ReportsActivity
 import com.tamanna.enterprise.reports.FinancialDashboardActivity
+import com.tamanna.enterprise.reports.FinancialCalendarActivity
 import com.tamanna.enterprise.profit.ProfitActivity
 import com.tamanna.enterprise.stock.StockActivity
 import com.tamanna.enterprise.stock.StockAlertActivity
@@ -61,6 +62,7 @@ class DashboardActivity : ComponentActivity() {
                     onStockAlertClick = { startActivity(Intent(this, StockAlertActivity::class.java)) },
                     onReportsClick = { startActivity(Intent(this, ReportsActivity::class.java)) },
                     onFinancialDashboardClick = { startActivity(Intent(this, FinancialDashboardActivity::class.java)) },
+                    onFinancialCalendarClick = { startActivity(Intent(this, FinancialCalendarActivity::class.java)) },
                     onProfitClick = { startActivity(Intent(this, ProfitActivity::class.java)) },
                     onScannerClick = { startActivity(Intent(this, SalesScanActivity::class.java)) },
                     onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
@@ -108,6 +110,7 @@ fun DashboardScreen(
     onDueClick: () -> Unit,
     onSupplierDueClick: () -> Unit,
     onGlobalSearchClick: () -> Unit,
+    onFinancialCalendarClick: () -> Unit,
     shopName: String
 ) {
     Scaffold(
@@ -180,7 +183,7 @@ fun DashboardScreen(
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "⚠" to ("স্টক সতর্কতা" to onStockAlertClick), "📊" to ("রিপোর্ট" to onReportsClick)))
                 Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("📈" to ("আর্থিক ড্যাশবোর্ড" to onFinancialDashboardClick), "🔎" to ("গ্লোবাল সার্চ" to onGlobalSearchClick)))
+                DashboardMenuRow(listOf("📈" to ("আর্থিক ড্যাশবোর্ড" to onFinancialDashboardClick), "📅" to ("আর্থিক ক্যালেন্ডার" to onFinancialCalendarClick), "🔎" to ("গ্লোবাল সার্চ" to onGlobalSearchClick)))
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("💰" to ("লাভ" to onProfitClick)))
                 Spacer(Modifier.height(10.dp))
