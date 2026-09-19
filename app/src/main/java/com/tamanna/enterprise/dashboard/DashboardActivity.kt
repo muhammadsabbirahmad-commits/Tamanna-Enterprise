@@ -22,21 +22,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.product.ProductActivity
+import com.tamanna.enterprise.purchase.PurchaseActivity
 
 class DashboardActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContent {
             DashboardScreen(
                 onProductClick = {
-                    startActivity(
-                        Intent(
-                            this,
-                            ProductActivity::class.java
-                        )
-                    )
+                    startActivity(Intent(this, ProductActivity::class.java))
+                },
+                onPurchaseClick = {
+                    startActivity(Intent(this, PurchaseActivity::class.java))
                 }
             )
         }
@@ -45,155 +42,78 @@ class DashboardActivity : ComponentActivity() {
 
 @Composable
 fun DashboardScreen(
-    onProductClick: () -> Unit
+    onProductClick: () -> Unit,
+    onPurchaseClick: () -> Unit
 ) {
     MaterialTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Surface(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxSize().padding(16.dp)
             ) {
+                Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
+                Text("Shop Management System", style = MaterialTheme.typography.bodyMedium)
 
-                Text(
-                    text = "Tamanna Enterprise",
-                    style = MaterialTheme.typography.headlineMedium
-                )
-
-                Text(
-                    text = "Shop Management System",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
-                Spacer(
-                    modifier = Modifier.height(20.dp)
-                )
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-
-                    DashboardCard(
-                        title = "আজকের বিক্রয়",
-                        value = "৳ 0",
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    DashboardCard(
-                        title = "আজকের ক্রয়",
-                        value = "৳ 0",
-                        modifier = Modifier.weight(1f)
-                    )
+                    DashboardCard("আজকের বিক্রয়", "৳ 0", Modifier.weight(1f))
+                    DashboardCard("আজকের ক্রয়", "৳ 0", Modifier.weight(1f))
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-
-                    DashboardCard(
-                        title = "আজকের লাভ",
-                        value = "৳ 0",
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    DashboardCard(
-                        title = "মোট স্টক",
-                        value = "0",
-                        modifier = Modifier.weight(1f)
-                    )
+                    DashboardCard("আজকের লাভ", "৳ 0", Modifier.weight(1f))
+                    DashboardCard("মোট স্টক", "0", Modifier.weight(1f))
                 }
 
-                Spacer(
-                    modifier = Modifier.height(24.dp)
-                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("প্রধান মেনু", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(12.dp))
 
-                Text(
-                    text = "প্রধান মেনু",
-                    style = MaterialTheme.typography.titleLarge
-                )
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                Button(
-                    onClick = onProductClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = onProductClick, modifier = Modifier.fillMaxWidth()) {
                     Text("📦  পণ্য ব্যবস্থাপনা")
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = onPurchaseClick, modifier = Modifier.fillMaxWidth()) {
                     Text("🛒  ক্রয় ব্যবস্থাপনা")
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     Text("🧾  বিক্রয় ব্যবস্থাপনা")
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     Text("📊  স্টক ও রিপোর্ট")
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     Text("💰  লাভের হিসাব")
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     Text("📷  বারকোড / মেমো স্ক্যান")
                 }
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Button(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     Text("⚙️  সেটিংস")
                 }
             }
@@ -207,29 +127,14 @@ fun DashboardCard(
     value: String,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier
-    ) {
+    Card(modifier = modifier) {
         Column(
-            modifier = Modifier
-                .padding(14.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(14.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Spacer(
-                modifier = Modifier.height(6.dp)
-            )
-
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleLarge
-            )
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(value, style = MaterialTheme.typography.titleLarge)
         }
     }
 }
