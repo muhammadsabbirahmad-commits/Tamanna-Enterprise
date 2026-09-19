@@ -1,21 +1,11 @@
 package com.tamanna.enterprise.settings
 
+import android.app.Activity
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialException
-import androidx.lifecycle.lifecycleScope
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
-import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +27,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -56,30 +51,84 @@ object SettingsStorage {
     }
 }
 
+class SettingsActivity : ComponentActivity() {
+    private lateinit var auth: FirebaseAuth
+
+    private val googleSignInLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+
+            try {
+                val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                    .getResult(ApiException::class.java)
+
+                val idToken = account.idToken
+                if (idToken.isNullOrBlank()) return@registerForActivityResult
+
+                val credential = GoogleAuthProvider.getCredential(idToken, null)
+                auth.signInWithCredential(credential)
+                    .addOnCompleteListener(this) { task ->
+                        if (task.isSuccessful) recreate()
+                    }
+            } catch (_: ApiException) {
+                // Account picker was cancelled or Google Play Services returned an error.
+            }
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        auth = FirebaseAuth.getInstance()
+
+        setContent {
+            SettingsScreen(
+                initialShopName = SettingsStorage.getShopName(this),
+                onSave = { name ->
+                    SettingsStorage.saveShopName(this, name)
+                    finish()
+                },
+                onCancel = { finish() },
+                onGoogleSignIn = { onSuccess, onError ->
+                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
+                        .requestEmail()
+                        .build()
+
+                    val client = GoogleSignIn.getClient(this, gso)
+                    googleSignInLauncher.launch(client.signInIntent)
+                },
+                googleEmail = auth.currentUser?.email
+            )
+        }
+    }
+}
+
 @Composable
 private fun SettingsScreen(
     initialShopName: String,
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
-    onGoogleSignIn: () -> Unit,
+    onGoogleSignIn: ((() -> Unit), (String) -> Unit) -> Unit,
     googleEmail: String?
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentUser = com.tamanna.enterprise.security.SecurityStorage.getCurrentUser(context)
     var shopName by remember { mutableStateOf(initialShopName) }
+    var loginEnabled by remember {
+        mutableStateOf(com.tamanna.enterprise.security.SecurityStorage.isLoginEnabled(context))
+    }
+    var googleLoading by remember { mutableStateOf(false) }
+    var googleError by remember { mutableStateOf("") }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
+                modifier = Modifier.fillMaxSize().padding(20.dp)
             ) {
                 Text("সেটিংস", style = MaterialTheme.typography.headlineMedium)
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(24.dp))
 
                 Text("দোকানের তথ্য", style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = shopName,
@@ -89,16 +138,18 @@ private fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(Modifier.height(20.dp))
 
-                var loginEnabled by remember { mutableStateOf(com.tamanna.enterprise.security.SecurityStorage.isLoginEnabled(context)) }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f)) {
                         Text("লগইন নিরাপত্তা", style = MaterialTheme.typography.titleMedium)
-                        Text("চালু করলে অ্যাপ খোলার সময় ইউজার লগইন লাগবে।", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "চালু করলে অ্যাপ খোলার সময় ইউজার লগইন লাগবে।",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                     Switch(
                         checked = loginEnabled,
@@ -109,11 +160,10 @@ private fun SettingsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(Modifier.height(32.dp))
 
                 Text("Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
 
                 if (!googleEmail.isNullOrBlank()) {
                     Text("সংযুক্ত: $googleEmail", style = MaterialTheme.typography.bodyMedium)
@@ -122,61 +172,68 @@ private fun SettingsScreen(
                         "Firebase ব্যাকআপ ও সিঙ্কের জন্য Google অ্যাকাউন্ট সংযুক্ত করুন।",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var googleLoading by remember { mutableStateOf(false) }
-                    var googleError by remember { mutableStateOf("") }
+                    Spacer(Modifier.height(8.dp))
 
                     Button(
                         onClick = {
                             googleError = ""
                             googleLoading = true
-                            onGoogleSignIn()
+                            onGoogleSignIn(
+                                { googleLoading = false },
+                                {
+                                    googleLoading = false
+                                    googleError = it
+                                }
+                            )
                         },
                         enabled = !googleLoading,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (googleLoading) "Google অ্যাকাউন্ট সংযুক্ত হচ্ছে..." else "Google অ্যাকাউন্ট সংযুক্ত করুন")
+                        Text(
+                            if (googleLoading) "Google অ্যাকাউন্ট সংযুক্ত হচ্ছে..."
+                            else "Google অ্যাকাউন্ট সংযুক্ত করুন"
+                        )
                     }
 
                     if (googleError.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(googleError, color = MaterialTheme.colorScheme.error)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(Modifier.height(20.dp))
 
                 if (currentUser?.role == com.tamanna.enterprise.security.SecurityStorage.ROLE_ADMIN) {
                     Button(
-                        onClick = { context.startActivity(android.content.Intent(context, com.tamanna.enterprise.security.UserManagementActivity::class.java)) },
+                        onClick = {
+                            context.startActivity(
+                                android.content.Intent(
+                                    context,
+                                    com.tamanna.enterprise.security.UserManagementActivity::class.java
+                                )
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("ইউজার ব্যবস্থাপনা")
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(Modifier.height(20.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(
-                        onClick = onCancel,
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Button(onClick = onCancel, modifier = Modifier.weight(1f)) {
                         Text("বাতিল")
                     }
-
-                    Button(
-                        onClick = { onSave(shopName) },
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Button(onClick = { onSave(shopName) }, modifier = Modifier.weight(1f)) {
                         Text("সংরক্ষণ")
                     }
                 }
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(Modifier.height(28.dp))
                 Text(
                     "সংরক্ষণ করলে দোকানের নাম ড্যাশবোর্ডে দেখাবে।",
                     style = MaterialTheme.typography.bodyMedium
