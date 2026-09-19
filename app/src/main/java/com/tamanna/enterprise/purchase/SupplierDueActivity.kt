@@ -34,6 +34,7 @@ private fun SupplierDueScreen() {
 
     val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
     val entries = remember(refresh) { SupplierDueStorage.getEntries(context) }
+    @Suppress("UNUSED_EXPRESSION")
     val filtered = balances.filter { it.first.contains(query.trim(), true) }
     val total = balances.sumOf { it.second }
     val selectedBalance = if (selected.isBlank()) 0.0 else SupplierDueStorage.getBalance(context, selected)
