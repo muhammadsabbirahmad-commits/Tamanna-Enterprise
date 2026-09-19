@@ -11,6 +11,10 @@
         android:theme="@style/Theme.TamannaEnterprise">
 
         <activity
+            android:name=".purchase.MemoScannerActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".purchase.AddPurchaseActivity"
             android:exported="false" />
 
