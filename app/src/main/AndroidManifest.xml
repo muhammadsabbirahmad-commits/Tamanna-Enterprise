@@ -39,6 +39,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".due.CustomerDueActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".sales.SalesActivity"
             android:exported="false" />
 
