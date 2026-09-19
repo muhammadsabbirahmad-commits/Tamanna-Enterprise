@@ -95,6 +95,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".search.GlobalSearchActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".partner.PartnerActivity"
             android:exported="false" />
 
