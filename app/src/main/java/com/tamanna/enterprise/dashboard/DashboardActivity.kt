@@ -33,6 +33,8 @@ import com.tamanna.enterprise.stock.StockActivity
 import com.tamanna.enterprise.sales.SalesActivity
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.sales.SalesScanActivity
+import com.tamanna.enterprise.settings.SettingsActivity
+import com.tamanna.enterprise.settings.SettingsStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -80,7 +82,11 @@ class DashboardActivity : ComponentActivity() {
                 },
                 onScannerClick = {
                     startActivity(Intent(this, SalesScanActivity::class.java))
-                }
+                },
+                onSettingsClick = {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                },
+                shopName = SettingsStorage.getShopName(this)
             )
         }
     }
@@ -98,7 +104,9 @@ fun DashboardScreen(
     onStockClick: () -> Unit,
     onReportsClick: () -> Unit,
     onProfitClick: () -> Unit,
-    onScannerClick: () -> Unit
+    onScannerClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    shopName: String
 ) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -108,7 +116,7 @@ fun DashboardScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
+                Text(shopName, style = MaterialTheme.typography.headlineMedium)
                 Text("Shop Management System", style = MaterialTheme.typography.bodyMedium)
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -158,7 +166,7 @@ fun DashboardScreen(
                 DashboardMenuRow(
                     items = listOf(
                         "📷" to ("স্ক্যান" to onScannerClick),
-                        "⚙️" to ("সেটিংস" to {})
+                        "⚙️" to ("সেটিংস" to onSettingsClick)
                     )
                 )
             }
