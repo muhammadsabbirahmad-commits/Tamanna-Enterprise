@@ -14,6 +14,7 @@ import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.partner.PartnerStorage
+import com.tamanna.enterprise.finance.ExpenseStorage
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -50,6 +51,12 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val purchasedUnits = rangePurchases.sumOf { it.quantity }
     val stockUnits = products.sumOf { it.stockQuantity }
     val partnerPercentage = partners.sumOf { it.percentage }
+    val expenses = if (validRange) ExpenseStorage.getExpenses(activity).filter { it.date in from..to } else emptyList()
+    val damages = if (validRange) ExpenseStorage.getDamages(activity).filter { it.date in from..to } else emptyList()
+    val withdrawals = if (validRange) ExpenseStorage.getWithdrawals(activity).filter { it.date in from..to } else emptyList()
+    val institutionExpenses = expenses.sumOf { it.amount }
+    val damageLoss = damages.sumOf { it.totalLoss }
+    val netProfit = profit - institutionExpenses - damageLoss
 
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
@@ -69,7 +76,11 @@ private fun ProfitScreen(activity: ComponentActivity) {
                 } else {
                     SummaryCard("মোট বিক্রয়", "৳ %.2f".format(salesAmount))
                     SummaryCard("বিক্রয়ের ক্রয়মূল্য", "৳ %.2f".format(costAmount))
-                    SummaryCard("মোট লাভ", "৳ %.2f".format(profit))
+                    SummaryCard("বিক্রয়ভিত্তিক মোট লাভ", "৳ %.2f".format(profit))
+                    SummaryCard("প্রতিষ্ঠানের খরচ", "৳ %.2f".format(institutionExpenses))
+                    SummaryCard("ড্যামেজ ক্ষতি", "৳ %.2f".format(damageLoss))
+                    SummaryCard("নিট লাভ", "৳ %.2f".format(netProfit))
+                    SummaryCard("পার্টনারদের উত্তোলন", "৳ %.2f".format(withdrawals.sumOf { it.amount }))
                     SummaryCard("মোট ক্রয়", "৳ %.2f".format(purchasedAmount))
                     SummaryCard("বিক্রি হয়েছে", "$soldUnits ইউনিট".replace("$", ""))
                     SummaryCard("ক্রয় হয়েছে", "$purchasedUnits ইউনিট".replace("$", ""))
@@ -84,7 +95,7 @@ private fun ProfitScreen(activity: ComponentActivity) {
                         }
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.heightIn(max = 420.dp)) {
                             items(partners, key = { it.id }) { partner ->
-                                val share = PartnerStorage.profitShare(profit, partner)
+                                val share = PartnerStorage.profitShare(netProfit, partner)
                                 Card(Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(12.dp)) {
                                         Text(partner.name, style = MaterialTheme.typography.titleMedium)
@@ -95,7 +106,7 @@ private fun ProfitScreen(activity: ComponentActivity) {
                                 }
                             }
                         }
-                        val unallocated = profit * (100.0 - partnerPercentage) / 100.0
+                        val unallocated = netProfit * (100.0 - partnerPercentage) / 100.0
                         Text("অবণ্টিত লাভ: ৳ %.2f".format(Locale.US, unallocated))
                     }
                 }
