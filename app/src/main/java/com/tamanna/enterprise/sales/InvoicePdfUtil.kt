@@ -78,7 +78,12 @@ object InvoicePdfUtil {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "ইনভয়েস শেয়ার করুন"))
+        val whatsappIntent = Intent(intent).apply { setPackage("com.whatsapp") }
+        if (whatsappIntent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(whatsappIntent)
+        } else {
+            context.startActivity(Intent.createChooser(intent, "ইনভয়েস শেয়ার করুন"))
+        }
     }
 
     private fun money(value: Double): String =
