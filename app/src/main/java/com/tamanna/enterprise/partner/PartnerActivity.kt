@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.partner
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -88,7 +89,7 @@ private fun PartnerScreen(activity: ComponentActivity) {
                 Text("লাভের অংশ: " + "%.2f".format(Locale.US, p.percentage) + "%")
             }},
             confirmButton = { Button(onClick = { selectedPartner = null }) { Text("বন্ধ") } },
-            dismissButton = { Button(onClick = { PartnerStorage.deletePartner(activity, p.id); partners = PartnerStorage.getPartners(activity); selectedPartner = null }) { Text("মুছে ফেলুন") } }
+            dismissButton = { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Button(onClick = { activity.startActivity(Intent(activity, PartnerLedgerActivity::class.java).putExtra("partner_id", p.id)); selectedPartner = null }) { Text("লেজার") }; Button(onClick = { PartnerStorage.deletePartner(activity, p.id); partners = PartnerStorage.getPartners(activity); selectedPartner = null }) { Text("মুছে ফেলুন") } } }
         )
     }
 }
