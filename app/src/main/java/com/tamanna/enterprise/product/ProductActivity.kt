@@ -61,6 +61,7 @@ fun ProductScreen(
     var editingProduct by remember { mutableStateOf<Product?>(null) }
     var stockProduct by remember { mutableStateOf<Product?>(null) }
     var deleteProduct by remember { mutableStateOf<Product?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -139,7 +140,7 @@ fun ProductScreen(
             text = { Text(product.name + " (" + product.code + ") স্থায়ীভাবে মুছে যাবে।") },
             confirmButton = {
                 Button(onClick = {
-                    ProductStorage.deleteProduct(this@ProductActivity, product.code)
+                    ProductStorage.deleteProduct(context, product.code)
                     deleteProduct = null
                     onProductsChanged()
                 }) { Text("Delete") }
