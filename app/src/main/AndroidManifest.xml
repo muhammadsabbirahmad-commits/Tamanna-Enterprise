@@ -35,6 +35,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".purchase.SupplierDueActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".sales.NewSaleActivity"
             android:exported="false" />
 
