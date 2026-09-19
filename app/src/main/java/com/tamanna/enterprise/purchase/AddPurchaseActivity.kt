@@ -27,36 +27,76 @@ import java.util.Date
 import java.util.Locale
 
 class AddPurchaseActivity : ComponentActivity() {
-    companion object { const val EXTRA_PRODUCT_CODE = "add_purchase_product_code" }
+    companion object {
+        const val EXTRA_PRODUCT_CODE = "add_purchase_product_code"
+        const val EXTRA_QUANTITY = "add_purchase_quantity"
+        const val EXTRA_PURCHASE_PRICE = "add_purchase_price"
+        const val EXTRA_MEMO_VERIFIED_DATA = "add_purchase_memo_verified"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AddPurchaseScreen(initialProductCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()) { finish() } }
+
+        val initialProductCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()
+        val initialQuantity = intent.getIntExtra(EXTRA_QUANTITY, 0)
+        val initialPurchasePrice = intent.getDoubleExtra(EXTRA_PURCHASE_PRICE, 0.0)
+        val memoVerified = intent.getBooleanExtra(EXTRA_MEMO_VERIFIED_DATA, false)
+
+        setContent {
+            AddPurchaseScreen(
+                initialProductCode = initialProductCode,
+                initialQuantity = initialQuantity,
+                initialPurchasePrice = initialPurchasePrice,
+                memoVerified = memoVerified
+            ) { finish() }
+        }
     }
 }
 
 @Composable
-private fun AddPurchaseScreen(initialProductCode: String, onSaved: () -> Unit) {
+private fun AddPurchaseScreen(
+    initialProductCode: String,
+    initialQuantity: Int,
+    initialPurchasePrice: Double,
+    memoVerified: Boolean,
+    onSaved: () -> Unit
+) {
     val context = LocalContext.current
     val products = remember { ProductStorage.getProducts(context) }
 
     var productCode by remember { mutableStateOf(initialProductCode) }
-    var quantity by remember { mutableStateOf(intent.getIntExtra(MemoScannerActivity.EXTRA_QUANTITY, 0).takeIf { it > 0 }?.toString().orEmpty()) }
-    var purchasePrice by remember { mutableStateOf(intent.getDoubleExtra(MemoScannerActivity.EXTRA_PURCHASE_PRICE, 0.0).takeIf { it > 0 }?.toString().orEmpty()) }
+    var quantity by remember {
+        mutableStateOf(initialQuantity.takeIf { it > 0 }?.toString().orEmpty())
+    }
+    var purchasePrice by remember {
+        mutableStateOf(initialPurchasePrice.takeIf { it > 0 }?.toString().orEmpty())
+    }
     var supplier by remember { mutableStateOf("") }
     var memoNumber by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf(if (intent.getBooleanExtra(MemoScannerActivity.EXTRA_MEMO_VERIFIED_DATA, false)) "মেমো থেকে পাওয়া পরিমাণ ও ক্রয়মূল্য বসানো হয়েছে—সংরক্ষণের আগে যাচাই করুন।" else "") }
+    var message by remember {
+        mutableStateOf(
+            if (memoVerified) {
+                "মেমো থেকে পাওয়া পরিমাণ ও ক্রয়মূল্য বসানো হয়েছে—সংরক্ষণের আগে যাচাই করুন।"
+            } else {
+                ""
+            }
+        )
+    }
 
     val selectedProduct = products.firstOrNull {
         it.code.equals(productCode.trim(), ignoreCase = true)
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("নতুন ক্রয়")
 
-        if (intent.getBooleanExtra(MemoScannerActivity.EXTRA_MEMO_VERIFIED_DATA, false)) {
+        if (memoVerified) {
             Text("⚠️ মেমো OCR যাচাই: তথ্য স্বয়ংক্রিয়ভাবে শনাক্ত হয়েছে। ভুল থাকলে সংরক্ষণের আগে সংশোধন করুন।")
         }
 
@@ -69,7 +109,7 @@ private fun AddPurchaseScreen(initialProductCode: String, onSaved: () -> Unit) {
         )
 
         if (selectedProduct != null) {
-            Text("পণ্য: \${selectedProduct.name} | বর্তমান স্টক: \${selectedProduct.stockQuantity}")
+            Text("পণ্য: ${selectedProduct.name} | বর্তমান স্টক: ${selectedProduct.stockQuantity}")
         }
 
         OutlinedTextField(
@@ -112,7 +152,7 @@ private fun AddPurchaseScreen(initialProductCode: String, onSaved: () -> Unit) {
                 when {
                     selectedProduct == null -> message = "সঠিক পণ্য কোড দিন।"
                     qty == null || qty <= 0 -> message = "সঠিক পরিমাণ দিন।"
-                    price == null || price < 0 -> message = "সঠিক ক্রয়মূল্য দিন."
+                    price == null || price < 0 -> message = "সঠিক ক্রয়মূল্য দিন।"
                     else -> {
                         ProductStorage.updateProduct(
                             context,
