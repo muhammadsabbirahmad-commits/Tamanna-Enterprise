@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -32,7 +34,7 @@ class StockActivity : ComponentActivity() {
         super.onResume()
         setContent { StockScreen() }
     }
-    selectedProduct?.let { p -> AlertDialog(onDismissRequest = { selectedProduct = null }, title = { Text(p.name) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + p.code); Text("স্টক: " + p.stockQuantity + " ইউনিট"); Text("ক্রয়মূল্য: ৳ %.2f".format(p.purchasePrice)); Text("বিক্রয়মূল্য: ৳ %.2f".format(p.salePrice)); Text(when { p.stockQuantity <= 0 -> "স্ট্যাটাস: স্টক শেষ"; p.stockQuantity <= 5 -> "স্ট্যাটাস: কম স্টক"; else -> "স্ট্যাটাস: পর্যাপ্ত স্টক" }) } }, confirmButton = { Button({ selectedProduct = null }) { Text("বন্ধ") } }) }
+
 }
 
 @Composable
@@ -81,5 +83,5 @@ private fun StockScreen() {
                 }
             }
         }
-    }
+    }    selectedProduct?.let { p -> AlertDialog(onDismissRequest = { selectedProduct = null }, title = { Text(p.name) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + p.code); Text("স্টক: " + p.stockQuantity + " ইউনিট"); Text("ক্রয়মূল্য: ৳ %.2f".format(p.purchasePrice)); Text("বিক্রয়মূল্য: ৳ %.2f".format(p.salePrice)); Text(when { p.stockQuantity <= 0 -> "স্ট্যাটাস: স্টক শেষ"; p.stockQuantity <= 5 -> "স্ট্যাটাস: কম স্টক"; else -> "স্ট্যাটাস: পর্যাপ্ত স্টক" }) } }, confirmButton = { Button({ selectedProduct = null }) { Text("বন্ধ") } }) }
 }
