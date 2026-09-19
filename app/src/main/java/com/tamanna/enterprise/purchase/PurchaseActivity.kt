@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,7 @@ class PurchaseActivity : ComponentActivity() {
 private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var purchases by remember { mutableStateOf(PurchaseStorage.getPurchases(context)) }
+    var selectedPurchase by remember { mutableStateOf<Purchase?>(null) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         purchases = PurchaseStorage.getPurchases(context)
@@ -84,16 +86,10 @@ private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(purchases, key = { it.id }) { purchase ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(14.dp)) {
+                            Card(modifier = Modifier.fillMaxWidth().clickable { selectedPurchase = purchase }) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                     Text(purchase.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: " + purchase.productCode)
-                                    Text("তারিখ: " + purchase.date)
-                                    Text("পরিমাণ: " + purchase.quantity)
-                                    Text("ক্রয়মূল্য: ৳ " + "%.2f".format(purchase.purchasePrice))
-                                    Text("মোট: ৳ " + "%.2f".format(purchase.quantity * purchase.purchasePrice))
-                                    if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: " + purchase.supplier)
-                                    if (purchase.memoNumber.isNotBlank()) Text("মেমো: " + purchase.memoNumber)
+                                    Text("কোড: " + purchase.productCode + "  •  " + purchase.date, style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
