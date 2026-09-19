@@ -120,10 +120,10 @@ private fun ReportsScreen() {
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReportCard("লাভ", "৳ %.2f".format(profit), Modifier.weight(1f))
-                    ReportCard("বর্তমান স্টক", "${currentStockUnits ইউনিট", Modifier.weight(1f))
+                    ReportCard("বর্তমান স্টক", "\${currentStockUnits ইউনিট", Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("বিক্রিত: ${soldUnits ইউনিট | ক্রয়কৃত: ${purchasedUnits ইউনিট")
+                Text("বিক্রিত: \${soldUnits ইউনিট | ক্রয়কৃত: \${purchasedUnits ইউনিট")
                 Text("বিক্রয়ের পণ্যমূল্য: ৳ %.2f".format(costOfSales))
                 Text("বর্তমান স্টকের ক্রয়মূল্য: ৳ %.2f".format(stockValueAtPurchase))
 
@@ -142,14 +142,14 @@ private fun ReportsScreen() {
                             Card(Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(12.dp)) {
                                     Text(sale.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: ${{sale.productCode}")
-                                    Text("পরিমাণ: ${{sale.quantity} ইউনিট")
+                                    Text("কোড: \${{sale.productCode}")
+                                    Text("পরিমাণ: \${{sale.quantity} ইউনিট")
                                     Text("বিক্রয়: ৳ %.2f".format(sale.quantity * sale.salePrice))
                                     Text("লাভ: ৳ %.2f".format(
                                         sale.quantity * (sale.salePrice - sale.purchasePrice)
                                     ))
-                                    Text("তারিখ: ${{sale.date}")
-                                    if (sale.customer.isNotBlank()) Text("ক্রেতা: ${{sale.customer}")
+                                    Text("তারিখ: \${{sale.date}")
+                                    if (sale.customer.isNotBlank()) Text("ক্রেতা: \${{sale.customer}")
                                 }
                             }
                         }
@@ -166,12 +166,12 @@ private fun ReportsScreen() {
                                 Card(Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(12.dp)) {
                                         Text(purchase.productName, style = MaterialTheme.typography.titleMedium)
-                                        Text("কোড: ${{purchase.productCode}")
-                                        Text("পরিমাণ: ${{purchase.quantity} ইউনিট")
+                                        Text("কোড: \${{purchase.productCode}")
+                                        Text("পরিমাণ: \${{purchase.quantity} ইউনিট")
                                         Text("ক্রয়মূল্য: ৳ %.2f".format(purchase.quantity * purchase.purchasePrice))
-                                        Text("তারিখ: ${{purchase.date}")
-                                        if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: ${{purchase.supplier}")
-                                        if (purchase.memoNumber.isNotBlank()) Text("মেমো: ${{purchase.memoNumber}")
+                                        Text("তারিখ: \${{purchase.date}")
+                                        if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: \${{purchase.supplier}")
+                                        if (purchase.memoNumber.isNotBlank()) Text("মেমো: \${{purchase.memoNumber}")
                                     }
                                 }
                             }
