@@ -31,6 +31,7 @@ private fun StockAlertScreen() {
     val context = LocalContext.current
     var refresh by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<Product?>(null) }
+    var adjustment by remember { mutableStateOf<Product?>(null) }
     val products = remember(refresh) { ProductStorage.getProducts(context).sortedBy { it.name.lowercase() } }
     val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     val low = products.filter { it.stockQuantity <= InventoryMetaStorage.getMeta(context, it.code).lowStockLimit }
@@ -55,6 +56,7 @@ private fun StockAlertScreen() {
                 )
             }
             item { Text("পণ্যে চাপ দিয়ে Batch, Expiry, Low-stock limit ও নষ্ট Qty সেট করুন।", style = MaterialTheme.typography.bodySmall) }
+            item { StockHistorySection() }
             items(products, key = { it.code }) { p ->
                 val meta = InventoryMetaStorage.getMeta(context, p.code)
                 val isLow = p.stockQuantity <= meta.lowStockLimit
@@ -75,6 +77,7 @@ private fun StockAlertScreen() {
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
+                        TextButton(onClick = { adjustment = p }) { Text("স্টক সমন্বয়") }
                     }
                 }
             }
@@ -83,6 +86,9 @@ private fun StockAlertScreen() {
 
     selected?.let { p ->
         InventoryMetaDialog(p, { selected = null }) { selected = null; refresh++ }
+    }
+    adjustment?.let { p ->
+        StockAdjustmentDialog(p, { adjustment = null }) { adjustment = null; refresh++ }
     }
 }
 
@@ -128,4 +134,45 @@ private fun InventoryMetaDialog(product: Product, onDismiss: () -> Unit, onSaved
         },
         dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+
+@Composable
+private fun StockAdjustmentDialog(product: Product, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val context = LocalContext.current
+    var quantity by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("স্টক সমন্বয়: ${product.name}") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("বর্তমান স্টক: ${product.stockQuantity}")
+            OutlinedTextField(quantity, { quantity = it }, label = { Text("নতুন স্টক") }, singleLine = true)
+            OutlinedTextField(note, { note = it }, label = { Text("কারণ/নোট") }, singleLine = true)
+        }
+    }, confirmButton = {
+        Button(onClick = {
+            val newStock = quantity.toIntOrNull()
+            if (newStock != null && newStock >= 0) {
+                ProductStorage.updateStock(context, product.code, newStock)
+                InventoryMetaStorage.addHistory(context, product.code, product.name, "ADJUSTMENT", newStock - product.stockQuantity, product.stockQuantity, newStock, note.trim())
+                onSaved()
+            }
+        }) { Text("সংরক্ষণ") }
+    }, dismissButton = { Button(onClick = onDismiss) { Text("বাতিল") } })
+}
+
+@Composable
+private fun StockHistorySection() {
+    val context = LocalContext.current
+    val history = InventoryMetaStorage.getHistory(context)
+    Text("স্টক ইতিহাস", style = MaterialTheme.typography.titleLarge)
+    if (history.isEmpty()) Text("এখনও কোনো স্টক ইতিহাস নেই।")
+    history.take(100).forEach { h ->
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                Text("${h.productName} • ${h.type}", style = MaterialTheme.typography.titleMedium)
+                Text("${h.date} • ${h.quantity}টি • ${h.before} → ${h.after}")
+                if (h.note.isNotBlank()) Text(h.note)
+            }
+        }
+    }
 }
