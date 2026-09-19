@@ -54,7 +54,7 @@ object SettingsStorage {
             .putString(KEY_SHOP_NAME, name.trim().ifBlank { DEFAULT_SHOP_NAME })
             .apply()
     }
-
+}
 
 class SettingsActivity : ComponentActivity() {
 
