@@ -60,7 +60,7 @@ private fun StockAlertScreen() {
                 val isLow = p.stockQuantity <= meta.lowStockLimit
                 val isExpired = meta.expiryDate.isNotBlank() && meta.expiryDate <= today
                 val isSoon = meta.expiryDate.isNotBlank() && meta.expiryDate > today && meta.expiryDate <= addDays(today, 30)
-                Card(Modifier.fillMaxWidth(), onClick = { selected = p }) {
+                Card(onClick = { selected = p }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(p.name, style = MaterialTheme.typography.titleMedium)
                         Text("কোড: \${p.code}  •  স্টক: \${p.stockQuantity}")
