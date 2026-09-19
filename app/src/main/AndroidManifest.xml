@@ -77,6 +77,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".security.LoginActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".security.UserManagementActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
 
