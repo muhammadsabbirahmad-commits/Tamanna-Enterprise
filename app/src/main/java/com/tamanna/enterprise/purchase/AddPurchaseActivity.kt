@@ -27,18 +27,19 @@ import java.util.Date
 import java.util.Locale
 
 class AddPurchaseActivity : ComponentActivity() {
+    companion object { const val EXTRA_PRODUCT_CODE = "add_purchase_product_code" }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AddPurchaseScreen { finish() } }
+        setContent { AddPurchaseScreen(initialProductCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()) { finish() } }
     }
 }
 
 @Composable
-private fun AddPurchaseScreen(onSaved: () -> Unit) {
+private fun AddPurchaseScreen(initialProductCode: String, onSaved: () -> Unit) {
     val context = LocalContext.current
     val products = remember { ProductStorage.getProducts(context) }
 
-    var productCode by remember { mutableStateOf("") }
+    var productCode by remember { mutableStateOf(initialProductCode) }
     var quantity by remember { mutableStateOf("") }
     var purchasePrice by remember { mutableStateOf("") }
     var supplier by remember { mutableStateOf("") }
