@@ -13,6 +13,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".product.AddProductActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".dashboard.DashboardActivity"
             android:exported="false" />
 
