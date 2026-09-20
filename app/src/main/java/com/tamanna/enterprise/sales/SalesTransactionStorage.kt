@@ -75,4 +75,28 @@ object SalesTransactionStorage {
 
     fun getTransaction(context: Context, transactionId: String): SaleTransaction? =
         getTransactions(context).firstOrNull { it.transactionId == transactionId }
+
+    fun removeTransaction(context: Context, transactionId: String) {
+        saveTransactions(context, getTransactions(context).filterNot { it.transactionId == transactionId })
+    }
+
+    private fun saveTransactions(context: Context, transactions: List<SaleTransaction>) {
+        val array = JSONArray()
+        transactions.forEach { tx ->
+            array.put(JSONObject().apply {
+                put("transactionId", tx.transactionId)
+                put("date", tx.date)
+                put("customer", tx.customer)
+                put("mobile", tx.mobile)
+                put("subtotal", tx.subtotal)
+                put("discount", tx.discount)
+                put("total", tx.total)
+                put("paid", tx.paid)
+                put("due", tx.due)
+                put("paymentMethod", tx.paymentMethod)
+            })
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY, array.toString()).apply()
+    }
 }
