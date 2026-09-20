@@ -39,6 +39,7 @@ class LoginActivity : ComponentActivity() {
 
     private var googleOnSuccess: (() -> Unit)? = null
     private var googleOnError: ((String) -> Unit)? = null
+    private var pendingMasterPassword: String = ""
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -70,7 +71,7 @@ class LoginActivity : ComponentActivity() {
                                 FirebaseAuth.getInstance().signOut()
                                 googleOnError?.invoke("এই Google অ্যাকাউন্টটি এখনো Admin অনুমোদন করেননি। অনুমোদনের পর লগইন করতে পারবেন।")
                             } else {
-                                val admin = SecurityStorage.registerGoogleAdmin(this@LoginActivity, email, masterPassword)
+                                val admin = SecurityStorage.registerGoogleAdmin(this@LoginActivity, email, pendingMasterPassword)
                                 if (admin != null) {
                                     SecurityStorage.login(this@LoginActivity, admin)
                                     CloudSyncManager.pullThenSync(this@LoginActivity) {
@@ -89,6 +90,7 @@ class LoginActivity : ComponentActivity() {
                         }
                         googleOnSuccess = null
                         googleOnError = null
+                        pendingMasterPassword = ""
                     }
             } catch (e: ApiException) {
                 val message = when (e.statusCode) {
@@ -100,6 +102,7 @@ class LoginActivity : ComponentActivity() {
                 googleOnError?.invoke(message)
                 googleOnSuccess = null
                 googleOnError = null
+                pendingMasterPassword = ""
             } catch (e: Exception) {
                 googleOnError?.invoke(e.localizedMessage ?: "Google লগইনে একটি সমস্যা হয়েছে।")
                 googleOnSuccess = null
@@ -185,6 +188,7 @@ class LoginActivity : ComponentActivity() {
                         Button(
                             onClick = {
                                 error = ""
+                                pendingMasterPassword = masterPassword
                                 googleLoading = true
                                 googleOnSuccess = {
                                     googleLoading = false
