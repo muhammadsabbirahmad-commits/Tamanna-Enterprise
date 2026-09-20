@@ -82,7 +82,7 @@ object SecurityStorage {
         if (cleanName.isBlank() || password.isBlank()) return false
         val users = getUsers(context).toMutableList()
         if (users.any { it.username.equals(cleanName, ignoreCase = true) }) return false
-        users.add(AppUser(UUID.randomUUID().toString(), cleanName, hashPassword(password), role, true, ""))
+        users.add(AppUser(UUID.randomUUID().toString(), cleanName, hashPassword(password), role, role != ROLE_PARTNER, ""))
         saveUsers(context, users)
         return true
     }
