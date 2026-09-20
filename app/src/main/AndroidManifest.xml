@@ -44,6 +44,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".sales.SaleReturnActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".due.CustomerDueActivity"
             android:exported="false" />
 
