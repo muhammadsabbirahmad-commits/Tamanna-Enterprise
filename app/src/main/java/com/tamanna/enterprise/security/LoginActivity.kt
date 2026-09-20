@@ -88,10 +88,8 @@ class LoginActivity : ComponentActivity() {
             masterPassword = masterPassword
         ) { success, message, _ ->
             if (success) {
-                CloudSyncManager.pullThenSync(this) {
-                    googleOnSuccess?.invoke()
-                    clearCallbacks()
-                }
+                googleOnSuccess?.invoke()
+                clearCallbacks()
             } else if (message == CloudAccessManager.MASTER_REQUIRED) {
                 masterPrompt?.invoke("")
             } else {
