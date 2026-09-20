@@ -207,7 +207,7 @@ object SecurityStorage {
 
     fun isLoggedIn(context: Context) = getCurrentUser(context) != null
 
-    fun canWrite(context: Context): Boolean = getCurrentUser(context)?.role != ROLE_VIEWER
+    fun canWrite(context: Context): Boolean = getCurrentUser(context)?.role == ROLE_ADMIN
 
     fun canManage(context: Context): Boolean = getCurrentUser(context)?.role == ROLE_ADMIN
 
