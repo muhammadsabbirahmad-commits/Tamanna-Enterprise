@@ -1,6 +1,5 @@
 package com.tamanna.enterprise.security
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -56,20 +55,16 @@ class LoginActivity : ComponentActivity() {
                 auth.signInWithCredential(credential)
                     .addOnCompleteListener(this) { task ->
                         if (!task.isSuccessful) {
-                            googleOnError?.invoke(
-                                task.exception?.localizedMessage
-                                    ?: "Firebase Google লগইন ব্যর্থ হয়েছে।"
-                            )
+                            googleOnError?.invoke(task.exception?.localizedMessage ?: "Firebase Google লগইন ব্যর্থ হয়েছে।")
                             clearCallbacks()
                             return@addOnCompleteListener
                         }
-
                         resolveCurrentGoogle("")
                     }
             } catch (e: ApiException) {
                 val message = when (e.statusCode) {
                     12501 -> "Google অ্যাকাউন্ট নির্বাচন বাতিল হয়েছে।"
-                    10 -> "Google লগইন কনফিগারেশন ভুল। এই APK-এর SHA-1 Firebase-এ যোগ করা আছে কি না পরীক্ষা করতে হবে।"
+                    10 -> "Google লগইন কনফিগারেশন ভুল। Firebase/Google সেটআপ পরীক্ষা করতে হবে।"
                     7 -> "Google সার্ভারে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ পরীক্ষা করুন।"
                     else -> "Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"
                 }
@@ -107,8 +102,7 @@ class LoginActivity : ComponentActivity() {
         masterPrompt = null
     }
 
-    private fun startGoogleLogin(isAdmin: Boolean) {
-        adminLoginMode = isAdmin
+    private fun startGoogleLogin() {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
             .requestEmail()
@@ -124,17 +118,20 @@ class LoginActivity : ComponentActivity() {
         SecurityStorage.ensureInitialized(this)
         auth = FirebaseAuth.getInstance()
 
+        adminLoginMode = intent.getStringExtra("LOGIN_MODE") != "PARTNER"
+
         setContent {
             var error by remember { mutableStateOf("") }
-            var googleLoading by remember { mutableStateOf(false) }
+            var loading by remember { mutableStateOf(false) }
             var showMaster by remember { mutableStateOf(false) }
             var master by remember { mutableStateOf("") }
             var masterLoading by remember { mutableStateOf(false) }
 
             masterPrompt = {
                 showMaster = true
-                googleLoading = false
+                loading = false
                 error = ""
+                masterLoading = false
             }
 
             MaterialTheme {
@@ -145,8 +142,11 @@ class LoginActivity : ComponentActivity() {
                     ) {
                         Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(8.dp))
-                        Text("নিরাপদ লগইন", style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(20.dp))
+                        Text(
+                            if (adminLoginMode) "Admin Login" else "Partner Login",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Spacer(Modifier.height(18.dp))
 
                         if (showMaster) {
                             Text(
@@ -185,10 +185,7 @@ class LoginActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     auth.signOut()
-                                    showMaster = false
-                                    master = ""
-                                    error = ""
-                                    clearCallbacks()
+                                    finish()
                                 },
                                 enabled = !masterLoading,
                                 modifier = Modifier.fillMaxWidth()
@@ -197,7 +194,10 @@ class LoginActivity : ComponentActivity() {
                             }
                         } else {
                             Text(
-                                "দুটি আলাদা লগইন থাকবে। Admin সরাসরি Gmail + Master Password দিয়ে প্রবেশ করবে। Partner Gmail দিয়ে Access Request পাঠাবে; Admin অনুমোদন করলে Partner প্রবেশ করতে পারবে।",
+                                if (adminLoginMode)
+                                    "Admin Gmail Connect করুন। প্রথমবার Master Password দিলে সরাসরি Admin হিসেবে প্রবেশ করবেন। কোনো Approval লাগবে না।"
+                                else
+                                    "Partner Gmail Connect করলে Access Request Admin-এর কাছে যাবে। Admin Approve না করা পর্যন্ত ব্যবসায়িক ডাটায় প্রবেশ করা যাবে না।",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(Modifier.height(16.dp))
@@ -210,58 +210,36 @@ class LoginActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     error = ""
-                                    googleLoading = true
-                                    adminLoginMode = true
+                                    loading = true
                                     googleOnSuccess = {
-                                        googleLoading = false
-                                        startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
+                                        loading = false
+                                        setResult(RESULT_OK)
                                         finish()
                                     }
                                     googleOnError = {
-                                        googleLoading = false
+                                        loading = false
                                         error = it
                                     }
-                                    startGoogleLogin(true)
+                                    startGoogleLogin()
                                 },
-                                enabled = !googleLoading,
+                                enabled = !loading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (googleLoading) "Admin Google সংযোগ হচ্ছে..." else "👑 Admin Login")
+                                Text(
+                                    if (loading) "Google সংযোগ হচ্ছে..."
+                                    else if (adminLoginMode) "👑 Admin Gmail Connect"
+                                    else "👤 Partner Gmail Connect"
+                                )
                             }
 
-                            Spacer(Modifier.height(10.dp))
-
+                            Spacer(Modifier.height(8.dp))
                             Button(
-                                onClick = {
-                                    error = ""
-                                    googleLoading = true
-                                    adminLoginMode = false
-                                    googleOnSuccess = {
-                                        googleLoading = false
-                                        startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
-                                        finish()
-                                    }
-                                    googleOnError = {
-                                        googleLoading = false
-                                        error = it
-                                    }
-                                    startGoogleLogin(false)
-                                },
-                                enabled = !googleLoading,
+                                onClick = { finish() },
+                                enabled = !loading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (googleLoading) "Partner Google সংযোগ হচ্ছে..." else "👤 Partner Login")
+                                Text("ফিরে যান")
                             }
-
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Admin: Gmail → Master Password → সরাসরি প্রবেশ।",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                "Partner: Gmail → Access Request → Admin Approve → প্রবেশ।",
-                                style = MaterialTheme.typography.bodySmall
-                            )
                         }
                     }
                 }
