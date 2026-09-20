@@ -30,59 +30,18 @@ object InvoicePdfUtil {
         total: Double,
         paid: Double,
         due: Double,
-        paymentMethod: String
+        paymentMethod: String,
+        invoiceNo: String = "TE-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()),
+        dateText: String = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date())
     ) {
-        val invoiceNo = "TE-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val date = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date())
-        val document = PdfDocument()
-        val page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
-        val canvas = page.canvas
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f }
-        var y = 45f
-
-        fun line(text: String, size: Float = 12f) {
-            paint.textSize = size
-            canvas.drawText(text, 40f, y, paint)
-            y += size + 10f
-        }
-
-        line("TAMANNA ENTERPRISE", 22f)
-        line("Sales Invoice", 16f)
-        line("Invoice: $invoiceNo")
-        line("Transaction: $transactionId")
-        line("Date: $date")
-        if (customer.isNotBlank()) line("Customer: $customer")
-        if (mobile.isNotBlank()) line("Mobile: $mobile")
-        line("---------------------------------------------")
-        cart.forEachIndexed { index, item ->
-            val amount = item.quantity * item.unitPrice
-            line("${index + 1}. ${item.name.take(34)}")
-            line("   ${item.quantity} x ${money(item.unitPrice)} = ${money(amount)}")
-        }
-        line("---------------------------------------------")
-        line("Subtotal: ${money(subtotal)}")
-        line("Discount: ${money(discount)}")
-        line("Grand Total: ${money(total)}", 15f)
-        line("Paid: ${money(paid)}")
-        line("Due: ${money(due)}")
-        line("Payment: $paymentMethod")
-        line("")
-        line("Thank you for shopping with us.")
-
-        document.finishPage(page)
-        val dir = File(context.cacheDir, "reports").apply { mkdirs() }
-        val file = File(dir, "invoice-$invoiceNo.pdf")
-        FileOutputStream(file).use { document.writeTo(it) }
-        document.close()
-
-        val uri = FileProvider.getUriForFile(
-            context,
-            context.packageName + ".fileprovider",
-            file
+        val file = createInvoicePdf(
+            context, transactionId, cart, customer, mobile, subtotal, discount,
+            total, paid, due, paymentMethod, invoiceNo, dateText
         )
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
-            putExtra(Intent.EXTRA_SUBJECT, "Tamanna Enterprise Invoice $invoiceNo")
+            putExtra(Intent.EXTRA_SUBJECT, "Tamanna Enterprise Invoice " + invoiceNo)
             putExtra(Intent.EXTRA_TEXT, "Tamanna Enterprise sales invoice")
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
