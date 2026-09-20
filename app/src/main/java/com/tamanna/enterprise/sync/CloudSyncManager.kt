@@ -5,6 +5,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.tamanna.enterprise.security.SecurityStorage
 
 /**
  * Syncs the app's business/settings SharedPreferences to the signed-in
@@ -28,8 +29,6 @@ object CloudSyncManager {
         "tamanna_supplier_due",
         "tamanna_inventory_meta"
     )
-
-    @Volatile private var pulling = false
 
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
@@ -118,24 +117,6 @@ object CloudSyncManager {
 
         batch.commit()
             .addOnCompleteListener { onComplete() }
-    }
-
-    private fun syncNamespace(context: Context, namespace: String) {
-        val uid = auth().currentUser?.uid ?: return
-        val values = toFirestoreMap(
-            context.getSharedPreferences(namespace, Context.MODE_PRIVATE).all
-        )
-        db().collection(USERS)
-            .document(uid)
-            .collection(DATA)
-            .document(namespace)
-            .set(
-                mapOf(
-                    "values" to values,
-                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ),
-                SetOptions.merge()
-            )
     }
 
     private fun toFirestoreMap(source: Map<String, *>): Map<String, Any?> =
