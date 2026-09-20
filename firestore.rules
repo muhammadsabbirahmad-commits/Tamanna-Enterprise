@@ -30,13 +30,15 @@ service cloud.firestore {
     // Google account access directory.
     // A new Google account may create only its own pending Partner record.
     // The first Admin bootstrap is allowed only while the singleton admin
-    // configuration does not exist; the Android client additionally requires
-    // the Master Password before attempting this bootstrap.
+    // configuration does not exist. If the singleton already belongs to the
+    // same UID, the matching access record may also be created/repaired.
     match /accessUsers/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || admin());
 
       allow create: if signedIn()
         && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.auth.token.email_verified == true
         && (
           (
             request.resource.data.role == "PARTNER" &&
@@ -48,7 +50,11 @@ service cloud.firestore {
             request.resource.data.role == "ADMIN" &&
             request.resource.data.approved == true &&
             request.resource.data.email == request.auth.token.email &&
-            !exists(/databases/$(database)/documents/appConfig/admin)
+            (
+              !exists(/databases/$(database)/documents/appConfig/admin)
+              ||
+              get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
+            )
           )
         );
 
@@ -59,6 +65,7 @@ service cloud.firestore {
     match /appConfig/admin {
       allow read: if signedIn();
       allow create: if signedIn()
+        && request.auth.token.email_verified == true
         && !exists(/databases/$(database)/documents/appConfig/admin)
         && request.resource.data.role == "ADMIN"
         && request.resource.data.uid == request.auth.uid
