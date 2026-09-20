@@ -28,6 +28,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
 
+@OptIn(ExperimentalMaterial3Api::class)
 class PartnerLedgerActivity:ComponentActivity(){
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
@@ -94,7 +95,7 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
  val lifetimeWithdrawn=withdrawals.filter{it.partnerId==partner.id&&day(it.date)<=to}.sumOf{it.amount}
  val payable=max(0.0,accruedProfit-lifetimeWithdrawn)
 
- Scaffold(topBar={TopAppBar(title={Text("পার্টনার লেজার — "+partner.name),actions={if(!isAdmin)TextButton({PartnerStorage.logout(a);a.startActivity(Intent(a,PartnerLoginActivity::class.java));a.finish()}){Text("Logout")}}})}){padding->
+ Scaffold(topBar={TopAppBar(title={Text("পার্টনার লেজার — "+partner.name)},actions={if(!isAdmin){TextButton(onClick={PartnerStorage.logout(a);a.startActivity(Intent(a,PartnerLoginActivity::class.java));a.finish()}){Text("Logout")}}})}){padding->
   Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(from,{from=it},label={Text("শুরু (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.weight(1f));OutlinedTextField(to,{to=it},label={Text("শেষ (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.weight(1f))}
    Spacer(Modifier.height(8.dp));Button({refresh++},enabled=valid,modifier=Modifier.fillMaxWidth()){Text("হিসাব আপডেট করুন")}
