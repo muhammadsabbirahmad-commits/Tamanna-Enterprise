@@ -24,7 +24,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -155,9 +154,6 @@ private fun SettingsScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentUser = com.tamanna.enterprise.security.SecurityStorage.getCurrentUser(context)
     var shopName by remember { mutableStateOf(initialShopName) }
-    var loginEnabled by remember {
-        mutableStateOf(com.tamanna.enterprise.security.SecurityStorage.isLoginEnabled(context))
-    }
     var googleLoading by remember { mutableStateOf(false) }
     var googleError by remember { mutableStateOf("") }
     var selectedTheme by remember { mutableStateOf(ThemeStorage.getTheme(context)) }
@@ -187,27 +183,13 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("লগইন নিরাপত্তা", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "চালু করলে অ্যাপ খোলার সময় ইউজার লগইন লাগবে।",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    Switch(
-                        checked = loginEnabled,
-                        onCheckedChange = {
-                            loginEnabled = it
-                            com.tamanna.enterprise.security.SecurityStorage.setLoginEnabled(context, it)
-                        }
-                    )
-                }
+                Text("লগইন নিরাপত্তা", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "অ্যাপের ব্যবসায়িক ডাটা দেখতে ও ব্যবহার করতে অনুমোদিত Admin/Partner লগইন বাধ্যতামূলক। এই নিরাপত্তা বন্ধ করার অপশন রাখা হয়নি।",
+                    style = MaterialTheme.typography.bodySmall
+                )
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(24.dp))
 
                 Text("Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
