@@ -192,6 +192,40 @@ object CloudAccessManager {
             }
     }
 
+    fun validateCurrentSession(context: Context, onResult: (Boolean) -> Unit) {
+        val user = auth().currentUser
+        if (user == null) {
+            onResult(false)
+            return
+        }
+
+        db().collection(USERS).document(user.uid).get()
+            .addOnSuccessListener { snapshot ->
+                val role = snapshot.getString("role").orEmpty()
+                val approved = snapshot.getBoolean("approved") == true
+                val email = snapshot.getString("email").orEmpty().ifBlank { user.email.orEmpty() }
+
+                if (approved && (role == SecurityStorage.ROLE_ADMIN || role == SecurityStorage.ROLE_PARTNER)) {
+                    val cached = SecurityStorage.upsertGoogleUser(
+                        context,
+                        email,
+                        role,
+                        true,
+                        user.uid
+                    )
+                    SecurityStorage.login(context, cached)
+                    onResult(true)
+                } else {
+                    SecurityStorage.logout(context)
+                    auth().signOut()
+                    onResult(false)
+                }
+            }
+            .addOnFailureListener {
+                onResult(false)
+            }
+    }
+
     fun listUsers(onResult: (List<CloudAccessUser>, String?) -> Unit) {
         db().collection(USERS)
             .get()
