@@ -267,44 +267,70 @@ private fun NewSaleScreen(
                     val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                     val transactionId = "TX-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
                     val customerText = customer.trim() + if (mobile.isNotBlank()) " • " + mobile.trim() else ""
-                    SalesTransactionStorage.addTransaction(
-                        context,
-                        SaleTransaction(
-                            transactionId = transactionId,
-                            date = now,
-                            customer = customer.trim(),
-                            mobile = mobile.trim(),
-                            subtotal = subtotal,
-                            discount = discountAmount,
-                            total = total,
-                            paid = paidAmount,
-                            due = due,
-                            paymentMethod = paymentMethod
-                        )
-                    )
-                    if (due > 0.0) {
-                        CustomerDueStorage.addSaleDue(
-                            context, customer.trim(), mobile.trim(), due,
-                            "বিক্রয়: " + cart.joinToString(", ") { it.product.name + " x" + it.quantity }
-                        )
-                    }
-                    cart.forEachIndexed { index, item ->
-                        ProductStorage.updateStock(context, item.product.code, item.product.stockQuantity - item.quantity)
-                        SalesStorage.addSale(
+                    val dueNote = "বিক্রয়: " + cart.joinToString(", ") { it.product.name + " x" + it.quantity }
+                    val originalStocks = cart.associate { it.product.code to it.product.stockQuantity }
+
+                    try {
+                        SalesTransactionStorage.addTransaction(
                             context,
-                            Sale(
-                                id = System.currentTimeMillis() + index,
+                            SaleTransaction(
                                 transactionId = transactionId,
                                 date = now,
-                                productCode = item.product.code,
-                                productName = item.product.name,
-                                quantity = item.quantity,
-                                salePrice = item.unitPrice,
-                                purchasePrice = item.product.purchasePrice,
-                                customer = customerText
+                                customer = customer.trim(),
+                                mobile = mobile.trim(),
+                                subtotal = subtotal,
+                                discount = discountAmount,
+                                total = total,
+                                paid = paidAmount,
+                                due = due,
+                                paymentMethod = paymentMethod
                             )
                         )
+
+                        if (due > 0.0) {
+                            CustomerDueStorage.addSaleDue(
+                                context, customer.trim(), mobile.trim(), due, dueNote
+                            )
+                        }
+
+                        cart.forEachIndexed { index, item ->
+                            ProductStorage.updateStock(
+                                context, item.product.code,
+                                item.product.stockQuantity - item.quantity
+                            )
+                            SalesStorage.addSale(
+                                context,
+                                Sale(
+                                    id = System.currentTimeMillis() + index,
+                                    transactionId = transactionId,
+                                    date = now,
+                                    productCode = item.product.code,
+                                    productName = item.product.name,
+                                    quantity = item.quantity,
+                                    salePrice = item.unitPrice,
+                                    purchasePrice = item.product.purchasePrice,
+                                    customer = customerText
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        cart.forEach { item ->
+                            ProductStorage.updateStock(
+                                context, item.product.code,
+                                originalStocks[item.product.code] ?: item.product.stockQuantity
+                            )
+                        }
+                        SalesStorage.removeByTransaction(context, transactionId)
+                        SalesTransactionStorage.removeTransaction(context, transactionId)
+                        if (due > 0.0) {
+                            CustomerDueStorage.removeSaleDue(
+                                context, customer.trim(), mobile.trim(), due, dueNote
+                            )
+                        }
+                        message = "বিক্রয় সংরক্ষণ ব্যর্থ হয়েছে। কোনো পরিবর্তন রাখা হয়নি।"
+                        return@Button
                     }
+
                     InvoicePdfUtil.shareInvoice(
                         context = context,
                         transactionId = transactionId,
