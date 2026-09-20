@@ -3,6 +3,7 @@ package com.tamanna.enterprise.scanner
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -20,11 +21,12 @@ class BarcodeScannerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
         val options = ScanOptions().apply {
             setPrompt("পণ্যের বারকোড / QR কোড স্ক্যান করুন")
             setBeepEnabled(true)
-            setOrientationLocked(false)
+            setOrientationLocked(true)
             setBarcodeImageEnabled(false)
         }
 
