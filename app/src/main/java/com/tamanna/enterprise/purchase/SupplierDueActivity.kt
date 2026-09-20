@@ -13,11 +13,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.settings.ThemeStorage
+import com.tamanna.enterprise.security.SecurityStorage
 
 @OptIn(ExperimentalMaterial3Api::class)
 class SupplierDueActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canWrite(this)) { finish(); return }
         setContent { TamannaTheme(ThemeStorage.getTheme(this)) { SupplierDueScreen() } }
     }
 }
