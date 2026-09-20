@@ -8,7 +8,6 @@ import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.security.CloudAccessManager
 import com.tamanna.enterprise.security.LoginActivity
 import com.tamanna.enterprise.security.SecurityStorage
-import com.tamanna.enterprise.sync.CloudSyncManager
 import com.tamanna.enterprise.notifications.NotificationScheduler
 
 class MainActivity : ComponentActivity() {
@@ -27,6 +26,12 @@ class MainActivity : ComponentActivity() {
 
         val firebaseUser = FirebaseAuth.getInstance().currentUser
         val localUser = SecurityStorage.getCurrentUser(this)
+
+        if (localUser?.role == SecurityStorage.ROLE_PARTNER && firebaseUser == null) {
+            startActivity(Intent(this, com.tamanna.enterprise.partner.PartnerLedgerActivity::class.java))
+            finish()
+            return
+        }
 
         if (firebaseUser == null || localUser == null) {
             SecurityStorage.logout(this)
