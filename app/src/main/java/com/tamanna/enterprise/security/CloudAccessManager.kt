@@ -46,85 +46,96 @@ object CloudAccessManager {
         }
 
         val uid = firebaseUser.uid
-        val ref = db().collection(USERS).document(uid)
+        val normalizedEmail = email.trim()
 
-        ref.get().addOnSuccessListener { snapshot ->
-            if (snapshot.exists()) {
-                val role = snapshot.getString("role").orEmpty()
-                val approved = snapshot.getBoolean("approved") == true
-                val cloudUser = CloudAccessUser(uid, email.trim(), role, approved)
+        // The singleton Admin record is the source of truth for whether the
+        // first Admin has already been created. This read is intentionally
+        // independent of the user's access record so the first Admin can
+        // bootstrap without hitting an accessUsers permission check first.
+        db().collection(CONFIG).document(ADMIN).get()
+            .addOnSuccessListener { adminSnapshot ->
+                val adminExists = adminSnapshot.exists()
 
-                if (approved && role == SecurityStorage.ROLE_ADMIN) {
-                    if (adminLogin) {
-                        cacheAndLogin(context, cloudUser)
-                        onResult(true, "", cloudUser)
+                if (adminLogin && !adminExists) {
+                    if (SecurityStorage.isMasterPassword(masterPassword)) {
+                        bootstrapFirstAdmin(context, uid, normalizedEmail, onResult)
                     } else {
-                        auth().signOut()
-                        onResult(false, "এই Gmail ইতিমধ্যে Admin হিসেবে নিবন্ধিত। Partner Login-এর জন্য অন্য Gmail ব্যবহার করুন।", null)
+                        onResult(false, MASTER_REQUIRED, null)
                     }
                     return@addOnSuccessListener
                 }
 
-                if (approved && role == SecurityStorage.ROLE_PARTNER) {
-                    if (!adminLogin) {
-                        cacheAndLogin(context, cloudUser)
-                        onResult(true, "", cloudUser)
-                    } else {
-                        auth().signOut()
-                        onResult(false, "এই Gmail Partner account হিসেবে অনুমোদিত। Admin Login-এর জন্য Admin-এর Gmail ব্যবহার করুন।", null)
-                    }
-                    return@addOnSuccessListener
-                }
+                // For an existing Admin, or for Partner requests after Admin
+                // bootstrap, read only the signed-in user's own access record.
+                db().collection(USERS).document(uid).get()
+                    .addOnSuccessListener { snapshot ->
+                        if (snapshot.exists()) {
+                            val role = snapshot.getString("role").orEmpty()
+                            val approved = snapshot.getBoolean("approved") == true
+                            val cloudUser = CloudAccessUser(uid, normalizedEmail, role, approved)
 
-                if (!approved && role == SecurityStorage.ROLE_PARTNER) {
-                    auth().signOut()
-                    onResult(
-                        false,
-                        "আপনার Partner access এখনো Admin অনুমোদন করেননি। অনুমোদনের পর Partner Login দিয়ে প্রবেশ করুন।",
-                        null
-                    )
-                    return@addOnSuccessListener
-                }
+                            if (approved && role == SecurityStorage.ROLE_ADMIN) {
+                                if (adminLogin) {
+                                    cacheAndLogin(context, cloudUser)
+                                    onResult(true, "", cloudUser)
+                                } else {
+                                    auth().signOut()
+                                    onResult(false, "এই Gmail ইতিমধ্যে Admin হিসেবে নিবন্ধিত। Partner Login-এর জন্য অন্য Gmail ব্যবহার করুন।", null)
+                                }
+                                return@addOnSuccessListener
+                            }
 
-                auth().signOut()
-                onResult(false, "এই Google account-এর জন্য অনুমোদিত access পাওয়া যায়নি।", null)
-                return@addOnSuccessListener
-            }
+                            if (approved && role == SecurityStorage.ROLE_PARTNER) {
+                                if (!adminLogin) {
+                                    cacheAndLogin(context, cloudUser)
+                                    onResult(true, "", cloudUser)
+                                } else {
+                                    auth().signOut()
+                                    onResult(false, "এই Gmail Partner account হিসেবে অনুমোদিত। Admin Login-এর জন্য Admin-এর Gmail ব্যবহার করুন।", null)
+                                }
+                                return@addOnSuccessListener
+                            }
 
-            db().collection(CONFIG).document(ADMIN).get()
-                .addOnSuccessListener { adminSnapshot ->
-                    val adminExists = adminSnapshot.exists()
+                            if (!approved && role == SecurityStorage.ROLE_PARTNER) {
+                                auth().signOut()
+                                onResult(false, "আপনার Partner access এখনো Admin অনুমোদন করেননি। অনুমোদনের পর Partner Login দিয়ে প্রবেশ করুন।", null)
+                                return@addOnSuccessListener
+                            }
 
-                    if (adminLogin) {
-                        if (adminExists) {
+                            auth().signOut()
+                            onResult(false, "এই Google account-এর জন্য অনুমোদিত access পাওয়া যায়নি।", null)
+                            return@addOnSuccessListener
+                        }
+
+                        if (adminLogin) {
                             auth().signOut()
                             onResult(
                                 false,
-                                "Admin account ইতিমধ্যে সেটআপ করা আছে। এই Gmail Admin নয়। Partner Login ব্যবহার করে Access Request পাঠান।",
+                                if (adminExists) {
+                                    "Admin account ইতিমধ্যে সেটআপ করা আছে। এই Gmail Admin নয়।"
+                                } else {
+                                    "Admin account সেটআপ করা যায়নি। আবার চেষ্টা করুন।"
+                                },
                                 null
                             )
-                        } else if (SecurityStorage.isMasterPassword(masterPassword)) {
-                            bootstrapFirstAdmin(context, uid, email.trim(), onResult)
                         } else {
-                            onResult(false, MASTER_REQUIRED, null)
-                        }
-                    } else {
-                        if (!adminExists) {
-                            auth().signOut()
-                            onResult(false, "প্রথমে Admin Login দিয়ে Admin account সেটআপ করতে হবে।", null)
-                        } else {
-                            createPendingPartner(context, uid, email.trim(), onResult)
+                            if (!adminExists) {
+                                auth().signOut()
+                                onResult(false, "প্রথমে Settings → Admin Login দিয়ে Admin account সেটআপ করতে হবে।", null)
+                            } else {
+                                createPendingPartner(context, uid, normalizedEmail, onResult)
+                            }
                         }
                     }
-                }
-                .addOnFailureListener {
-                    auth().signOut()
-                    onResult(false, it.localizedMessage ?: "Admin configuration যাচাই করা যায়নি।", null)
-                }
-        }.addOnFailureListener {
-            auth().signOut()
-            onResult(false, it.localizedMessage ?: "অ্যাক্সেস যাচাই করা যায়নি।", null)
-        }
+                    .addOnFailureListener {
+                        auth().signOut()
+                        onResult(false, it.localizedMessage ?: "Google access record যাচাই করা যায়নি।", null)
+                    }
+            }
+            .addOnFailureListener {
+                auth().signOut()
+                onResult(false, it.localizedMessage ?: "Admin configuration যাচাই করা যায়নি।", null)
+            }
     }
 
     fun bootstrapAfterMaster(
