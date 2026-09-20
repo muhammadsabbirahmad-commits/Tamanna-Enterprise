@@ -18,12 +18,6 @@ class MainActivity : ComponentActivity() {
         SecurityStorage.ensureInitialized(this)
         NotificationScheduler.scheduleDaily(this)
 
-        if (!SecurityStorage.isLoginEnabled(this)) {
-            startActivity(Intent(this, DashboardActivity::class.java))
-            finish()
-            return
-        }
-
         val partnerSession = com.tamanna.enterprise.partner.PartnerStorage.getCurrentPartner(this)
         if (partnerSession != null) {
             startActivity(Intent(this, com.tamanna.enterprise.partner.PartnerLedgerActivity::class.java))
