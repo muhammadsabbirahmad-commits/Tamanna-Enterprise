@@ -25,29 +25,11 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val firebaseUser = FirebaseAuth.getInstance().currentUser
-        val localUser = SecurityStorage.getCurrentUser(this)
+        // Login choices live in Settings. The dashboard opens normally,
+        // but business data/actions are locked until an approved Admin or Partner
+        // session exists.
+        startActivity(Intent(this, DashboardActivity::class.java))
+        finish()
 
-        if (localUser?.role == SecurityStorage.ROLE_PARTNER && firebaseUser == null) {
-            startActivity(Intent(this, com.tamanna.enterprise.partner.PartnerLedgerActivity::class.java))
-            finish()
-            return
-        }
-
-        if (firebaseUser == null || localUser == null) {
-            SecurityStorage.logout(this)
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
-
-        CloudAccessManager.validateCurrentSession(this) { valid ->
-            if (valid) {
-                startActivity(Intent(this, DashboardActivity::class.java))
-            } else {
-                startActivity(Intent(this, LoginActivity::class.java))
-            }
-            finish()
-        }
     }
 }
