@@ -15,12 +15,14 @@ import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.settings.ThemeStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.*
  
 class StockAlertActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
+        if (!SecurityStorage.canWrite(this)) { finish(); return }
         setContent { TamannaTheme(ThemeStorage.getTheme(this)) { StockAlertScreen() } }
     }
 }
