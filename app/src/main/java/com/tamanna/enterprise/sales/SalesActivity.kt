@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.security.SecurityStorage
 import java.util.Locale
 
 class SalesActivity : ComponentActivity() {
@@ -56,9 +57,7 @@ private fun SalesScreen(onNewSale: () -> Unit) {
     val sales = remember { SalesStorage.getSales(context) }
     val transactions = remember { SalesTransactionStorage.getTransactions(context) }
 
-    val groups = sales
-        .groupBy { it.transactionId }
-        .values
+    val groups = sales.groupBy { it.transactionId }.values
         .map { lines ->
             val id = lines.first().transactionId
             SaleGroup(id, lines.sortedBy { it.id }, transactions.firstOrNull { it.transactionId == id })
@@ -66,17 +65,13 @@ private fun SalesScreen(onNewSale: () -> Unit) {
         .sortedByDescending { it.lines.maxOfOrNull { line -> line.id } ?: 0L }
 
     MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("বিক্রয় ইতিহাস", style = MaterialTheme.typography.headlineSmall)
                     Button(onClick = onNewSale) { Text("নতুন বিক্রয়") }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(Modifier.height(12.dp))
 
                 if (groups.isEmpty()) {
                     Text("এখনো কোনো বিক্রয় রেকর্ড নেই।")
@@ -84,32 +79,18 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(groups, key = { it.transactionId }) { group ->
                             val tx = group.transaction
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedGroup = group }
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        "ইনভয়েস: " + group.transactionId,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    Text(
-                                        (tx?.date ?: group.lines.first().date) +
-                                            "  •  " + group.lines.size + "টি পণ্য"
-                                    )
-                                    if (!tx?.customer.isNullOrBlank()) {
-                                        Text("ক্রেতা: " + tx!!.customer)
-                                    }
+                            val returnedAmount = SaleReturnStorage.getReturnedAmount(context, group.transactionId)
+                            Card(Modifier.fillMaxWidth().clickable { selectedGroup = group }) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text("ইনভয়েস: " + group.transactionId, style = MaterialTheme.typography.titleMedium)
+                                    Text((tx?.date ?: group.lines.first().date) + "  •  " + group.lines.size + "টি পণ্য")
+                                    if (!tx?.customer.isNullOrBlank()) Text("ক্রেতা: " + tx!!.customer)
                                     if (tx != null) {
-                                        Text(
-                                            "মোট: ৳ " + money(tx.total) +
-                                                "  •  বাকি: ৳ " + money(tx.due)
-                                        )
+                                        Text("মোট: ৳ " + money(tx.total) + "  •  বাকি: ৳ " + money(tx.due))
                                     } else {
-                                        val total = group.lines.sumOf { it.quantity * it.salePrice }
-                                        Text("মোট: ৳ " + money(total))
+                                        Text("মোট: ৳ " + money(group.lines.sumOf { it.quantity * it.salePrice }))
                                     }
+                                    if (returnedAmount > 0.0) Text("রিটার্ন: ৳ " + money(returnedAmount))
                                 }
                             }
                         }
@@ -130,15 +111,9 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                     Text("তারিখ: " + (tx?.date ?: group.lines.first().date))
                     if (!tx?.customer.isNullOrBlank()) Text("ক্রেতা: " + tx!!.customer)
                     if (!tx?.mobile.isNullOrBlank()) Text("মোবাইল: " + tx!!.mobile)
-
                     group.lines.forEachIndexed { index, line ->
-                        Text(
-                            (index + 1).toString() + ". " + line.productName +
-                                " × " + line.quantity +
-                                " = ৳ " + money(line.quantity * line.salePrice)
-                        )
+                        Text((index + 1).toString() + ". " + line.productName + " × " + line.quantity + " = ৳ " + money(line.quantity * line.salePrice))
                     }
-
                     if (tx != null) {
                         Text("সাবটোটাল: ৳ " + money(tx.subtotal))
                         Text("ছাড়: ৳ " + money(tx.discount))
@@ -146,46 +121,45 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                         Text("জমা: ৳ " + money(tx.paid))
                         Text("বাকি: ৳ " + money(tx.due))
                         Text("পেমেন্ট: " + tx.paymentMethod)
+                        val returned = SaleReturnStorage.getReturnedAmount(context, group.transactionId)
+                        if (returned > 0.0) Text("এ পর্যন্ত রিটার্ন: ৳ " + money(returned))
                     }
                 }
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = {
-                        val transaction = group.transaction
-                        if (transaction != null) {
-                            InvoicePdfUtil.shareInvoice(
-                                context, group.transactionId,
-                                group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
-                                transaction.customer, transaction.mobile, transaction.subtotal,
-                                transaction.discount, transaction.total, transaction.paid, transaction.due,
-                                transaction.paymentMethod, group.transactionId, transaction.date
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (tx != null && SecurityStorage.canWrite(context)) {
+                        TextButton(onClick = {
+                            selectedGroup = null
+                            context.startActivity(
+                                Intent(context, SaleReturnActivity::class.java)
+                                    .putExtra(SaleReturnActivity.EXTRA_TRANSACTION_ID, group.transactionId)
                             )
-                        }
+                        }) { Text("রিটার্ন") }
+                    }
+                    TextButton(onClick = {
+                        if (tx != null) InvoicePdfUtil.shareInvoice(
+                            context, group.transactionId,
+                            group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
+                            tx.customer, tx.mobile, tx.subtotal, tx.discount, tx.total, tx.paid, tx.due,
+                            tx.paymentMethod, group.transactionId, tx.date
+                        )
                     }) { Text("শেয়ার") }
                     TextButton(onClick = {
-                        val transaction = group.transaction
-                        if (transaction != null) {
-                            InvoicePdfUtil.viewInvoice(
-                                context, group.transactionId,
-                                group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
-                                transaction.customer, transaction.mobile, transaction.subtotal,
-                                transaction.discount, transaction.total, transaction.paid, transaction.due,
-                                transaction.paymentMethod, group.transactionId, transaction.date
-                            )
-                        }
+                        if (tx != null) InvoicePdfUtil.viewInvoice(
+                            context, group.transactionId,
+                            group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
+                            tx.customer, tx.mobile, tx.subtotal, tx.discount, tx.total, tx.paid, tx.due,
+                            tx.paymentMethod, group.transactionId, tx.date
+                        )
                     }) { Text("দেখুন") }
                     TextButton(onClick = {
-                        val transaction = group.transaction
-                        if (transaction != null) {
-                            InvoicePdfUtil.printInvoice(
-                                context, group.transactionId,
-                                group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
-                                transaction.customer, transaction.mobile, transaction.subtotal,
-                                transaction.discount, transaction.total, transaction.paid, transaction.due,
-                                transaction.paymentMethod, group.transactionId, transaction.date
-                            )
-                        }
+                        if (tx != null) InvoicePdfUtil.printInvoice(
+                            context, group.transactionId,
+                            group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
+                            tx.customer, tx.mobile, tx.subtotal, tx.discount, tx.total, tx.paid, tx.due,
+                            tx.paymentMethod, group.transactionId, tx.date
+                        )
                     }) { Text("প্রিন্ট") }
                     TextButton(onClick = { selectedGroup = null }) { Text("বন্ধ") }
                 }
@@ -194,5 +168,4 @@ private fun SalesScreen(onNewSale: () -> Unit) {
     }
 }
 
-private fun money(value: Double): String =
-    String.format(Locale.getDefault(), "%.2f", value)
+private fun money(value: Double): String = String.format(Locale.getDefault(), "%.2f", value)
