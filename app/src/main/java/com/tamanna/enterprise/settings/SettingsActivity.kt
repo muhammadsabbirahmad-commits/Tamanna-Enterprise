@@ -205,6 +205,29 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
+                Text("পার্টনার ও ব্যবহারকারী ব্যবস্থাপনা", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Partner Gmail-এর অনুমোদনের অনুরোধ দেখা, Approve/Reject করা এবং access নিয়ন্ত্রণ করুন।",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            android.content.Intent(
+                                context,
+                                com.tamanna.enterprise.security.UserManagementActivity::class.java
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("👥 Partner Management / ব্যবহারকারী ব্যবস্থাপনা")
+                }
+
+                Spacer(Modifier.height(20.dp))
+
                 if (currentUser?.role == com.tamanna.enterprise.security.SecurityStorage.ROLE_ADMIN) {
                     Text("অ্যাডমিন নিরাপত্তা", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
@@ -237,20 +260,6 @@ private fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("অ্যাক্টিভিটি লগ") }
 
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            context.startActivity(
-                                android.content.Intent(
-                                    context,
-                                    com.tamanna.enterprise.security.UserManagementActivity::class.java
-                                )
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("ইউজার ব্যবস্থাপনা")
-                    }
                 }
 
                 Spacer(Modifier.height(20.dp))
