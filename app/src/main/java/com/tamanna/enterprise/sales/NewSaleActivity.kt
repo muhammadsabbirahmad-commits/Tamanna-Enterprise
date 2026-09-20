@@ -267,6 +267,21 @@ private fun NewSaleScreen(
                     val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                     val transactionId = "TX-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
                     val customerText = customer.trim() + if (mobile.isNotBlank()) " • " + mobile.trim() else ""
+                    SalesTransactionStorage.addTransaction(
+                        context,
+                        SaleTransaction(
+                            transactionId = transactionId,
+                            date = now,
+                            customer = customer.trim(),
+                            mobile = mobile.trim(),
+                            subtotal = subtotal,
+                            discount = discountAmount,
+                            total = total,
+                            paid = paidAmount,
+                            due = due,
+                            paymentMethod = paymentMethod
+                        )
+                    )
                     if (due > 0.0) {
                         CustomerDueStorage.addSaleDue(
                             context, customer.trim(), mobile.trim(), due,
