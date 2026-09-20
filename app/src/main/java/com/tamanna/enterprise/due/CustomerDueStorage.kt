@@ -14,9 +14,16 @@ data class DueEntry(
     val note: String
 )
 
+data class Customer(
+    val id: Long,
+    val name: String,
+    val mobile: String
+)
+
 object CustomerDueStorage {
     private const val PREFS = "tamanna_customer_due"
     private const val KEY = "entries"
+    private const val CUSTOMERS_KEY = "customers"
 
     fun getEntries(context: Context): List<DueEntry> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
@@ -30,14 +37,39 @@ object CustomerDueStorage {
         }.sortedByDescending { it.id }
     }
 
+    fun getCustomers(context: Context): List<Customer> {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(CUSTOMERS_KEY, "[]") ?: "[]"
+        val a = JSONArray(raw)
+        return buildList {
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                add(Customer(o.getLong("id"), o.getString("name"), o.optString("mobile", "")))
+            }
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    fun addCustomer(context: Context, name: String, mobile: String): Boolean {
+        val cleanName = name.trim()
+        val cleanMobile = mobile.trim()
+        if (cleanName.isBlank()) return false
+        val customers = getCustomers(context).toMutableList()
+        if (customers.any { it.name.equals(cleanName, true) && it.mobile == cleanMobile }) return false
+        customers.add(Customer(System.currentTimeMillis(), cleanName, cleanMobile))
+        saveCustomers(context, customers)
+        return true
+    }
+
     fun addSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String) {
         if (customer.isBlank() || amount <= 0) return
         add(context, DueEntry(System.currentTimeMillis(), now(), customer.trim(), mobile.trim(), "SALE", amount, note))
+        ensureCustomer(context, customer, mobile)
     }
 
     fun addPayment(context: Context, customer: String, mobile: String, amount: Double, note: String) {
         if (customer.isBlank() || amount <= 0) return
         add(context, DueEntry(System.currentTimeMillis(), now(), customer.trim(), mobile.trim(), "PAYMENT", amount, note))
+        ensureCustomer(context, customer, mobile)
     }
 
     fun getBalance(context: Context, customer: String, mobile: String = ""): Double =
@@ -56,30 +88,29 @@ object CustomerDueStorage {
     private fun sameCustomer(e: DueEntry, customer: String, mobile: String): Boolean =
         e.customer.trim().equals(customer.trim(), true) && (mobile.isBlank() || e.mobile == mobile.trim())
 
+    private fun ensureCustomer(context: Context, name: String, mobile: String) {
+        val cleanName = name.trim()
+        val cleanMobile = mobile.trim()
+        if (cleanName.isBlank()) return
+        if (getCustomers(context).any { it.name.equals(cleanName, true) && it.mobile == cleanMobile }) return
+        addCustomer(context, cleanName, cleanMobile)
+    }
+
     private fun add(context: Context, entry: DueEntry) {
         val list = getEntries(context).toMutableList()
         list.add(entry)
-        val a = JSONArray()
-        list.forEach {
-            a.put(JSONObject().apply {
-                put("id", it.id); put("date", it.date); put("customer", it.customer)
-                put("mobile", it.mobile); put("type", it.type); put("amount", it.amount); put("note", it.note)
-            })
-        }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, a.toString()).apply()
+        saveEntries(context, list)
     }
 
-    private fun now(): String =
-        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-    fun removeSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String) {
-        val entries = getEntries(context).filterNot {
-            it.type == "SALE" &&
-                it.customer.trim().equals(customer.trim(), true) &&
-                it.mobile == mobile.trim() &&
-                kotlin.math.abs(it.amount - amount) < 0.000001 &&
-                it.note == note
+    private fun saveCustomers(context: Context, customers: List<Customer>) {
+        val a = JSONArray()
+        customers.forEach {
+            a.put(JSONObject().apply {
+                put("id", it.id); put("name", it.name); put("mobile", it.mobile)
+            })
         }
-        saveEntries(context, entries)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(CUSTOMERS_KEY, a.toString()).apply()
     }
 
     private fun saveEntries(context: Context, entries: List<DueEntry>) {
@@ -94,4 +125,17 @@ object CustomerDueStorage {
             .edit().putString(KEY, a.toString()).apply()
     }
 
+    private fun now(): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+
+    fun removeSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String) {
+        val entries = getEntries(context).filterNot {
+            it.type == "SALE" &&
+                it.customer.trim().equals(customer.trim(), true) &&
+                it.mobile == mobile.trim() &&
+                kotlin.math.abs(it.amount - amount) < 0.000001 &&
+                it.note == note
+        }
+        saveEntries(context, entries)
+    }
 }
