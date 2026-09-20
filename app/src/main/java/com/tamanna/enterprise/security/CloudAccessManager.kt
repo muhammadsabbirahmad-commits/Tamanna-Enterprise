@@ -48,6 +48,15 @@ object CloudAccessManager {
         val uid = firebaseUser.uid
         val normalizedEmail = email.trim()
 
+        // Admin flow: after Google authentication succeeds, always open the
+        // Master Password step before doing any access lookup. This prevents
+        // the Firestore permission/error message from replacing the password
+        // screen during the first Admin setup.
+        if (adminLogin && masterPassword.isBlank()) {
+            onResult(false, MASTER_REQUIRED, null)
+            return
+        }
+
         // The singleton Admin record is the source of truth for whether the
         // first Admin has already been created. This read is intentionally
         // independent of the user's access record so the first Admin can
