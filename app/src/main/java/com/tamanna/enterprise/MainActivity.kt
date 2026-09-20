@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
 
         CloudAccessManager.validateCurrentSession(this) { valid ->
             if (valid) {
-                CloudSyncManager.start(this)
                 startActivity(Intent(this, DashboardActivity::class.java))
             } else {
                 startActivity(Intent(this, LoginActivity::class.java))
