@@ -235,9 +235,36 @@ private fun SettingsScreen(
                 Text("অ্যাকাউন্ট ও লগইন", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Admin Login এবং Partner Login এখন Login Screen-এ আলাদা। Admin Gmail + Master Password দিয়ে সরাসরি প্রবেশ করবে; Partner Gmail দিয়ে Request পাঠিয়ে Admin অনুমোদনের পর প্রবেশ করবে।",
+                    "এখান থেকেই Admin বা Partner Login করবেন। Login Screen আর অ্যাপ চালুর সময় দেখানো হবে না।",
                     style = MaterialTheme.typography.bodySmall
                 )
+                Spacer(Modifier.height(10.dp))
+
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            Intent(context, com.tamanna.enterprise.security.LoginActivity::class.java)
+                                .putExtra("LOGIN_MODE", "ADMIN")
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("👑 Admin Login")
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            Intent(context, com.tamanna.enterprise.security.LoginActivity::class.java)
+                                .putExtra("LOGIN_MODE", "PARTNER")
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("👤 Partner Login")
+                }
 
                 Spacer(Modifier.height(20.dp))
 
