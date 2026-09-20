@@ -97,6 +97,6 @@ object SalesTransactionStorage {
             })
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY, array.toString()).apply()
+            .edit().putString(KEY_TRANSACTIONS, array.toString()).apply()
     }
 }
