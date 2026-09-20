@@ -6,6 +6,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.tamanna.enterprise.security.SecurityStorage
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -50,7 +51,7 @@ object CloudSyncManager {
             namespaces.forEach { namespace ->
                 val prefs = appContext.getSharedPreferences(namespace, Context.MODE_PRIVATE)
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-                    if (!pulling && auth().currentUser != null) {
+                    if (!pulling && auth().currentUser != null && SecurityStorage.canWrite(appContext)) {
                         syncNamespace(appContext, namespace)
                     }
                 }
@@ -120,7 +121,7 @@ object CloudSyncManager {
     }
 
     fun syncAll(context: Context, onComplete: () -> Unit = {}) {
-        if (auth().currentUser == null) {
+        if (auth().currentUser == null || !SecurityStorage.canWrite(context)) {
             onComplete()
             return
         }
