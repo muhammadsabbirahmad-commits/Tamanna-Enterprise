@@ -21,6 +21,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,7 +150,45 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                 }
             },
             confirmButton = {
-                Button(onClick = { selectedGroup = null }) { Text("বন্ধ") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        val transaction = group.transaction
+                        if (transaction != null) {
+                            InvoicePdfUtil.shareInvoice(
+                                context, group.transactionId,
+                                group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
+                                transaction.customer, transaction.mobile, transaction.subtotal,
+                                transaction.discount, transaction.total, transaction.paid, transaction.due,
+                                transaction.paymentMethod, group.transactionId, transaction.date
+                            )
+                        }
+                    }) { Text("শেয়ার") }
+                    TextButton(onClick = {
+                        val transaction = group.transaction
+                        if (transaction != null) {
+                            InvoicePdfUtil.viewInvoice(
+                                context, group.transactionId,
+                                group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
+                                transaction.customer, transaction.mobile, transaction.subtotal,
+                                transaction.discount, transaction.total, transaction.paid, transaction.due,
+                                transaction.paymentMethod, group.transactionId, transaction.date
+                            )
+                        }
+                    }) { Text("দেখুন") }
+                    TextButton(onClick = {
+                        val transaction = group.transaction
+                        if (transaction != null) {
+                            InvoicePdfUtil.printInvoice(
+                                context, group.transactionId,
+                                group.lines.map { InvoiceLine(it.productName, it.quantity, it.salePrice) },
+                                transaction.customer, transaction.mobile, transaction.subtotal,
+                                transaction.discount, transaction.total, transaction.paid, transaction.due,
+                                transaction.paymentMethod, group.transactionId, transaction.date
+                            )
+                        }
+                    }) { Text("প্রিন্ট") }
+                    TextButton(onClick = { selectedGroup = null }) { Text("বন্ধ") }
+                }
             }
         )
     }
