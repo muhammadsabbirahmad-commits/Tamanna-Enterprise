@@ -3,6 +3,7 @@ package com.tamanna.enterprise.purchase
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
@@ -25,9 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.tamanna.enterprise.ocr.BengaliEnglishOcr
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 import java.util.Locale
@@ -112,7 +111,12 @@ class MemoScannerActivity : ComponentActivity() {
         recognizedText = ""
         matches = emptyList()
         try {
-            runOcr(InputImage.fromFilePath(this, uri))
+            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            if (bitmap == null) {
+                status = "ছবিটি খোলা যায়নি। অন্য ছবি চেষ্টা করুন।"
+            } else {
+                runOcr(bitmap)
+            }
         } catch (e: Exception) {
             status = "ছবি পড়তে সমস্যা হয়েছে। অন্য ছবি চেষ্টা করুন।"
         }
@@ -128,7 +132,7 @@ class MemoScannerActivity : ComponentActivity() {
                 status = "PDF-এর প্রথম পৃষ্ঠা পড়া যায়নি।"
                 return
             }
-            runOcr(InputImage.fromBitmap(bitmap, 0))
+            runOcr(bitmap)
         } catch (e: Exception) {
             status = "PDF পড়তে সমস্যা হয়েছে। অন্য PDF চেষ্টা করুন।"
         }
@@ -151,21 +155,26 @@ class MemoScannerActivity : ComponentActivity() {
         }
     }
 
-    private fun runOcr(image: InputImage) {
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            .process(image)
-            .addOnSuccessListener { result ->
-                recognizedText = result.text.trim()
+    private fun runOcr(bitmap: Bitmap) {
+        status = "বাংলা ও ইংরেজি লেখা পড়া হচ্ছে..."
+        Thread {
+            val text = try {
+                BengaliEnglishOcr.recognize(this, bitmap)
+            } catch (e: Exception) {
+                ""
+            }
+            runOnUiThread {
+                recognizedText = text.trim()
                 if (recognizedText.isBlank()) {
-                    status = "কোনো লেখা শনাক্ত করা যায়নি।"
-                    return@addOnSuccessListener
+                    status = "বাংলা/ইংরেজি কোনো লেখা শনাক্ত করা যায়নি। পরিষ্কার ও সোজা ছবি ব্যবহার করুন।"
+                    return@runOnUiThread
                 }
 
                 val products = ProductStorage.getProducts(this)
                 val found = products.mapNotNull { product ->
-                    if (!recognizedText.contains(product.code)) return@mapNotNull null
+                    if (!recognizedText.contains(product.code, ignoreCase = true)) return@mapNotNull null
                     val line = recognizedText.lineSequence()
-                        .firstOrNull { it.contains(product.code) }
+                        .firstOrNull { it.contains(product.code, ignoreCase = true) }
                         .orEmpty()
                     MemoMatch(
                         product = product,
@@ -180,14 +189,12 @@ class MemoScannerActivity : ComponentActivity() {
                     found.size.toString() + "টি পণ্য কোড মিলেছে। এখন মেমোর পরিমাণ ও ক্রয়মূল্য যাচাই করুন।"
                 }
             }
-            .addOnFailureListener {
-                status = "OCR করতে সমস্যা হয়েছে। পরিষ্কার ছবি ব্যবহার করুন।"
-            }
+        }.start()
     }
 
     private fun extractQuantity(line: String): Int? {
         val normalized = normalizeDigits(line)
-        val labeled = Regex("""(?i)(qty|quantity|pcs|piece|pieces|পরিমাণ|পিস|সংখ্যা)s*[:=-]?s*(d+)""")
+        val labeled = Regex("""(?i)(qty|quantity|pcs|piece|pieces|পরিমাণ|পিস|সংখ্যা)\\s*[:=-]?\\s*(\\d+)""")
             .find(normalized)?.groupValues?.getOrNull(2)?.toIntOrNull()
         if (labeled != null && labeled > 0) return labeled
         return null
@@ -195,13 +202,13 @@ class MemoScannerActivity : ComponentActivity() {
 
     private fun extractUnitPrice(line: String, fullText: String): Double? {
         val normalizedLine = normalizeDigits(line)
-        val labeled = Regex("""(?i)(units*price|rate|price|purchases*price|ক্রয়মূল্য|ক্রয়মূল্য|দর|মূল্য)s*[:=-]?s*(?:৳|tk|bdt)?s*(d+(?:.d+)?)""")
+        val labeled = Regex("""(?i)(unit\\s*price|rate|price|purchase\\s*price|ক্রয়মূল্য|ক্রয়মূল্য|দর|মূল্য)\\s*[:=-]?\\s*(?:৳|tk|bdt)?\\s*(\\d+(?:\\.\\d+)?)""")
             .find(normalizedLine)?.groupValues?.getOrNull(1)?.toDoubleOrNull()
         if (labeled != null && labeled >= 0) return labeled
 
         val nearby = normalizeDigits(fullText)
             .lineSequence()
-            .firstOrNull { it.contains(line) && Regex("""d+(?:.d+)?""").findAll(it).count() >= 2 }
+            .firstOrNull { it.contains(line) && Regex("""\\d+(?:\\.\\d+)?""").findAll(it).count() >= 2 }
         val nums = Regex("""d+(?:.d+)?""").findAll(nearby.orEmpty()).map { it.value.toDoubleOrNull() }.filterNotNull().toList()
         return nums.lastOrNull()?.takeIf { it >= 0 }
     }
