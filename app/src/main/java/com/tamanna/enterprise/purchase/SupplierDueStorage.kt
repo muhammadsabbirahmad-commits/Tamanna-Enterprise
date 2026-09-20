@@ -4,7 +4,9 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class Supplier(val id: Long, val name: String, val mobile: String, val address: String)\n\ndata class SupplierDueEntry(
+data class Supplier(val id: Long, val name: String, val mobile: String, val address: String)
+
+data class SupplierDueEntry(
     val id: Long,
     val date: String,
     val supplier: String,
@@ -15,7 +17,8 @@ data class Supplier(val id: Long, val name: String, val mobile: String, val addr
 
 object SupplierDueStorage {
     private const val PREFS = "tamanna_supplier_due"
-    private const val KEY = "entries"\n    private const val SUPPLIERS_KEY = "suppliers"
+    private const val KEY = "entries"
+    private const val SUPPLIERS_KEY = "suppliers"
 
     fun getEntries(context: Context): List<SupplierDueEntry> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
@@ -53,10 +56,14 @@ object SupplierDueStorage {
     }
 
     fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String) =
-        if(supplier.isBlank() || amount<=0) return\n        add(context,SupplierDueEntry(System.currentTimeMillis(),now(),supplier.trim(),"PURCHASE",amount,note))\n        ensureSupplier(context,supplier)
+        if(supplier.isBlank() || amount<=0) return
+        add(context,SupplierDueEntry(System.currentTimeMillis(),now(),supplier.trim(),"PURCHASE",amount,note))
+        ensureSupplier(context,supplier)
 
     fun addPayment(context: Context, supplier: String, amount: Double, note: String) =
-        if(supplier.isBlank() || amount<=0) return\n        add(context,SupplierDueEntry(System.currentTimeMillis(),now(),supplier.trim(),"PAYMENT",-amount,note))\n        ensureSupplier(context,supplier)
+        if(supplier.isBlank() || amount<=0) return
+        add(context,SupplierDueEntry(System.currentTimeMillis(),now(),supplier.trim(),"PAYMENT",-amount,note))
+        ensureSupplier(context,supplier)
 
     private fun ensureSupplier(context: Context, name: String) {
         if(name.isBlank() || getSuppliers(context).any { it.name.equals(name.trim(),true) }) return
