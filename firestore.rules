@@ -2,12 +2,79 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/data/{document} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == userId;
+
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // No other Firestore documents are accessible from the Android client.
+    function currentAccess() {
+      return get(/databases/$(database)/documents/accessUsers/$(request.auth.uid));
+    }
+
+    function approvedUser() {
+      return signedIn()
+        && currentAccess().data.approved == true
+        && (
+          currentAccess().data.role == "ADMIN" ||
+          currentAccess().data.role == "PARTNER" ||
+          currentAccess().data.role == "VIEWER"
+        );
+    }
+
+    function admin() {
+      return signedIn()
+        && currentAccess().data.approved == true
+        && currentAccess().data.role == "ADMIN";
+    }
+
+    // Google account access directory.
+    // A new Google account may create only its own pending Partner record.
+    // The first Admin bootstrap is allowed only while the singleton admin
+    // configuration does not exist; the Android client additionally requires
+    // the Master Password before attempting this bootstrap.
+    match /accessUsers/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || admin());
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && (
+          (
+            request.resource.data.role == "PARTNER" &&
+            request.resource.data.approved == false &&
+            request.resource.data.email == request.auth.token.email
+          )
+          ||
+          (
+            request.resource.data.role == "ADMIN" &&
+            request.resource.data.approved == true &&
+            request.resource.data.email == request.auth.token.email &&
+            !exists(/databases/$(database)/documents/appConfig/admin)
+          )
+        );
+
+      allow update, delete: if admin();
+    }
+
+    // Singleton marker for the first approved Admin.
+    match /appConfig/admin {
+      allow read: if admin();
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/appConfig/admin)
+        && request.resource.data.role == "ADMIN"
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+      allow update, delete: if admin();
+    }
+
+    // Business data: Admin has full access; approved Partners/Viewers are
+    // read-only. Each user's cloud data remains isolated unless the requester
+    // is the approved Admin.
+    match /users/{userId}/data/{document} {
+      allow read: if approvedUser()
+        && (request.auth.uid == userId || admin());
+      allow write: if admin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
