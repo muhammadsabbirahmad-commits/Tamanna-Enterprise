@@ -116,6 +116,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".partner.PartnerLoginActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".partner.PartnerLedgerActivity"
             android:exported="false" />
 
