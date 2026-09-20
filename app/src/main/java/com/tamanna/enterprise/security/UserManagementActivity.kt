@@ -45,6 +45,7 @@ class UserManagementActivity : ComponentActivity() {
             var deleteTarget by remember { mutableStateOf<AppUser?>(null) }
             var deletePin by remember { mutableStateOf("") }
             var deleteError by remember { mutableStateOf("") }
+            var approveTarget by remember { mutableStateOf<AppUser?>(null) }
 
             val users = remember(refresh) { SecurityStorage.getUsers(this@UserManagementActivity) }
 
@@ -99,7 +100,10 @@ class UserManagementActivity : ComponentActivity() {
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(user.username)
-                                        Text(SecurityStorage.roleLabel(user.role), style = MaterialTheme.typography.bodySmall)
+                                        Text(SecurityStorage.roleLabel(user.role) + if (user.approved) " • অনুমোদিত" else " • অনুমোদনের অপেক্ষায়", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (!user.approved && user.id != current.id) {
+                                        Button(onClick = { approveTarget = user }) { Text("Approve") }
                                     }
                                     if (user.id != current.id) {
                                         Button(onClick = {
@@ -113,6 +117,25 @@ class UserManagementActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+
+            approveTarget?.let { target ->
+                AlertDialog(
+                    onDismissRequest = { approveTarget = null },
+                    title = { Text("Admin অনুমোদন") },
+                    text = { Text(target.username + " — " + SecurityStorage.roleLabel(target.role) + " অ্যাকাউন্ট অনুমোদন করবেন?") },
+                    confirmButton = {
+                        Button(onClick = {
+                            if (SecurityStorage.approveUser(this@UserManagementActivity, target.id)) {
+                                ActivityLogStorage.add(this@UserManagementActivity, "ইউজার অনুমোদন", target.username + " (" + SecurityStorage.roleLabel(target.role) + ")")
+                                approveTarget = null
+                                refresh++
+                                message = "ইউজার অনুমোদন হয়েছে।"
+                            }
+                        }) { Text("অনুমোদন") }
+                    },
+                    dismissButton = { Button(onClick = { approveTarget = null }) { Text("বাতিল") } }
+                )
             }
 
             deleteTarget?.let { target ->
