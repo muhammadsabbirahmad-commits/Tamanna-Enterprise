@@ -170,54 +170,91 @@ fun DashboardScreen(
                 Spacer(Modifier.height(18.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DashboardCard("আজকের বিক্রয়", "৳ %.2f".format(todaySales), Modifier.weight(1f))
-                    DashboardCard("আজকের ক্রয়", "৳ %.2f".format(todayPurchases), Modifier.weight(1f))
+                    DashboardCard("আজকের বিক্রয়", "৳ %.2f".format(todaySales), Color(0xFFE3F2FD), Modifier.weight(1f))
+                    DashboardCard("আজকের ক্রয়", "৳ %.2f".format(todayPurchases), Color(0xFFE8F5E9), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DashboardCard("আজকের লাভ", "৳ %.2f".format(todayProfit), Modifier.weight(1f))
-                    DashboardCard("মোট স্টক", totalStock.toString(), Modifier.weight(1f))
+                    DashboardCard("আজকের লাভ", "৳ %.2f".format(todayProfit), Color(0xFFFFF3E0), Modifier.weight(1f))
+                    DashboardCard("মোট স্টক", totalStock.toString(), Color(0xFFF3E5F5), Modifier.weight(1f))
                 }
 
                 Spacer(Modifier.height(24.dp))
                 Text("প্রধান মেনু", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
-                DashboardMenuRow(listOf("📦" to ("পণ্য" to onProductClick), "🛒" to ("ক্রয়" to onPurchaseClick), "🧾" to ("বিক্রয়" to onSalesClick)))
-                Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("📦" to ("স্টক" to onStockClick), "⚠" to ("স্টক সতর্কতা" to onStockAlertClick), "📊" to ("রিপোর্ট" to onReportsClick)))
-                Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("📈" to ("আর্থিক ড্যাশবোর্ড" to onFinancialDashboardClick), "📅" to ("আর্থিক ক্যালেন্ডার" to onFinancialCalendarClick), "🔎" to ("গ্লোবাল সার্চ" to onGlobalSearchClick)))
-                Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("💰" to ("লাভ" to onProfitClick)))
-                Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("🤝" to ("পার্টনার" to onPartnerClick), "💸" to ("খরচ/উত্তোলন" to onFinanceClick), "👤" to ("ক্রেতার বাকি" to onDueClick)))
-                Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("🏭" to ("সরবরাহকারীর বাকি" to onSupplierDueClick)))
-                Spacer(Modifier.height(10.dp))
-                DashboardMenuRow(listOf("☁️" to ("ডাটা ব্যাকআপ" to onBackupClick)))
+
+                val menuItems = listOf(
+                    "📦" to ("পণ্য" to onProductClick),
+                    "🛒" to ("ক্রয়" to onPurchaseClick),
+                    "🧾" to ("বিক্রয়" to onSalesClick),
+                    "📦" to ("স্টক" to onStockClick),
+                    "⚠" to ("স্টক সতর্কতা" to onStockAlertClick),
+                    "📊" to ("রিপোর্ট" to onReportsClick),
+                    "📈" to ("আর্থিক ড্যাশবোর্ড" to onFinancialDashboardClick),
+                    "📅" to ("আর্থিক ক্যালেন্ডার" to onFinancialCalendarClick),
+                    "🔎" to ("গ্লোবাল সার্চ" to onGlobalSearchClick),
+                    "💰" to ("লাভ" to onProfitClick),
+                    "🤝" to ("পার্টনার" to onPartnerClick),
+                    "💸" to ("খরচ/উত্তোলন" to onFinanceClick),
+                    "👤" to ("ক্রেতার বাকি" to onDueClick),
+                    "🏭" to ("সরবরাহকারীর বাকি" to onSupplierDueClick),
+                    "☁️" to ("ডাটা ব্যাকআপ" to onBackupClick)
+                )
+
+                menuItems.chunked(3).forEachIndexed { index, rowItems ->
+                    DashboardMenuRow(rowItems, index * 3)
+                    if (index < (menuItems.size + 2) / 3 - 1) Spacer(Modifier.height(10.dp))
+                }
+
                 Spacer(Modifier.height(90.dp))
             }
         }
     }
 }
 
+private val menuColors = listOf(
+    Color(0xFFE3F2FD), Color(0xFFFFF3E0), Color(0xFFE8F5E9),
+    Color(0xFFF3E5F5), Color(0xFFFFEBEE), Color(0xFFE0F7FA),
+    Color(0xFFFFF8E1), Color(0xFFE8EAF6), Color(0xFFF1F8E9),
+    Color(0xFFFCE4EC), Color(0xFFEDE7F6), Color(0xFFE0F2F1),
+    Color(0xFFFFF3E0), Color(0xFFE1F5FE), Color(0xFFE8F5E9)
+)
+
 @Composable
-private fun DashboardMenuRow(items: List<Pair<String, Pair<String, () -> Unit>>>) {
+private fun DashboardMenuRow(
+    items: List<Pair<String, Pair<String, () -> Unit>>>,
+    startIndex: Int
+) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.forEach { (icon, item) ->
-            DashboardMenuButton(icon, item.first, item.second, Modifier.weight(1f))
+        items.forEachIndexed { index, (icon, item) ->
+            DashboardMenuButton(
+                icon = icon,
+                title = item.first,
+                onClick = item.second,
+                background = menuColors[startIndex + index],
+                modifier = Modifier.weight(1f)
+            )
         }
-        repeat(3 - items.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 
 @Composable
-private fun DashboardMenuButton(icon: String, title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun DashboardMenuButton(
+    icon: String,
+    title: String,
+    onClick: () -> Unit,
+    background: Color,
+    modifier: Modifier = Modifier
+) {
     FilledTonalButton(
         onClick = onClick,
         modifier = modifier.height(86.dp),
         contentPadding = PaddingValues(4.dp),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(18.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = background,
+            contentColor = Color(0xFF263238)
+        )
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(icon, style = MaterialTheme.typography.headlineSmall)
@@ -227,16 +264,15 @@ private fun DashboardMenuButton(icon: String, title: String, onClick: () -> Unit
 }
 
 @Composable
-fun DashboardCard(title: String, value: String, modifier: Modifier = Modifier) {
-    val accent = when {
-        title.contains("বিক্রয়") -> MaterialTheme.colorScheme.primaryContainer
-        title.contains("ক্রয়") -> MaterialTheme.colorScheme.secondaryContainer
-        title.contains("লাভ") -> MaterialTheme.colorScheme.tertiaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
+fun DashboardCard(
+    title: String,
+    value: String,
+    background: Color,
+    modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = accent),
+        colors = CardDefaults.cardColors(containerColor = background),
         shape = RoundedCornerShape(20.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
@@ -244,9 +280,9 @@ fun DashboardCard(title: String, value: String, modifier: Modifier = Modifier) {
             Modifier.padding(14.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF263238))
             Spacer(Modifier.height(6.dp))
-            Text(value, style = MaterialTheme.typography.titleLarge)
+            Text(value, style = MaterialTheme.typography.titleLarge, color = Color(0xFF263238))
         }
     }
 }
