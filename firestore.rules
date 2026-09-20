@@ -57,7 +57,7 @@ service cloud.firestore {
 
     // Singleton marker for the first approved Admin.
     match /appConfig/admin {
-      allow read: if admin();
+      allow read: if signedIn();
       allow create: if signedIn()
         && !exists(/databases/$(database)/documents/appConfig/admin)
         && request.resource.data.role == "ADMIN"
