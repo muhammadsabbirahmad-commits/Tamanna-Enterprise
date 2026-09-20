@@ -55,15 +55,17 @@ object SupplierDueStorage {
         return true
     }
 
-    fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String) =
-        if(supplier.isBlank() || amount<=0) return
-        add(context,SupplierDueEntry(System.currentTimeMillis(),now(),supplier.trim(),"PURCHASE",amount,note))
-        ensureSupplier(context,supplier)
+    fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String) {
+        if (supplier.isBlank() || amount <= 0) return
+        add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PURCHASE", amount, note))
+        ensureSupplier(context, supplier)
+    }
 
-    fun addPayment(context: Context, supplier: String, amount: Double, note: String) =
-        if(supplier.isBlank() || amount<=0) return
-        add(context,SupplierDueEntry(System.currentTimeMillis(),now(),supplier.trim(),"PAYMENT",-amount,note))
-        ensureSupplier(context,supplier)
+    fun addPayment(context: Context, supplier: String, amount: Double, note: String) {
+        if (supplier.isBlank() || amount <= 0) return
+        add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PAYMENT", -amount, note))
+        ensureSupplier(context, supplier)
+    }
 
     private fun ensureSupplier(context: Context, name: String) {
         if(name.isBlank() || getSuppliers(context).any { it.name.equals(name.trim(),true) }) return
