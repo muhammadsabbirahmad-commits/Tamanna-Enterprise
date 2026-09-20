@@ -40,6 +40,10 @@ class MemoScannerActivity : ComponentActivity() {
         if (uri != null) processImage(uri)
     }
 
+    private val cameraPreview = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) runOcr(bitmap) else status = "ক্যামেরা থেকে ছবি নেওয়া যায়নি। আবার চেষ্টা করুন।"
+    }
+
     private val pdfPicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) processPdf(uri)
     }
