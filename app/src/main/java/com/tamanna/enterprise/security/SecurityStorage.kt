@@ -110,6 +110,37 @@ object SecurityStorage {
     fun findByGoogleEmail(context: Context, email: String): AppUser? =
         getUsers(context).firstOrNull { it.googleEmail.equals(email.trim(), ignoreCase = true) }
 
+    fun upsertGoogleUser(
+        context: Context,
+        email: String,
+        role: String,
+        approved: Boolean,
+        uid: String
+    ): AppUser {
+        val clean = email.trim()
+        val users = getUsers(context).toMutableList()
+        val existingIndex = users.indexOfFirst {
+            it.googleEmail.equals(clean, ignoreCase = true) || it.id == uid
+        }
+
+        val user = AppUser(
+            id = uid.ifBlank { UUID.randomUUID().toString() },
+            username = clean,
+            passwordHash = "",
+            role = role,
+            approved = approved,
+            googleEmail = clean
+        )
+
+        if (existingIndex >= 0) {
+            users[existingIndex] = user
+        } else {
+            users.add(user)
+        }
+        saveUsers(context, users)
+        return user
+    }
+
     fun approveUser(context: Context, id: String): Boolean {
         val users = getUsers(context).map { if (it.id == id) it.copy(approved = true) else it }
         if (users.none { it.id == id }) return false
