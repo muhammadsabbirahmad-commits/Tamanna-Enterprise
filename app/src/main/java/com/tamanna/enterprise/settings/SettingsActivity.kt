@@ -1,6 +1,5 @@
 package com.tamanna.enterprise.settings
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -33,11 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.TamannaTheme
 
 object SettingsStorage {
@@ -59,10 +53,6 @@ object SettingsStorage {
 }
 
 class SettingsActivity : ComponentActivity() {
-    private lateinit var auth: FirebaseAuth
-    private var googleOnSuccess: (() -> Unit)? = null
-    private var googleOnError: ((String) -> Unit)? = null
-
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -70,46 +60,9 @@ class SettingsActivity : ComponentActivity() {
             }
         }
 
-    private val googleSignInLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode != Activity.RESULT_OK) {
-                googleOnError?.invoke("Google অ্যাকাউন্ট নির্বাচন বাতিল হয়েছে। আবার চেষ্টা করুন।")
-                return@registerForActivityResult
-            }
-
-            try {
-                val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                    .getResult(ApiException::class.java)
-
-                val idToken = account.idToken
-                if (idToken.isNullOrBlank()) {
-                    googleOnError?.invoke("Google ID Token পাওয়া যায়নি। Firebase/Google সেটআপ পরীক্ষা করতে হবে।")
-                    return@registerForActivityResult
-                }
-
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                auth.signInWithCredential(credential)
-                    .addOnCompleteListener(this) { task ->
-                        if (task.isSuccessful) {
-                            googleOnSuccess?.invoke()
-                            googleOnSuccess = null
-                            googleOnError = null
-                            recreate()
-                        } else {
-                            googleOnError?.invoke(
-                                task.exception?.localizedMessage ?: "Firebase Google সংযোগ ব্যর্থ হয়েছে।"
-                            )
-                        }
-                    }
-            } catch (e: ApiException) {
-                googleOnError?.invoke("Google অ্যাকাউন্ট নির্বাচন ব্যর্থ হয়েছে। কোড: ${e.statusCode}")
-            }
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        auth = FirebaseAuth.getInstance()
-
         setContent {
             SettingsScreen(
                 initialShopName = SettingsStorage.getShopName(this),
@@ -118,18 +71,6 @@ class SettingsActivity : ComponentActivity() {
                     finish()
                 },
                 onCancel = { finish() },
-                onGoogleSignIn = { onSuccess, onError ->
-                    googleOnSuccess = onSuccess
-                    googleOnError = onError
-                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                        .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
-                        .requestEmail()
-                        .build()
-
-                    val client = GoogleSignIn.getClient(this, gso)
-                    googleSignInLauncher.launch(client.signInIntent)
-                },
-                googleEmail = auth.currentUser?.email,
                 onEnableNotifications = {
                     if (Build.VERSION.SDK_INT >= 33) {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -148,8 +89,6 @@ private fun SettingsScreen(
     initialShopName: String,
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
-    onGoogleSignIn: ((() -> Unit), (String) -> Unit) -> Unit,
-    googleEmail: String?,
     onEnableNotifications: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -191,47 +130,6 @@ private fun SettingsScreen(
                 )
 
                 Spacer(Modifier.height(24.dp))
-
-                Text("Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-
-                if (!googleEmail.isNullOrBlank()) {
-                    Text("সংযুক্ত: $googleEmail", style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    Text(
-                        "Firebase ব্যাকআপ ও সিঙ্কের জন্য Google অ্যাকাউন্ট সংযুক্ত করুন।",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            googleError = ""
-                            googleLoading = true
-                            onGoogleSignIn(
-                                { googleLoading = false },
-                                {
-                                    googleLoading = false
-                                    googleError = it
-                                }
-                            )
-                        },
-                        enabled = !googleLoading,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            if (googleLoading) "Google অ্যাকাউন্ট সংযুক্ত হচ্ছে..."
-                            else "Google অ্যাকাউন্ট সংযুক্ত করুন"
-                        )
-                    }
-
-                    if (googleError.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(googleError, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-
-                Spacer(Modifier.height(20.dp))
 
                 Text("অ্যাকাউন্ট ও লগইন", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
