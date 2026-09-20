@@ -24,6 +24,13 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        val partnerSession = com.tamanna.enterprise.partner.PartnerStorage.getCurrentPartner(this)
+        if (partnerSession != null) {
+            startActivity(Intent(this, com.tamanna.enterprise.partner.PartnerLedgerActivity::class.java))
+            finish()
+            return
+        }
+
         val firebaseUser = FirebaseAuth.getInstance().currentUser
         val localUser = SecurityStorage.getCurrentUser(this)
 
