@@ -17,7 +17,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,9 +35,9 @@ import com.tamanna.enterprise.sync.CloudSyncManager
 class LoginActivity : ComponentActivity() {
 
     private lateinit var auth: FirebaseAuth
-    private var masterPassword = ""
     private var googleOnSuccess: (() -> Unit)? = null
     private var googleOnError: ((String) -> Unit)? = null
+    private var masterPrompt: ((String) -> Unit)? = null
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -65,23 +64,7 @@ class LoginActivity : ComponentActivity() {
                             return@addOnCompleteListener
                         }
 
-                        val email = auth.currentUser?.email.orEmpty()
-                        CloudAccessManager.resolveGoogleLogin(
-                            context = this@LoginActivity,
-                            email = email,
-                            masterPassword = masterPassword
-                        ) { success, message, _ ->
-                            masterPassword = ""
-                            if (success) {
-                                CloudSyncManager.pullThenSync(this@LoginActivity) {
-                                    googleOnSuccess?.invoke()
-                                    clearCallbacks()
-                                }
-                            } else {
-                                googleOnError?.invoke(message)
-                                clearCallbacks()
-                            }
-                        }
+                        resolveCurrentGoogle("")
                     }
             } catch (e: ApiException) {
                 val message = when (e.statusCode) {
@@ -98,9 +81,31 @@ class LoginActivity : ComponentActivity() {
             }
         }
 
+    private fun resolveCurrentGoogle(masterPassword: String) {
+        val email = auth.currentUser?.email.orEmpty()
+        CloudAccessManager.resolveGoogleLogin(
+            context = this,
+            email = email,
+            masterPassword = masterPassword
+        ) { success, message, _ ->
+            if (success) {
+                CloudSyncManager.pullThenSync(this) {
+                    googleOnSuccess?.invoke()
+                    clearCallbacks()
+                }
+            } else if (message == CloudAccessManager.MASTER_REQUIRED) {
+                masterPrompt?.invoke("")
+            } else {
+                googleOnError?.invoke(message)
+                clearCallbacks()
+            }
+        }
+    }
+
     private fun clearCallbacks() {
         googleOnSuccess = null
         googleOnError = null
+        masterPrompt = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,15 +116,14 @@ class LoginActivity : ComponentActivity() {
         setContent {
             var error by remember { mutableStateOf("") }
             var googleLoading by remember { mutableStateOf(false) }
+            var showMaster by remember { mutableStateOf(false) }
             var master by remember { mutableStateOf("") }
-            var firstAdminSetup by remember { mutableStateOf(false) }
-            var checkingAccess by remember { mutableStateOf(true) }
+            var masterLoading by remember { mutableStateOf(false) }
 
-            LaunchedEffect(Unit) {
-                CloudAccessManager.hasApprovedAdmin {
-                    firstAdminSetup = !it
-                    checkingAccess = false
-                }
+            masterPrompt = {
+                showMaster = true
+                googleLoading = false
+                error = ""
             }
 
             MaterialTheme {
@@ -133,31 +137,51 @@ class LoginActivity : ComponentActivity() {
                         Text("Google দিয়ে নিরাপদ লগইন", style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.height(20.dp))
 
-                        if (checkingAccess) {
-                            Text("অ্যাক্সেস যাচাই করা হচ্ছে...")
-                        } else {
-                            if (firstAdminSetup) {
-                                Text(
-                                    "এটি প্রথম Admin সেটআপ। আপনার Master Password একবার দিতে হবে। সঠিক হলে নির্বাচিত Gmail স্থায়ীভাবে Admin হিসেবে অনুমোদিত হবে।",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                OutlinedTextField(
-                                    value = master,
-                                    onValueChange = { master = it; error = "" },
-                                    label = { Text("Master Password") },
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(Modifier.height(12.dp))
-                            } else {
-                                Text(
-                                    "অনুমোদিত Admin Gmail হলে সরাসরি লগইন হবে। নতুন Gmail স্বয়ংক্রিয়ভাবে Admin হবে না; সেটি Partner approval-এর জন্য Pending হবে।",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Spacer(Modifier.height(12.dp))
+                        if (showMaster) {
+                            Text(
+                                "এই Google account-টি প্রথম Admin হিসেবে সেটআপ করতে Master Password একবার দিন। এরপর এই Gmail-এ আর Master Password লাগবে না।",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = master,
+                                onValueChange = { master = it; error = "" },
+                                label = { Text("Master Password") },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    error = ""
+                                    masterLoading = true
+                                    CloudAccessManager.bootstrapAfterMaster(
+                                        this@LoginActivity,
+                                        master
+                                    ) { ok, msg ->
+                                        masterLoading = false
+                                        if (ok) {
+                                            CloudSyncManager.pullThenSync(this@LoginActivity) {
+                                                startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
+                                                finish()
+                                            }
+                                        } else {
+                                            error = msg
+                                        }
+                                    }
+                                },
+                                enabled = !masterLoading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (masterLoading) "Admin সেটআপ হচ্ছে..." else "Admin হিসেবে অনুমোদন করুন")
                             }
+                        } else {
+                            Text(
+                                "অনুমোদিত Admin Gmail সরাসরি লগইন করবে। নতুন Gmail Admin হবে না; সেটি Partner approval-এর জন্য Pending হবে।",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(12.dp))
 
                             if (error.isNotBlank()) {
                                 Text(error, color = MaterialTheme.colorScheme.error)
@@ -167,7 +191,6 @@ class LoginActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     error = ""
-                                    masterPassword = master
                                     googleLoading = true
                                     googleOnSuccess = {
                                         googleLoading = false
@@ -196,7 +219,7 @@ class LoginActivity : ComponentActivity() {
 
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "Partner: Google authentication → Pending Approval → Admin অনুমোদন → তারপর প্রবেশ।",
+                                "Partner flow: Google authentication → Pending Approval → Admin অনুমোদন → তারপর প্রবেশ।",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
