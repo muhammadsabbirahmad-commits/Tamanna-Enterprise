@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.dashboard.DashboardActivity
+import com.tamanna.enterprise.security.CloudAccessManager
 import com.tamanna.enterprise.security.LoginActivity
 import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.sync.CloudSyncManager
@@ -17,17 +18,31 @@ class MainActivity : ComponentActivity() {
 
         SecurityStorage.ensureInitialized(this)
         NotificationScheduler.scheduleDaily(this)
-        if (FirebaseAuth.getInstance().currentUser != null) {
-            CloudSyncManager.start(this)
+
+        if (!SecurityStorage.isLoginEnabled(this)) {
+            startActivity(Intent(this, DashboardActivity::class.java))
+            finish()
+            return
         }
 
-        val destination = if (SecurityStorage.isLoginEnabled(this) && !SecurityStorage.isLoggedIn(this)) {
-            LoginActivity::class.java
-        } else {
-            DashboardActivity::class.java
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        val localUser = SecurityStorage.getCurrentUser(this)
+
+        if (firebaseUser == null || localUser == null) {
+            SecurityStorage.logout(this)
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
         }
 
-        startActivity(Intent(this, destination))
-        finish()
+        CloudAccessManager.validateCurrentSession(this) { valid ->
+            if (valid) {
+                CloudSyncManager.start(this)
+                startActivity(Intent(this, DashboardActivity::class.java))
+            } else {
+                startActivity(Intent(this, LoginActivity::class.java))
+            }
+            finish()
+        }
     }
 }
