@@ -324,6 +324,17 @@ object CloudAccessManager {
             .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner অনুমোদন করা যায়নি।") }
     }
 
+    fun rejectPendingPartner(uid: String, onResult: (Boolean, String) -> Unit) {
+        db().collection(USERS).document(uid)
+            .delete()
+            .addOnSuccessListener {
+                onResult(true, "Partner আবেদন প্রত্যাখ্যান করা হয়েছে।")
+            }
+            .addOnFailureListener {
+                onResult(false, it.localizedMessage ?: "Partner আবেদন প্রত্যাখ্যান করা যায়নি।")
+            }
+    }
+
     fun revokeUser(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
         db().collection(USERS).document(uid)
             .update(
