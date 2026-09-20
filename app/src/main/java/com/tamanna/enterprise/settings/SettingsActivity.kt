@@ -39,7 +39,6 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.TamannaTheme
-import com.tamanna.enterprise.sync.CloudSyncManager
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -92,12 +91,10 @@ class SettingsActivity : ComponentActivity() {
                 auth.signInWithCredential(credential)
                     .addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
-                            CloudSyncManager.pullThenSync(this@SettingsActivity) {
-                                googleOnSuccess?.invoke()
-                                googleOnSuccess = null
-                                googleOnError = null
-                                recreate()
-                            }
+                            googleOnSuccess?.invoke()
+                            googleOnSuccess = null
+                            googleOnError = null
+                            recreate()
                         } else {
                             googleOnError?.invoke(
                                 task.exception?.localizedMessage ?: "Firebase Google সংযোগ ব্যর্থ হয়েছে।"
@@ -253,6 +250,26 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
+                Text("অ্যাকাউন্ট ও লগইন", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Admin login এবং Partner login সম্পূর্ণ আলাদা। Admin-এর Google account আলাদা থাকবে; Partner Username/Password দিয়ে প্রবেশ করবে।",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            android.content.Intent(
+                                context,
+                                com.tamanna.enterprise.partner.PartnerLoginActivity::class.java
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Partner Login") }
+
+                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = {
                         context.startActivity(
