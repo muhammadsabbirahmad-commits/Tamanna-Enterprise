@@ -14,6 +14,7 @@ import java.util.Locale
 object InvoicePdfUtil {
     fun shareInvoice(
         context: Context,
+        transactionId: String,
         cart: List<InvoiceLine>,
         customer: String,
         mobile: String,
@@ -41,6 +42,7 @@ object InvoicePdfUtil {
         line("TAMANNA ENTERPRISE", 22f)
         line("Sales Invoice", 16f)
         line("Invoice: $invoiceNo")
+        line("Transaction: $transactionId")
         line("Date: $date")
         if (customer.isNotBlank()) line("Customer: $customer")
         if (mobile.isNotBlank()) line("Mobile: $mobile")
