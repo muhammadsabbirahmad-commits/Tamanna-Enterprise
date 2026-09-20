@@ -6,6 +6,7 @@ import org.json.JSONObject
 
 data class Sale(
     val id: Long,
+    val transactionId: String,
     val date: String,
     val productCode: String,
     val productName: String,
@@ -28,6 +29,7 @@ object SalesStorage {
                 val item = array.getJSONObject(i)
                 add(Sale(
                     item.getLong("id"),
+                    item.optString("transactionId", item.getLong("id").toString()),
                     item.getString("date"),
                     item.getString("productCode"),
                     item.getString("productName"),
@@ -47,6 +49,7 @@ object SalesStorage {
         sales.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id)
+                put("transactionId", it.transactionId)
                 put("date", it.date)
                 put("productCode", it.productCode)
                 put("productName", it.productName)
