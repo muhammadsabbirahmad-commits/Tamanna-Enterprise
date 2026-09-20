@@ -29,21 +29,48 @@ class CustomerDueActivity : ComponentActivity() {
         var mobile by remember { mutableStateOf("") }
         var payment by remember { mutableStateOf("") }
         var note by remember { mutableStateOf("") }
+        var showAddCustomer by remember { mutableStateOf(false) }
+        var newName by remember { mutableStateOf("") }
+        var newMobile by remember { mutableStateOf("") }
+        var message by remember { mutableStateOf("") }
+
         val entries = remember(refresh) { CustomerDueStorage.getEntries(context) }
         val balances = remember(refresh) { CustomerDueStorage.getBalances(context) }
-        val filtered = balances.filterKeys { it.contains(search.trim(), true) }
+        val customers = remember(refresh) { CustomerDueStorage.getCustomers(context) }
+        val customerRows = customers.map {
+            val key = it.name + if (it.mobile.isBlank()) "" else " • " + it.mobile
+            key to CustomerDueStorage.getBalance(context, it.name, it.mobile)
+        }.filter { (key, _) -> key.contains(search.trim(), true) }
 
         Scaffold(topBar = { TopAppBar(title = { Text("ক্রেতার বাকি") }) }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("মোট পাওনা: ৳ " + String.format(Locale.getDefault(), "%.2f", balances.values.sum()), style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(value = search, onValueChange = { search = it }, label = { Text("ক্রেতা খুঁজুন") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("মোট পাওনা: ৳ " + String.format(Locale.getDefault(), "%.2f", balances.values.sum()),
+                        style = MaterialTheme.typography.titleLarge)
+                    Button(onClick = {
+                        newName = ""; newMobile = ""; message = ""; showAddCustomer = true
+                    }) { Text("＋ ক্রেতা যোগ") }
+                }
+
+                OutlinedTextField(
+                    value = search, onValueChange = { search = it },
+                    label = { Text("ক্রেতা খুঁজুন") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
 
                 if (selected.isNotBlank()) {
                     Text("নির্বাচিত: $selected", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(value = mobile, onValueChange = { mobile = it.filter(Char::isDigit) }, label = { Text("মোবাইল") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Text("বর্তমান বাকি: ৳ " + String.format(Locale.getDefault(), "%.2f", CustomerDueStorage.getBalance(context, selected, mobile)))
-                    OutlinedTextField(value = payment, onValueChange = { payment = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("জমা ৳") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("নোট") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = mobile, onValueChange = { mobile = it.filter(Char::isDigit) },
+                        label = { Text("মোবাইল") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text("বর্তমান বাকি: ৳ " + String.format(Locale.getDefault(), "%.2f",
+                        CustomerDueStorage.getBalance(context, selected, mobile)))
+                    OutlinedTextField(value = payment, onValueChange = { payment = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("জমা ৳") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = note, onValueChange = { note = it },
+                        label = { Text("নোট") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     Button(onClick = {
                         val amount = payment.toDoubleOrNull() ?: 0.0
                         val balance = CustomerDueStorage.getBalance(context, selected, mobile)
@@ -54,17 +81,18 @@ class CustomerDueActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) { Text("বাকি থেকে জমা নিন") }
                 }
 
+                Text("ক্রেতার তালিকা", style = MaterialTheme.typography.titleMedium)
                 LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(filtered.toList(), key = { it.first }) { (customerKey, balance) ->
+                    items(customerRows, key = { it.first }) { (customerKey, balance) ->
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(customerKey, style = MaterialTheme.typography.titleMedium)
-                                Text("পাওনা: ৳ " + String.format(Locale.getDefault(), "%.2f", balance))
+                                Text("বর্তমান বাকি: ৳ " + String.format(Locale.getDefault(), "%.2f", balance))
                                 TextButton(onClick = {
                                     selected = customerKey.substringBefore(" • ")
                                     mobile = customerKey.substringAfter(" • ", "")
                                     search = customerKey
-                                }) { Text("পেমেন্ট নিন") }
+                                }) { Text(if (balance > 0) "পেমেন্ট নিন" else "বিস্তারিত দেখুন") }
                             }
                         }
                     }
@@ -74,10 +102,44 @@ class CustomerDueActivity : ComponentActivity() {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
                     items(entries.take(30), key = { it.id }) { entry ->
                         val label = if (entry.type == "SALE") "বাকি +" else "জমা -"
-                        Text(entry.date + " • " + entry.customer + " • " + label + "৳" + String.format(Locale.getDefault(), "%.2f", entry.amount))
+                        Text(entry.date + " • " + entry.customer + " • " + label +
+                            "৳" + String.format(Locale.getDefault(), "%.2f", entry.amount))
                     }
                 }
             }
+        }
+
+        if (showAddCustomer) {
+            AlertDialog(
+                onDismissRequest = { showAddCustomer = false },
+                title = { Text("নতুন ক্রেতা যোগ করুন") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = newName, onValueChange = { newName = it },
+                            label = { Text("ক্রেতার নাম *") }, singleLine = true)
+                        OutlinedTextField(value = newMobile, onValueChange = { newMobile = it.filter(Char::isDigit) },
+                            label = { Text("মোবাইল নম্বর") }, singleLine = true)
+                        if (message.isNotBlank()) Text(message)
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        val ok = CustomerDueStorage.addCustomer(context, newName, newMobile)
+                        if (ok) {
+                            showAddCustomer = false
+                            search = newName.trim()
+                            selected = newName.trim()
+                            mobile = newMobile.trim()
+                            refresh++
+                        } else {
+                            message = "এই নাম ও মোবাইলের ক্রেতা আগে থেকেই আছে, অথবা নাম দেওয়া হয়নি।"
+                        }
+                    }) { Text("সংরক্ষণ") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddCustomer = false }) { Text("বাতিল") }
+                }
+            )
         }
     }
 }
