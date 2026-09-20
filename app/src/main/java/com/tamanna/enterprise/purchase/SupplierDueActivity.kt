@@ -33,9 +33,14 @@ private fun SupplierDueScreen() {
     var payment by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    var refresh by remember { mutableStateOf(0) }\n    var showAdd by remember { mutableStateOf(false) }\n    var name by remember { mutableStateOf("") }\n    var mobile by remember { mutableStateOf("") }\n    var address by remember { mutableStateOf("") }
+    var refresh by remember { mutableStateOf(0) }
+    var showAdd by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var mobile by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
 
-    val suppliers = remember(refresh) { SupplierDueStorage.getSuppliers(context) }\n    val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
+    val suppliers = remember(refresh) { SupplierDueStorage.getSuppliers(context) }
+    val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
     val entries = remember(refresh) { SupplierDueStorage.getEntries(context) }
     @Suppress("UNUSED_EXPRESSION")
     val filtered = suppliers.filter { it.name.contains(query.trim(), true) }
@@ -56,7 +61,7 @@ private fun SupplierDueScreen() {
                     Card(onClick = { selected = supplier.name }, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(supplier.name)
-                            Text("৳ %.2f".format(item.second))
+                            Text("৳ %.2f".format(SupplierDueStorage.getBalance(context, supplier.name)))
                         }
                     }
                 }
