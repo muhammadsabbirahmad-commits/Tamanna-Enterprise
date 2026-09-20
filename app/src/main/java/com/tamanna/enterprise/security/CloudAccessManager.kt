@@ -113,7 +113,7 @@ object CloudAccessManager {
                 if (existing.exists()) {
                     onResult(false, "Admin ইতোমধ্যে সেটআপ করা আছে।")
                 } else {
-                    bootstrapFirstAdmin(context, uid, email, ) { ok, message, _ ->
+                    bootstrapFirstAdmin(context, uid, email) { ok, message, _ ->
                         if (ok) onResult(true, "প্রথম Admin সফলভাবে অনুমোদিত হয়েছে।")
                         else onResult(false, message)
                     }
