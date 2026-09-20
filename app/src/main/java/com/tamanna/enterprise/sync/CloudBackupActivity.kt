@@ -91,7 +91,7 @@ class CloudBackupActivity : ComponentActivity() {
                 }
 
                 Text(
-                    "স্বয়ংক্রিয় সিঙ্ক: চালু। লগইনের পর ডেটা Restore করে সিঙ্ক শুরু হবে এবং পরিবর্তন হলে ক্লাউডে পাঠানো হবে।",
+                    "স্বয়ংক্রিয় ব্যাকআপ/সিঙ্ক বন্ধ। লগইন করলেই কোনো পুরোনো ক্লাউড ডেটা আসবে না। আপনি নিজে ব্যাকআপ বা Restore চাপলেই কাজ হবে।",
                     style = MaterialTheme.typography.bodySmall
                 )
 
