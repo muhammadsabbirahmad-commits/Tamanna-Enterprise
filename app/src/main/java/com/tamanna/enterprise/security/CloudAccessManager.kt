@@ -36,6 +36,7 @@ object CloudAccessManager {
         context: Context,
         email: String,
         masterPassword: String,
+        adminLogin: Boolean,
         onResult: (Boolean, String, CloudAccessUser?) -> Unit
     ) {
         val firebaseUser = auth().currentUser
@@ -53,32 +54,67 @@ object CloudAccessManager {
                 val approved = snapshot.getBoolean("approved") == true
                 val cloudUser = CloudAccessUser(uid, email.trim(), role, approved)
 
-                if (approved && (role == SecurityStorage.ROLE_ADMIN || role == SecurityStorage.ROLE_PARTNER)) {
-                    cacheAndLogin(context, cloudUser)
-                    onResult(true, "", cloudUser)
-                } else {
-                    auth().signOut()
-                    val message = if (role == SecurityStorage.ROLE_PARTNER) {
-                        "এই Google অ্যাকাউন্টটি এখনো Admin অনুমোদন করেননি। অনুমোদনের পর লগইন করতে পারবেন।"
+                if (approved && role == SecurityStorage.ROLE_ADMIN) {
+                    if (adminLogin) {
+                        cacheAndLogin(context, cloudUser)
+                        onResult(true, "", cloudUser)
                     } else {
-                        "এই Google অ্যাকাউন্টের অ্যাক্সেস অনুমোদিত নয়।"
+                        auth().signOut()
+                        onResult(false, "এই Gmail ইতিমধ্যে Admin হিসেবে নিবন্ধিত। Partner Login-এর জন্য অন্য Gmail ব্যবহার করুন।", null)
                     }
-                    onResult(false, message, null)
+                    return@addOnSuccessListener
                 }
+
+                if (approved && role == SecurityStorage.ROLE_PARTNER) {
+                    if (!adminLogin) {
+                        cacheAndLogin(context, cloudUser)
+                        onResult(true, "", cloudUser)
+                    } else {
+                        auth().signOut()
+                        onResult(false, "এই Gmail Partner account হিসেবে অনুমোদিত। Admin Login-এর জন্য Admin-এর Gmail ব্যবহার করুন।", null)
+                    }
+                    return@addOnSuccessListener
+                }
+
+                if (!approved && role == SecurityStorage.ROLE_PARTNER) {
+                    auth().signOut()
+                    onResult(
+                        false,
+                        "আপনার Partner access এখনো Admin অনুমোদন করেননি। অনুমোদনের পর Partner Login দিয়ে প্রবেশ করুন।",
+                        null
+                    )
+                    return@addOnSuccessListener
+                }
+
+                auth().signOut()
+                onResult(false, "এই Google account-এর জন্য অনুমোদিত access পাওয়া যায়নি।", null)
                 return@addOnSuccessListener
             }
 
             db().collection(CONFIG).document(ADMIN).get()
                 .addOnSuccessListener { adminSnapshot ->
                     val adminExists = adminSnapshot.exists()
-                    if (!adminExists) {
-                        if (SecurityStorage.isMasterPassword(masterPassword)) {
+
+                    if (adminLogin) {
+                        if (adminExists) {
+                            auth().signOut()
+                            onResult(
+                                false,
+                                "Admin account ইতিমধ্যে সেটআপ করা আছে। এই Gmail Admin নয়। Partner Login ব্যবহার করে Access Request পাঠান।",
+                                null
+                            )
+                        } else if (SecurityStorage.isMasterPassword(masterPassword)) {
                             bootstrapFirstAdmin(context, uid, email.trim(), onResult)
                         } else {
                             onResult(false, MASTER_REQUIRED, null)
                         }
                     } else {
-                        createPendingPartner(context, uid, email.trim(), onResult)
+                        if (!adminExists) {
+                            auth().signOut()
+                            onResult(false, "প্রথমে Admin Login দিয়ে Admin account সেটআপ করতে হবে।", null)
+                        } else {
+                            createPendingPartner(context, uid, email.trim(), onResult)
+                        }
                     }
                 }
                 .addOnFailureListener {
