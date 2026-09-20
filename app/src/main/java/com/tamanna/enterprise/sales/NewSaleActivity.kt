@@ -307,6 +307,7 @@ private fun NewSaleScreen(
                     }
                     InvoicePdfUtil.shareInvoice(
                         context = context,
+                        transactionId = transactionId,
                         cart = cart.map { InvoiceLine(it.product.name, it.quantity, it.unitPrice) },
                         customer = customer.trim(),
                         mobile = mobile.trim(),
