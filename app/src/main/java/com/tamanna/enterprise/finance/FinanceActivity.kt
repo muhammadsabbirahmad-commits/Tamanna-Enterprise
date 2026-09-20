@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.partner.Partner
 import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.product.ProductStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.*
 class FinanceActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super.onCreate(b);setContent{FinanceScreen(this)}}}
