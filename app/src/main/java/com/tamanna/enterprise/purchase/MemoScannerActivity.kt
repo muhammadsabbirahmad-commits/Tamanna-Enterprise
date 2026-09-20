@@ -53,6 +53,9 @@ class MemoScannerActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text("ক্রয় মেমো স্ক্যান", style = MaterialTheme.typography.headlineSmall)
+                    Button(onClick = { cameraPreview.launch(null) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("📷 এখনই মেমোর ছবি তুলুন")
+                    }
                     Text("পণ্য কোড মিলিয়ে মেমো থেকে পরিমাণ ও প্রতি-ইউনিট ক্রয়মূল্যের সম্ভাব্য তথ্য বের করা হবে। সংরক্ষণের আগে আপনি যাচাই/সংশোধন করতে পারবেন।")
 
                     Button(onClick = { imagePicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
@@ -209,7 +212,7 @@ class MemoScannerActivity : ComponentActivity() {
         val nearby = normalizeDigits(fullText)
             .lineSequence()
             .firstOrNull { it.contains(line) && Regex("""\d+(?:\.\d+)?""").findAll(it).count() >= 2 }
-        val nums = Regex("""d+(?:.d+)?""").findAll(nearby.orEmpty()).map { it.value.toDoubleOrNull() }.filterNotNull().toList()
+        val nums = Regex("""\d+(?:\.\d+)?""").findAll(nearby.orEmpty()).map { it.value.toDoubleOrNull() }.filterNotNull().toList()
         return nums.lastOrNull()?.takeIf { it >= 0 }
     }
 
