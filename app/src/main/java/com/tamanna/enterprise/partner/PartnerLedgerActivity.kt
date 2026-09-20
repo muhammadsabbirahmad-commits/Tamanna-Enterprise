@@ -69,6 +69,7 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
  return ProfitResult(revenue,max(0.0,cost),returnAmount)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun PartnerLedgerScreen(a:ComponentActivity,partnerId:Long,isAdmin:Boolean){
  val partner=PartnerStorage.getPartners(a).firstOrNull{it.id==partnerId}
  val today=remember{SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())}
