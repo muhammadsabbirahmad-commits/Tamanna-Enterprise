@@ -1,13 +1,10 @@
 package com.tamanna.enterprise.sync
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import com.tamanna.enterprise.security.SecurityStorage
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Syncs the app's business/settings SharedPreferences to the signed-in
@@ -32,10 +29,7 @@ object CloudSyncManager {
         "tamanna_inventory_meta"
     )
 
-    private val started = AtomicBoolean(false)
     @Volatile private var pulling = false
-
-    private val listeners = mutableMapOf<String, SharedPreferences.OnSharedPreferenceChangeListener>()
 
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
@@ -43,24 +37,6 @@ object CloudSyncManager {
     private fun userDataCollection() =
         db().collection(USERS).document(auth().currentUser?.uid ?: "")
             .collection(DATA)
-
-    fun start(context: Context) {
-        if (auth().currentUser == null) return
-        if (started.compareAndSet(false, true)) {
-            val appContext = context.applicationContext
-            namespaces.forEach { namespace ->
-                val prefs = appContext.getSharedPreferences(namespace, Context.MODE_PRIVATE)
-                val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-                    if (!pulling && auth().currentUser != null && SecurityStorage.canWrite(appContext)) {
-                        syncNamespace(appContext, namespace)
-                    }
-                }
-                listeners[namespace] = listener
-                prefs.registerOnSharedPreferenceChangeListener(listener)
-            }
-        }
-        syncAll(context)
-    }
 
     fun pullThenSync(context: Context, onComplete: (Boolean) -> Unit = {}) {
         val uid = auth().currentUser?.uid
@@ -108,14 +84,10 @@ object CloudSyncManager {
                 }
 
                 pulling = false
-                start(appContext)
-                syncAll(appContext) {
-                    onComplete(foundRemoteData)
-                }
+                onComplete(foundRemoteData)
             }
             .addOnFailureListener {
                 pulling = false
-                start(appContext)
                 onComplete(false)
             }
     }
