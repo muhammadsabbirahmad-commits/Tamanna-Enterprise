@@ -128,6 +128,18 @@ object SecurityStorage {
 
     fun canManage(context: Context): Boolean = getCurrentUser(context)?.role == ROLE_ADMIN
 
+    fun changeAdminPin(context: Context, currentPin: String, newPin: String): Boolean {
+        if (newPin.length < 4) return false
+        val users = getUsers(context).toMutableList()
+        val adminIndex = users.indexOfFirst { it.role == ROLE_ADMIN }
+        if (adminIndex < 0) return false
+        val admin = users[adminIndex]
+        if (admin.passwordHash != hashPassword(currentPin)) return false
+        users[adminIndex] = admin.copy(passwordHash = hashPassword(newPin))
+        saveUsers(context, users)
+        return true
+    }
+
     fun roleLabel(role: String): String = when (role) {
         ROLE_ADMIN -> "অ্যাডমিন"
         ROLE_PARTNER -> "পার্টনার"
