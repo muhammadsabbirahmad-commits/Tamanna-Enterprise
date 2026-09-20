@@ -13,6 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.util.Locale
+import com.tamanna.enterprise.security.ActivityLogStorage
+import com.tamanna.enterprise.security.SecurityStorage
 
 class PartnerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,6 +31,8 @@ private fun PartnerScreen(activity: ComponentActivity) {
     var percentage by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var selectedPartner by remember { mutableStateOf<Partner?>(null) }
+    var deletePin by remember { mutableStateOf("") }
+    var deleteError by remember { mutableStateOf("") }
 
     val totalInvestment = partners.sumOf { it.investment }
     val totalPercentage = partners.sumOf { it.percentage }
@@ -87,9 +91,19 @@ private fun PartnerScreen(activity: ComponentActivity) {
             text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("বিনিয়োগ: ৳ " + "%.2f".format(Locale.US, p.investment))
                 Text("লাভের অংশ: " + "%.2f".format(Locale.US, p.percentage) + "%")
+                OutlinedTextField(deletePin, { deletePin = it }, label = { Text("Admin PIN") }, singleLine = true)
+                if (deleteError.isNotBlank()) Text(deleteError, color = MaterialTheme.colorScheme.error)
             }},
             confirmButton = { Button(onClick = { selectedPartner = null }) { Text("বন্ধ") } },
-            dismissButton = { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Button(onClick = { activity.startActivity(Intent(activity, PartnerLedgerActivity::class.java).putExtra("partner_id", p.id)); selectedPartner = null }) { Text("লেজার") }; Button(onClick = { PartnerStorage.deletePartner(activity, p.id); partners = PartnerStorage.getPartners(activity); selectedPartner = null }) { Text("মুছে ফেলুন") } } }
+            dismissButton = { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Button(onClick = { activity.startActivity(Intent(activity, PartnerLedgerActivity::class.java).putExtra("partner_id", p.id)); selectedPartner = null }) { Text("লেজার") }; Button(onClick = {
+                    val admin = SecurityStorage.getUsers(activity).firstOrNull { it.role == SecurityStorage.ROLE_ADMIN }
+                    if (admin != null && admin.passwordHash == SecurityStorage.hashPassword(deletePin)) {
+                        PartnerStorage.deletePartner(activity, p.id)
+                        ActivityLogStorage.add(activity, "পার্টনার মুছে ফেলা", p.name)
+                        partners = PartnerStorage.getPartners(activity)
+                        deletePin = ""; deleteError = ""; selectedPartner = null
+                    } else deleteError = "ভুল Admin PIN।"
+                }) { Text("মুছে ফেলুন") } } }
         )
     }
 }
