@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,8 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class UserManagementActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         val current = SecurityStorage.getCurrentUser(this)
         if (current?.role != SecurityStorage.ROLE_ADMIN) {
             finish()
@@ -37,80 +37,107 @@ class UserManagementActivity : ComponentActivity() {
         }
 
         setContent {
-            var refresh by remember { mutableStateOf(0) }
-            var username by remember { mutableStateOf("") }
-            var password by remember { mutableStateOf("") }
-            var role by remember { mutableStateOf(SecurityStorage.ROLE_PARTNER) }
+            var users by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
+            var loading by remember { mutableStateOf(true) }
             var message by remember { mutableStateOf("") }
-            var deleteTarget by remember { mutableStateOf<AppUser?>(null) }
-            var deletePin by remember { mutableStateOf("") }
-            var deleteError by remember { mutableStateOf("") }
-            var approveTarget by remember { mutableStateOf<AppUser?>(null) }
+            var refresh by remember { mutableStateOf(0) }
 
-            val users = remember(refresh) { SecurityStorage.getUsers(this@UserManagementActivity) }
+            LaunchedEffect(refresh) {
+                loading = true
+                CloudAccessManager.listUsers { result, error ->
+                    users = result
+                    message = error.orEmpty()
+                    loading = false
+                }
+            }
+
+            val pending = users.filter { !it.approved && it.role == SecurityStorage.ROLE_PARTNER }
+            val approvedAdmins = users.filter { it.approved && it.role == SecurityStorage.ROLE_ADMIN }
+            val approvedPartners = users.filter { it.approved && it.role == SecurityStorage.ROLE_PARTNER }
 
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-                        Text("ইউজার ব্যবস্থাপনা", style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.height(16.dp))
-                        OutlinedTextField(username, { username = it }, label = { Text("ইউজারনেম") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Text("ইউজার ম্যানেজমেন্ট", style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(password, { password = it }, label = { Text("পাসওয়ার্ড / PIN") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Google account-ই পরিচয়। Gmail connected থাকলেই Admin হওয়া যাবে না।",
+                            style = MaterialTheme.typography.bodySmall
+                        )
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                SecurityStorage.ROLE_PARTNER to "পার্টনার",
-                                SecurityStorage.ROLE_VIEWER to "ভিউয়ার"
-                            ).forEach { (value, label) ->
-                                Row {
-                                    RadioButton(selected = role == value, onClick = { role = value })
-                                    Text(label, modifier = Modifier.padding(top = 12.dp))
+                        Spacer(Modifier.height(18.dp))
+
+                        if (loading) {
+                            Text("তালিকা লোড হচ্ছে...")
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                item {
+                                    Text("অনুমোদিত Admin", style = MaterialTheme.typography.titleLarge)
                                 }
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                message = if (SecurityStorage.addUser(this@UserManagementActivity, username, password, role)) {
-                                    username = ""
-                                    password = ""
-                                    refresh++
-                                    "ইউজার যোগ হয়েছে।"
-                                } else "ইউজারনেম আগে থেকেই আছে অথবা তথ্য অসম্পূর্ণ।"
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("ইউজার যোগ করুন") }
-
-                        if (message.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(message)
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-                        Text("বর্তমান ইউজার", style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(8.dp))
-
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(users, key = { it.id }) { user ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(user.username)
-                                        Text(SecurityStorage.roleLabel(user.role) + if (user.approved) " • অনুমোদিত" else " • অনুমোদনের অপেক্ষায়", style = MaterialTheme.typography.bodySmall)
+                                if (approvedAdmins.isEmpty()) {
+                                    item { Text("কোনো অনুমোদিত Admin পাওয়া যায়নি।") }
+                                } else {
+                                    items(approvedAdmins, key = { "admin-" + it.uid }) { user ->
+                                        UserRow(
+                                            user = user,
+                                            actionLabel = null,
+                                            onAction = {}
+                                        )
                                     }
-                                    if (!user.approved && user.id != current.id) {
-                                        Button(onClick = { approveTarget = user }) { Text("Approve") }
+                                }
+
+                                item {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("অনুমোদিত Partner", style = MaterialTheme.typography.titleLarge)
+                                }
+                                if (approvedPartners.isEmpty()) {
+                                    item { Text("কোনো অনুমোদিত Partner নেই।") }
+                                } else {
+                                    items(approvedPartners, key = { "partner-" + it.uid }) { user ->
+                                        UserRow(
+                                            user = user,
+                                            actionLabel = "অ্যাক্সেস বাতিল",
+                                            onAction = {
+                                                CloudAccessManager.revokeUser(this@UserManagementActivity, user.uid) { ok, msg ->
+                                                    message = msg
+                                                    if (ok) refresh++
+                                                }
+                                            }
+                                        )
                                     }
-                                    if (user.id != current.id) {
-                                        Button(onClick = {
-                                            deleteTarget = user
-                                            deletePin = ""
-                                            deleteError = ""
-                                        }) { Text("মুছুন") }
+                                }
+
+                                item {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Pending Partner", style = MaterialTheme.typography.titleLarge)
+                                }
+                                if (pending.isEmpty()) {
+                                    item { Text("অনুমোদনের অপেক্ষায় কোনো Partner নেই।") }
+                                } else {
+                                    items(pending, key = { "pending-" + it.uid }) { user ->
+                                        UserRow(
+                                            user = user,
+                                            actionLabel = "অনুমোদন করুন",
+                                            onAction = {
+                                                CloudAccessManager.approvePartner(
+                                                    this@UserManagementActivity,
+                                                    user.uid
+                                                ) { ok, msg ->
+                                                    message = msg
+                                                    if (ok) refresh++
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (message.isNotBlank()) {
+                                    item {
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(message, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                             }
@@ -118,67 +145,29 @@ class UserManagementActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
 
-            approveTarget?.let { target ->
-                AlertDialog(
-                    onDismissRequest = { approveTarget = null },
-                    title = { Text("Admin অনুমোদন") },
-                    text = { Text(target.username + " — " + SecurityStorage.roleLabel(target.role) + " অ্যাকাউন্ট অনুমোদন করবেন?") },
-                    confirmButton = {
-                        Button(onClick = {
-                            if (SecurityStorage.approveUser(this@UserManagementActivity, target.id)) {
-                                ActivityLogStorage.add(this@UserManagementActivity, "ইউজার অনুমোদন", target.username + " (" + SecurityStorage.roleLabel(target.role) + ")")
-                                approveTarget = null
-                                refresh++
-                                message = "ইউজার অনুমোদন হয়েছে।"
-                            }
-                        }) { Text("অনুমোদন") }
-                    },
-                    dismissButton = { Button(onClick = { approveTarget = null }) { Text("বাতিল") } }
+    @androidx.compose.runtime.Composable
+    private fun UserRow(
+        user: CloudAccessUser,
+        actionLabel: String?,
+        onAction: () -> Unit
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(user.email, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    SecurityStorage.roleLabel(user.role) +
+                        if (user.approved) " • অনুমোদিত" else " • অনুমোদনের অপেক্ষায়",
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
-
-            deleteTarget?.let { target ->
-                AlertDialog(
-                    onDismissRequest = { deleteTarget = null },
-                    title = { Text("Admin PIN দিয়ে মুছুন") },
-                    text = {
-                        Column {
-                            Text("ইউজার: ${target.username}")
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = deletePin,
-                                onValueChange = { deletePin = it },
-                                label = { Text("Admin PIN") },
-                                singleLine = true
-                            )
-                            if (deleteError.isNotBlank()) {
-                                Spacer(Modifier.height(6.dp))
-                                Text(deleteError)
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        Button(onClick = {
-                            val admin = SecurityStorage.getUsers(this@UserManagementActivity)
-                                .firstOrNull { it.role == SecurityStorage.ROLE_ADMIN }
-                            if (admin != null && admin.passwordHash == SecurityStorage.hashPassword(deletePin)) {
-                                if (SecurityStorage.deleteUser(this@UserManagementActivity, target.id)) {
-                                    ActivityLogStorage.add(
-                                        this@UserManagementActivity,
-                                        "ইউজার মুছে ফেলা",
-                                        target.username + " (" + SecurityStorage.roleLabel(target.role) + ")"
-                                    )
-                                    deleteTarget = null
-                                    deletePin = ""
-                                    deleteError = ""
-                                    refresh++
-                                } else deleteError = "এই ইউজার মুছে ফেলা যাচ্ছে না।"
-                            } else deleteError = "ভুল Admin PIN।"
-                        }) { Text("নিশ্চিত করুন") }
-                    },
-                    dismissButton = { Button(onClick = { deleteTarget = null }) { Text("বাতিল") } }
-                )
+            if (actionLabel != null) {
+                Button(onClick = onAction) { Text(actionLabel) }
             }
         }
     }
