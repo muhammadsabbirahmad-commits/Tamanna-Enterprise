@@ -121,11 +121,18 @@ class UserManagementActivity : ComponentActivity() {
                                         UserRow(
                                             user = user,
                                             actionLabel = "অনুমোদন করুন",
+                                            secondaryActionLabel = "প্রত্যাখ্যান করুন",
                                             onAction = {
                                                 CloudAccessManager.approvePartner(
                                                     this@UserManagementActivity,
                                                     user.uid
                                                 ) { ok, msg ->
+                                                    message = msg
+                                                    if (ok) refresh++
+                                                }
+                                            },
+                                            onSecondaryAction = {
+                                                CloudAccessManager.rejectPendingPartner(user.uid) { ok, msg ->
                                                     message = msg
                                                     if (ok) refresh++
                                                 }
@@ -152,7 +159,9 @@ class UserManagementActivity : ComponentActivity() {
     private fun UserRow(
         user: CloudAccessUser,
         actionLabel: String?,
-        onAction: () -> Unit
+        secondaryActionLabel: String? = null,
+        onAction: () -> Unit,
+        onSecondaryAction: () -> Unit = {}
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -168,6 +177,9 @@ class UserManagementActivity : ComponentActivity() {
             }
             if (actionLabel != null) {
                 Button(onClick = onAction) { Text(actionLabel) }
+            }
+            if (secondaryActionLabel != null) {
+                Button(onClick = onSecondaryAction) { Text(secondaryActionLabel) }
             }
         }
     }
