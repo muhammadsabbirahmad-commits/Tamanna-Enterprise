@@ -3,7 +3,6 @@ package com.tamanna.enterprise.sales
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +19,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,19 +45,25 @@ private data class CartItem(
 )
 
 class NewSaleActivity : ComponentActivity() {
+    private var scannedCode by mutableStateOf("")
+    private var scanNonce by mutableIntStateOf(0)
+
     private val scanner = registerForActivityResult(ScanContract()) { result ->
         result.contents?.trim()?.takeIf { it.isNotBlank() }?.let { code ->
-            setContent {
-                NewSaleScreen(initialCode = code, onScan = { launchScanner() }, onSaved = { finish() })
-            }
+            scannedCode = code
+            scanNonce++
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        scannedCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()
+        if (scannedCode.isNotBlank()) scanNonce = 1
+
         setContent {
             NewSaleScreen(
-                initialCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty(),
+                scannedCode = scannedCode,
+                scanNonce = scanNonce,
                 onScan = { launchScanner() },
                 onSaved = { finish() }
             )
@@ -67,7 +74,7 @@ class NewSaleActivity : ComponentActivity() {
         scanner.launch(ScanOptions().apply {
             setPrompt("পণ্যের বারকোড / QR কোড স্ক্যান করুন")
             setBeepEnabled(true)
-            setOrientationLocked(false)
+            setOrientationLocked(true)
             setBarcodeImageEnabled(false)
         })
     }
@@ -79,7 +86,8 @@ class NewSaleActivity : ComponentActivity() {
 
 @Composable
 private fun NewSaleScreen(
-    initialCode: String,
+    scannedCode: String,
+    scanNonce: Int,
     onScan: () -> Unit,
     onSaved: () -> Unit
 ) {
@@ -87,7 +95,7 @@ private fun NewSaleScreen(
     val products = remember { ProductStorage.getProducts(context) }
     val cart = remember { mutableStateListOf<CartItem>() }
 
-    var search by remember { mutableStateOf(initialCode) }
+    var search by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
     var customer by remember { mutableStateOf("") }
     var mobile by remember { mutableStateOf("") }
@@ -124,11 +132,23 @@ private fun NewSaleScreen(
         message = product.name + " কার্টে যোগ হয়েছে।"
     }
 
+    LaunchedEffect(scanNonce) {
+        if (scanNonce <= 0 || scannedCode.isBlank()) return@LaunchedEffect
+        val product = products.firstOrNull { it.code.equals(scannedCode, ignoreCase = true) }
+        if (product == null) {
+            message = "এই বারকোডের কোনো পণ্য স্টকে পাওয়া যায়নি: $scannedCode"
+        } else {
+            addProduct(product)
+        }
+    }
+
     val subtotal = cart.sumOf { it.quantity * it.unitPrice }
     val discountAmount = (discount.toDoubleOrNull() ?: 0.0).coerceIn(0.0, subtotal)
     val total = subtotal - discountAmount
     val paidAmount = (paid.toDoubleOrNull() ?: 0.0).coerceIn(0.0, total)
     val due = total - paidAmount
+    val totalCost = cart.sumOf { it.quantity * it.product.purchasePrice }
+    val profitLoss = total - totalCost
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -218,6 +238,10 @@ private fun NewSaleScreen(
             Text("মোট ৳ " + String.format(Locale.getDefault(), "%.2f", total) +
                 "  •  জমা ৳ " + String.format(Locale.getDefault(), "%.2f", paidAmount) +
                 "  •  বাকি ৳ " + String.format(Locale.getDefault(), "%.2f", due))
+            Text(
+                (if (profitLoss >= 0) "সম্ভাব্য লাভ ৳ " else "সম্ভাব্য ক্ষতি ৳ ") +
+                    String.format(Locale.getDefault(), "%.2f", kotlin.math.abs(profitLoss))
+            )
 
             Text("পেমেন্ট মাধ্যম", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -279,7 +303,7 @@ private fun NewSaleScreen(
                     onSaved()
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("বিক্রয় সম্পন্ন করুন") }
+            ) { Text("সাবমিট করে বিক্রয় সম্পন্ন করুন") }
 
             if (message.isNotBlank()) Text(message)
         }
