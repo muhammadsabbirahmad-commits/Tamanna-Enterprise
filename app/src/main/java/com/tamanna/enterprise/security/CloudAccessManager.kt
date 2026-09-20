@@ -4,7 +4,6 @@ import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import java.util.UUID
 
 data class CloudAccessUser(
     val uid: String,
@@ -20,6 +19,8 @@ object CloudAccessManager {
 
     private fun db() = FirebaseFirestore.getInstance()
     private fun auth() = FirebaseAuth.getInstance()
+
+    const val MASTER_REQUIRED = "MASTER_REQUIRED"
 
     fun hasApprovedAdmin(onResult: (Boolean) -> Unit) {
         db().collection(USERS)
@@ -67,17 +68,60 @@ object CloudAccessManager {
                 return@addOnSuccessListener
             }
 
-            hasApprovedAdmin { adminExists ->
-                if (!adminExists && SecurityStorage.isMasterPassword(masterPassword)) {
-                    bootstrapFirstAdmin(context, uid, email.trim(), onResult)
-                } else {
-                    createPendingPartner(context, uid, email.trim(), onResult)
+            db().collection(CONFIG).document(ADMIN).get()
+                .addOnSuccessListener { adminSnapshot ->
+                    val adminExists = adminSnapshot.exists()
+                    if (!adminExists) {
+                        if (SecurityStorage.isMasterPassword(masterPassword)) {
+                            bootstrapFirstAdmin(context, uid, email.trim(), onResult)
+                        } else {
+                            onResult(false, MASTER_REQUIRED, null)
+                        }
+                    } else {
+                        createPendingPartner(context, uid, email.trim(), onResult)
+                    }
                 }
-            }
+                .addOnFailureListener {
+                    auth().signOut()
+                    onResult(false, it.localizedMessage ?: "Admin configuration যাচাই করা যায়নি।", null)
+                }
         }.addOnFailureListener {
             auth().signOut()
             onResult(false, it.localizedMessage ?: "অ্যাক্সেস যাচাই করা যায়নি।", null)
         }
+    }
+
+    fun bootstrapAfterMaster(
+        context: Context,
+        masterPassword: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val user = auth().currentUser
+        val email = user?.email.orEmpty()
+        val uid = user?.uid.orEmpty()
+        if (uid.isBlank() || email.isBlank()) {
+            onResult(false, "Google authentication পাওয়া যায়নি।")
+            return
+        }
+        if (!SecurityStorage.isMasterPassword(masterPassword)) {
+            onResult(false, "Master Password সঠিক নয়।")
+            return
+        }
+
+        db().collection(CONFIG).document(ADMIN).get()
+            .addOnSuccessListener { existing ->
+                if (existing.exists()) {
+                    onResult(false, "Admin ইতোমধ্যে সেটআপ করা আছে।")
+                } else {
+                    bootstrapFirstAdmin(context, uid, email, ) { ok, message, _ ->
+                        if (ok) onResult(true, "প্রথম Admin সফলভাবে অনুমোদিত হয়েছে।")
+                        else onResult(false, message)
+                    }
+                }
+            }
+            .addOnFailureListener {
+                onResult(false, it.localizedMessage ?: "Admin configuration যাচাই করা যায়নি।")
+            }
     }
 
     private fun bootstrapFirstAdmin(
