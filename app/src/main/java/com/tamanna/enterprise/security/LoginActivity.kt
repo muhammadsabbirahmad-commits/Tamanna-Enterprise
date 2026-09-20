@@ -30,7 +30,6 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.DashboardActivity
-import com.tamanna.enterprise.sync.CloudSyncManager
 
 class LoginActivity : ComponentActivity() {
 
@@ -162,10 +161,8 @@ class LoginActivity : ComponentActivity() {
                                     ) { ok, msg ->
                                         masterLoading = false
                                         if (ok) {
-                                            CloudSyncManager.pullThenSync(this@LoginActivity) {
-                                                startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
-                                                finish()
-                                            }
+                                            startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
+                                            finish()
                                         } else {
                                             error = msg
                                         }
