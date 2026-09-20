@@ -43,8 +43,6 @@ object CloudSyncManager {
             onComplete(false)
             return
         }
-
-        pulling = true
         val appContext = context.applicationContext
         val refs = namespaces.map { namespace ->
             userDataCollection().document(namespace).get()
@@ -81,12 +79,9 @@ object CloudSyncManager {
                     }
                     editor.apply()
                 }
-
-                pulling = false
                 onComplete(foundRemoteData)
             }
             .addOnFailureListener {
-                pulling = false
                 onComplete(false)
             }
     }
