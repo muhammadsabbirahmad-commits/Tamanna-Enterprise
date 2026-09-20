@@ -36,9 +36,11 @@ class ProductActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         loadProducts()
+        val canWrite = SecurityStorage.canWrite(this)
         setContent {
             ProductScreen(
                 products = products,
+                canWrite = canWrite,
                 onAddProductClick = {
                     startActivity(Intent(this, AddProductActivity::class.java))
                 },
@@ -60,6 +62,7 @@ class ProductActivity : ComponentActivity() {
 @androidx.compose.runtime.Composable
 fun ProductScreen(
     products: List<Product>,
+    canWrite: Boolean,
     onAddProductClick: () -> Unit,
     onProductsChanged: () -> Unit
 ) {
@@ -79,8 +82,10 @@ fun ProductScreen(
             ) {
                 Text("পণ্য ব্যবস্থাপনা", style = MaterialTheme.typography.headlineMedium)
 
-                Button(onClick = onAddProductClick, modifier = Modifier.fillMaxWidth()) {
-                    Text("নতুন পণ্য যোগ করুন")
+                if (canWrite) {
+                    Button(onClick = onAddProductClick, modifier = Modifier.fillMaxWidth()) {
+                        Text("নতুন পণ্য যোগ করুন")
+                    }
                 }
 
                 Text("পণ্যের তালিকা", style = MaterialTheme.typography.titleLarge)
@@ -142,13 +147,17 @@ fun ProductScreen(
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Button(onClick = { selectedProduct = null; editingProduct = product }) { Text("Edit") }
-                    Button(onClick = { selectedProduct = null; stockProduct = product }) { Text("Stock") }
+                    if (canWrite) {
+                        Button(onClick = { selectedProduct = null; editingProduct = product }) { Text("Edit") }
+                        Button(onClick = { selectedProduct = null; stockProduct = product }) { Text("Stock") }
+                    }
                 }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Button(onClick = { selectedProduct = null; deleteProduct = product }) { Text("Delete") }
+                    if (canWrite) {
+                        Button(onClick = { selectedProduct = null; deleteProduct = product }) { Text("Delete") }
+                    }
                     Button(onClick = { selectedProduct = null }) { Text("বন্ধ") }
                 }
             }
