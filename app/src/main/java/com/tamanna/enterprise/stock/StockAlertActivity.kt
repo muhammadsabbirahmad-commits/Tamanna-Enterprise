@@ -22,8 +22,19 @@ import java.util.*
 class StockAlertActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
-        if (!SecurityStorage.canWrite(this)) { finish(); return }
-        setContent { TamannaTheme(ThemeStorage.getTheme(this)) { StockAlertScreen() } }
+
+        // This screen is read-only. Keep it available when login is disabled
+        // and for approved non-admin users; editing remains admin-only.
+        if (SecurityStorage.isLoginEnabled(this) && !SecurityStorage.isLoggedIn(this)) {
+            finish()
+            return
+        }
+
+        setContent {
+            TamannaTheme(ThemeStorage.getTheme(this)) {
+                StockAlertScreen()
+            }
+        }
     }
 }
 
