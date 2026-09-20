@@ -24,6 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import com.tamanna.enterprise.security.ActivityLogStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -65,6 +67,8 @@ fun ProductScreen(
     var stockProduct by remember { mutableStateOf<Product?>(null) }
     var deleteProduct by remember { mutableStateOf<Product?>(null) }
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
+    var deletePin by remember { mutableStateOf("") }
+    var deleteError by remember { mutableStateOf("") }
     val context = LocalContext.current
 
     MaterialTheme {
@@ -155,12 +159,26 @@ fun ProductScreen(
         AlertDialog(
             onDismissRequest = { deleteProduct = null },
             title = { Text("পণ্য মুছে ফেলবেন?") },
-            text = { Text(product.name + " (" + product.code + ") স্থায়ীভাবে মুছে যাবে।") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(product.name + " (" + product.code + ") স্থায়ীভাবে মুছে যাবে।")
+                    OutlinedTextField(deletePin, { deletePin = it }, label = { Text("Admin PIN") }, singleLine = true)
+                    if (deleteError.isNotBlank()) Text(deleteError, color = MaterialTheme.colorScheme.error)
+                }
+            },
             confirmButton = {
                 Button(onClick = {
-                    ProductStorage.deleteProduct(context, product.code)
-                    deleteProduct = null
-                    onProductsChanged()
+                    val admin = SecurityStorage.getUsers(context).firstOrNull { it.role == SecurityStorage.ROLE_ADMIN }
+                    if (admin != null && admin.passwordHash == SecurityStorage.hashPassword(deletePin)) {
+                        ProductStorage.deleteProduct(context, product.code)
+                        ActivityLogStorage.add(context, "পণ্য মুছে ফেলা", product.name + " (" + product.code + ")")
+                        deletePin = ""
+                        deleteError = ""
+                        deleteProduct = null
+                        onProductsChanged()
+                    } else {
+                        deleteError = "ভুল Admin PIN।"
+                    }
                 }) {
                     Text("Delete")
                 }
