@@ -71,4 +71,27 @@ object CustomerDueStorage {
 
     private fun now(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+    fun removeSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String) {
+        val entries = getEntries(context).filterNot {
+            it.type == "SALE" &&
+                it.customer.trim().equals(customer.trim(), true) &&
+                it.mobile == mobile.trim() &&
+                kotlin.math.abs(it.amount - amount) < 0.000001 &&
+                it.note == note
+        }
+        saveEntries(context, entries)
+    }
+
+    private fun saveEntries(context: Context, entries: List<DueEntry>) {
+        val a = JSONArray()
+        entries.forEach {
+            a.put(JSONObject().apply {
+                put("id", it.id); put("date", it.date); put("customer", it.customer)
+                put("mobile", it.mobile); put("type", it.type); put("amount", it.amount); put("note", it.note)
+            })
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY, a.toString()).apply()
+    }
+
 }
