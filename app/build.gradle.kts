@@ -60,6 +60,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.rmtheis:tess-two:9.1.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
@@ -72,4 +73,33 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+
+val ocrDataDir = layout.projectDirectory.dir("src/main/assets/tessdata")
+
+tasks.register("downloadOcrData") {
+    outputs.files(
+        ocrDataDir.file("ben.traineddata"),
+        ocrDataDir.file("eng.traineddata")
+    )
+    doLast {
+        ocrDataDir.asFile.mkdirs()
+        val files = mapOf(
+            "ben.traineddata" to "https://github.com/tesseract-ocr/tessdata/raw/4.00/ben.traineddata",
+            "eng.traineddata" to "https://github.com/tesseract-ocr/tessdata/raw/4.00/eng.traineddata"
+        )
+        files.forEach { (name, url) ->
+            val target = ocrDataDir.file(name).asFile
+            if (!target.exists() || target.length() < 100_000) {
+                java.net.URI(url).toURL().openStream().use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("downloadOcrData")
 }
