@@ -34,9 +34,10 @@ import com.tamanna.enterprise.dashboard.DashboardActivity
 class LoginActivity : ComponentActivity() {
 
     private lateinit var auth: FirebaseAuth
+    private var adminLoginMode = true
     private var googleOnSuccess: (() -> Unit)? = null
     private var googleOnError: ((String) -> Unit)? = null
-    private var masterPrompt: ((String) -> Unit)? = null
+    private var masterPrompt: (() -> Unit)? = null
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -85,13 +86,14 @@ class LoginActivity : ComponentActivity() {
         CloudAccessManager.resolveGoogleLogin(
             context = this,
             email = email,
-            masterPassword = masterPassword
+            masterPassword = masterPassword,
+            adminLogin = adminLoginMode
         ) { success, message, _ ->
             if (success) {
                 googleOnSuccess?.invoke()
                 clearCallbacks()
-            } else if (message == CloudAccessManager.MASTER_REQUIRED) {
-                masterPrompt?.invoke("")
+            } else if (adminLoginMode && message == CloudAccessManager.MASTER_REQUIRED) {
+                masterPrompt?.invoke()
             } else {
                 googleOnError?.invoke(message)
                 clearCallbacks()
@@ -103,6 +105,18 @@ class LoginActivity : ComponentActivity() {
         googleOnSuccess = null
         googleOnError = null
         masterPrompt = null
+    }
+
+    private fun startGoogleLogin(isAdmin: Boolean) {
+        adminLoginMode = isAdmin
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
+            .requestEmail()
+            .build()
+
+        GoogleSignIn.getClient(this, gso)
+            .signInIntent
+            .also { googleSignInLauncher.launch(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,12 +145,12 @@ class LoginActivity : ComponentActivity() {
                     ) {
                         Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(8.dp))
-                        Text("Google দিয়ে নিরাপদ লগইন", style = MaterialTheme.typography.titleLarge)
+                        Text("নিরাপদ লগইন", style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.height(20.dp))
 
                         if (showMaster) {
                             Text(
-                                "এই Google account-টি প্রথম Admin হিসেবে সেটআপ করতে Master Password একবার দিন। এরপর এই Gmail-এ আর Master Password লাগবে না।",
+                                "Admin Gmail সফলভাবে সংযুক্ত হয়েছে। প্রথম Admin হিসেবে প্রবেশ করতে Master Password একবার দিন। Admin-কে কেউ Approve করবে না।",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(Modifier.height(12.dp))
@@ -149,34 +163,6 @@ class LoginActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(Modifier.height(12.dp))
-                            Button(
-                                onClick = {
-                                    error = ""
-                                    masterLoading = true
-                                    CloudAccessManager.bootstrapAfterMaster(
-                                        this@LoginActivity,
-                                        master
-                                    ) { ok, msg ->
-                                        masterLoading = false
-                                        if (ok) {
-                                            startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
-                                            finish()
-                                        } else {
-                                            error = msg
-                                        }
-                                    }
-                                },
-                                enabled = !masterLoading,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(if (masterLoading) "Admin সেটআপ হচ্ছে..." else "Admin হিসেবে অনুমোদন করুন")
-                            }
-                        } else {
-                            Text(
-                                "অনুমোদিত Admin Gmail সরাসরি লগইন করবে। নতুন Gmail Admin হবে না; সেটি Partner approval-এর জন্য Pending হবে।",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(Modifier.height(12.dp))
 
                             if (error.isNotBlank()) {
                                 Text(error, color = MaterialTheme.colorScheme.error)
@@ -186,7 +172,46 @@ class LoginActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     error = ""
+                                    masterLoading = true
+                                    resolveCurrentGoogle(master)
+                                },
+                                enabled = !masterLoading && master.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (masterLoading) "Admin লগইন হচ্ছে..." else "Master Password দিয়ে Admin প্রবেশ")
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    auth.signOut()
+                                    showMaster = false
+                                    master = ""
+                                    error = ""
+                                    clearCallbacks()
+                                },
+                                enabled = !masterLoading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("ফিরে যান")
+                            }
+                        } else {
+                            Text(
+                                "দুটি আলাদা লগইন থাকবে। Admin সরাসরি Gmail + Master Password দিয়ে প্রবেশ করবে। Partner Gmail দিয়ে Access Request পাঠাবে; Admin অনুমোদন করলে Partner প্রবেশ করতে পারবে।",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(16.dp))
+
+                            if (error.isNotBlank()) {
+                                Text(error, color = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.height(10.dp))
+                            }
+
+                            Button(
+                                onClick = {
+                                    error = ""
                                     googleLoading = true
+                                    adminLoginMode = true
                                     googleOnSuccess = {
                                         googleLoading = false
                                         startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
@@ -196,25 +221,45 @@ class LoginActivity : ComponentActivity() {
                                         googleLoading = false
                                         error = it
                                     }
-
-                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                        .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
-                                        .requestEmail()
-                                        .build()
-
-                                    GoogleSignIn.getClient(this@LoginActivity, gso)
-                                        .signInIntent
-                                        .also { googleSignInLauncher.launch(it) }
+                                    startGoogleLogin(true)
                                 },
                                 enabled = !googleLoading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (googleLoading) "Google লগইন হচ্ছে..." else "Google দিয়ে লগইন")
+                                Text(if (googleLoading) "Admin Google সংযোগ হচ্ছে..." else "👑 Admin Login")
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            Button(
+                                onClick = {
+                                    error = ""
+                                    googleLoading = true
+                                    adminLoginMode = false
+                                    googleOnSuccess = {
+                                        googleLoading = false
+                                        startActivity(Intent(this@LoginActivity, DashboardActivity::class.java))
+                                        finish()
+                                    }
+                                    googleOnError = {
+                                        googleLoading = false
+                                        error = it
+                                    }
+                                    startGoogleLogin(false)
+                                },
+                                enabled = !googleLoading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (googleLoading) "Partner Google সংযোগ হচ্ছে..." else "👤 Partner Login")
                             }
 
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "Partner flow: Google authentication → Pending Approval → Admin অনুমোদন → তারপর প্রবেশ।",
+                                "Admin: Gmail → Master Password → সরাসরি প্রবেশ।",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "Partner: Gmail → Access Request → Admin Approve → প্রবেশ।",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
