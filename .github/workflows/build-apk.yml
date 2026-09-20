@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Signed Release APK
@@ -61,3 +64,11 @@ jobs:
         with:
           name: Tamanna-Enterprise-APK
           path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Publish GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Tamanna Enterprise v1.0.${{ github.run_number }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/app-release.apk
