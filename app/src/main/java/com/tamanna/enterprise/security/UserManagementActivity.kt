@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,32 +42,20 @@ class UserManagementActivity : ComponentActivity() {
             var password by remember { mutableStateOf("") }
             var role by remember { mutableStateOf(SecurityStorage.ROLE_PARTNER) }
             var message by remember { mutableStateOf("") }
+            var deleteTarget by remember { mutableStateOf<AppUser?>(null) }
+            var deletePin by remember { mutableStateOf("") }
+            var deleteError by remember { mutableStateOf("") }
 
             val users = remember(refresh) { SecurityStorage.getUsers(this@UserManagementActivity) }
 
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(20.dp)
-                    ) {
+                    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
                         Text("ইউজার ব্যবস্থাপনা", style = MaterialTheme.typography.headlineMedium)
                         Spacer(Modifier.height(16.dp))
-
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text("ইউজারনেম") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        OutlinedTextField(username, { username = it }, label = { Text("ইউজারনেম") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
-                            label = { Text("পাসওয়ার্ড / PIN") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        OutlinedTextField(password, { password = it }, label = { Text("পাসওয়ার্ড / PIN") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(8.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -89,14 +77,10 @@ class UserManagementActivity : ComponentActivity() {
                                     password = ""
                                     refresh++
                                     "ইউজার যোগ হয়েছে।"
-                                } else {
-                                    "ইউজারনেম আগে থেকেই আছে অথবা তথ্য অসম্পূর্ণ।"
-                                }
+                                } else "ইউজারনেম আগে থেকেই আছে অথবা তথ্য অসম্পূর্ণ।"
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("ইউজার যোগ করুন")
-                        }
+                        ) { Text("ইউজার যোগ করুন") }
 
                         if (message.isNotBlank()) {
                             Spacer(Modifier.height(8.dp))
@@ -119,17 +103,59 @@ class UserManagementActivity : ComponentActivity() {
                                     }
                                     if (user.id != current.id) {
                                         Button(onClick = {
-                                            SecurityStorage.deleteUser(this@UserManagementActivity, user.id)
-                                            refresh++
-                                        }) {
-                                            Text("মুছুন")
-                                        }
+                                            deleteTarget = user
+                                            deletePin = ""
+                                            deleteError = ""
+                                        }) { Text("মুছুন") }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            deleteTarget?.let { target ->
+                AlertDialog(
+                    onDismissRequest = { deleteTarget = null },
+                    title = { Text("Admin PIN দিয়ে মুছুন") },
+                    text = {
+                        Column {
+                            Text("ইউজার: ${target.username}")
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = deletePin,
+                                onValueChange = { deletePin = it },
+                                label = { Text("Admin PIN") },
+                                singleLine = true
+                            )
+                            if (deleteError.isNotBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(deleteError)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            val admin = SecurityStorage.getUsers(this@UserManagementActivity)
+                                .firstOrNull { it.role == SecurityStorage.ROLE_ADMIN }
+                            if (admin != null && admin.passwordHash == SecurityStorage.hashPassword(deletePin)) {
+                                if (SecurityStorage.deleteUser(this@UserManagementActivity, target.id)) {
+                                    ActivityLogStorage.add(
+                                        this@UserManagementActivity,
+                                        "ইউজার মুছে ফেলা",
+                                        target.username + " (" + SecurityStorage.roleLabel(target.role) + ")"
+                                    )
+                                    deleteTarget = null
+                                    deletePin = ""
+                                    deleteError = ""
+                                    refresh++
+                                } else deleteError = "এই ইউজার মুছে ফেলা যাচ্ছে না।"
+                            } else deleteError = "ভুল Admin PIN।"
+                        }) { Text("নিশ্চিত করুন") }
+                    },
+                    dismissButton = { Button(onClick = { deleteTarget = null }) { Text("বাতিল") } }
+                )
             }
         }
     }
