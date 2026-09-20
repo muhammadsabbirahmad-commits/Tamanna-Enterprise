@@ -32,11 +32,12 @@ import androidx.compose.ui.unit.dp
 
 class ProductActivity : ComponentActivity() {
     private var products by mutableStateOf(emptyList<Product>())
+    private var canWrite by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         loadProducts()
-        val canWrite = SecurityStorage.canWrite(this)
+        canWrite = SecurityStorage.canWrite(this)
         setContent {
             ProductScreen(
                 products = products,
@@ -52,6 +53,7 @@ class ProductActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         loadProducts()
+        canWrite = SecurityStorage.canWrite(this)
     }
 
     private fun loadProducts() {
@@ -82,10 +84,12 @@ fun ProductScreen(
             ) {
                 Text("পণ্য ব্যবস্থাপনা", style = MaterialTheme.typography.headlineMedium)
 
-                if (canWrite) {
-                    Button(onClick = onAddProductClick, modifier = Modifier.fillMaxWidth()) {
-                        Text("নতুন পণ্য যোগ করুন")
-                    }
+                Button(
+                    onClick = onAddProductClick,
+                    enabled = canWrite,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (canWrite) "নতুন পণ্য যোগ করুন" else "নতুন পণ্য যোগ করুন (অ্যাডমিন অনুমতি প্রয়োজন)")
                 }
 
                 Text("পণ্যের তালিকা", style = MaterialTheme.typography.titleLarge)
