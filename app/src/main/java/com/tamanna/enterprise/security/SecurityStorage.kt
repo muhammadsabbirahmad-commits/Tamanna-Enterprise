@@ -124,6 +124,10 @@ object SecurityStorage {
 
     fun isLoggedIn(context: Context) = getCurrentUser(context) != null
 
+    fun canWrite(context: Context): Boolean = getCurrentUser(context)?.role != ROLE_VIEWER
+
+    fun canManage(context: Context): Boolean = getCurrentUser(context)?.role == ROLE_ADMIN
+
     fun roleLabel(role: String): String = when (role) {
         ROLE_ADMIN -> "অ্যাডমিন"
         ROLE_PARTNER -> "পার্টনার"
