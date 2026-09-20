@@ -306,6 +306,14 @@ private fun SettingsScreen(
                 if (currentUser?.role == com.tamanna.enterprise.security.SecurityStorage.ROLE_ADMIN) {
                     Button(
                         onClick = {
+                            context.startActivity(android.content.Intent(context, com.tamanna.enterprise.security.ActivityLogActivity::class.java))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("অ্যাক্টিভিটি লগ") }
+
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
                             context.startActivity(
                                 android.content.Intent(
                                     context,
