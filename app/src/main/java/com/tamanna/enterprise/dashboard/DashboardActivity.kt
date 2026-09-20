@@ -33,7 +33,6 @@ import com.tamanna.enterprise.sales.SalesScanActivity
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.settings.SettingsActivity
 import com.tamanna.enterprise.security.SecurityStorage
-import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.settings.SettingsStorage
 import com.tamanna.enterprise.settings.ThemeStorage
 import com.tamanna.enterprise.search.GlobalSearchActivity
@@ -46,8 +45,7 @@ class DashboardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val loggedIn = SecurityStorage.getCurrentUser(this) != null &&
-            FirebaseAuth.getInstance().currentUser != null
+        val loggedIn = SecurityStorage.getCurrentUser(this) != null
         val sales = if (loggedIn) SalesStorage.getSales(this) else emptyList()
         val purchases = if (loggedIn) PurchaseStorage.getPurchases(this) else emptyList()
         val products = if (loggedIn) ProductStorage.getProducts(this) else emptyList()
