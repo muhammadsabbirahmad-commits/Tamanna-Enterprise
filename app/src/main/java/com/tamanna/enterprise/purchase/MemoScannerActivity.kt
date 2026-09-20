@@ -194,7 +194,7 @@ class MemoScannerActivity : ComponentActivity() {
 
     private fun extractQuantity(line: String): Int? {
         val normalized = normalizeDigits(line)
-        val labeled = Regex("""(?i)(qty|quantity|pcs|piece|pieces|পরিমাণ|পিস|সংখ্যা)\\s*[:=-]?\\s*(\\d+)""")
+        val labeled = Regex("""(?i)(qty|quantity|pcs|piece|pieces|পরিমাণ|পিস|সংখ্যা)\s*[:=-]?\s*(\d+)""")
             .find(normalized)?.groupValues?.getOrNull(2)?.toIntOrNull()
         if (labeled != null && labeled > 0) return labeled
         return null
@@ -202,13 +202,13 @@ class MemoScannerActivity : ComponentActivity() {
 
     private fun extractUnitPrice(line: String, fullText: String): Double? {
         val normalizedLine = normalizeDigits(line)
-        val labeled = Regex("""(?i)(unit\\s*price|rate|price|purchase\\s*price|ক্রয়মূল্য|ক্রয়মূল্য|দর|মূল্য)\\s*[:=-]?\\s*(?:৳|tk|bdt)?\\s*(\\d+(?:\\.\\d+)?)""")
+        val labeled = Regex("""(?i)(unit\s*price|rate|price|purchase\s*price|ক্রয়মূল্য|ক্রয়মূল্য|দর|মূল্য)\s*[:=-]?\s*(?:৳|tk|bdt)?\s*(\d+(?:\.\d+)?)""")
             .find(normalizedLine)?.groupValues?.getOrNull(1)?.toDoubleOrNull()
         if (labeled != null && labeled >= 0) return labeled
 
         val nearby = normalizeDigits(fullText)
             .lineSequence()
-            .firstOrNull { it.contains(line) && Regex("""\\d+(?:\\.\\d+)?""").findAll(it).count() >= 2 }
+            .firstOrNull { it.contains(line) && Regex("""\d+(?:\.\d+)?""").findAll(it).count() >= 2 }
         val nums = Regex("""d+(?:.d+)?""").findAll(nearby.orEmpty()).map { it.value.toDoubleOrNull() }.filterNotNull().toList()
         return nums.lastOrNull()?.takeIf { it >= 0 }
     }
