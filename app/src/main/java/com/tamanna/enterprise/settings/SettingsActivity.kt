@@ -164,6 +164,10 @@ private fun SettingsScreen(
     var googleLoading by remember { mutableStateOf(false) }
     var googleError by remember { mutableStateOf("") }
     var selectedTheme by remember { mutableStateOf(ThemeStorage.getTheme(context)) }
+    var currentPin by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var pinMessage by remember { mutableStateOf("") }
 
     TamannaTheme(selectedTheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -304,6 +308,30 @@ private fun SettingsScreen(
                 Spacer(Modifier.height(20.dp))
 
                 if (currentUser?.role == com.tamanna.enterprise.security.SecurityStorage.ROLE_ADMIN) {
+                    Text("অ্যাডমিন নিরাপত্তা", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(currentPin, { currentPin = it.filter(Char::isDigit) }, label = { Text("বর্তমান Admin PIN") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit) }, label = { Text("নতুন Admin PIN (কমপক্ষে ৪ সংখ্যা)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(confirmPin, { confirmPin = it.filter(Char::isDigit) }, label = { Text("নতুন PIN আবার দিন") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = {
+                        pinMessage = when {
+                            newPin.length < 4 -> "নতুন PIN কমপক্ষে ৪ সংখ্যার হতে হবে।"
+                            newPin != confirmPin -> "নতুন PIN দুবার একই নয়।"
+                            com.tamanna.enterprise.security.SecurityStorage.changeAdminPin(context, currentPin, newPin) -> {
+                                currentPin = ""; newPin = ""; confirmPin = ""
+                                "Admin PIN সফলভাবে পরিবর্তন হয়েছে।"
+                            }
+                            else -> "বর্তমান Admin PIN সঠিক নয়।"
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Admin PIN পরিবর্তন করুন") }
+                    if (pinMessage.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(pinMessage, color = if (pinMessage.contains("সফল")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    }
+                    Spacer(Modifier.height(16.dp))
                     Button(
                         onClick = {
                             context.startActivity(android.content.Intent(context, com.tamanna.enterprise.security.ActivityLogActivity::class.java))
