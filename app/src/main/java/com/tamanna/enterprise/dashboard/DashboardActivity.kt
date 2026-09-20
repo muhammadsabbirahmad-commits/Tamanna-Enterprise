@@ -35,6 +35,7 @@ import com.tamanna.enterprise.settings.SettingsActivity
 import com.tamanna.enterprise.settings.SettingsStorage
 import com.tamanna.enterprise.settings.ThemeStorage
 import com.tamanna.enterprise.search.GlobalSearchActivity
+import com.tamanna.enterprise.sync.CloudBackupActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,6 +72,7 @@ class DashboardActivity : ComponentActivity() {
                     onDueClick = { startActivity(Intent(this, CustomerDueActivity::class.java)) },
                     onSupplierDueClick = { startActivity(Intent(this, SupplierDueActivity::class.java)) },
                     onGlobalSearchClick = { startActivity(Intent(this, GlobalSearchActivity::class.java)) },
+                    onBackupClick = { startActivity(Intent(this, CloudBackupActivity::class.java)) },
                     shopName = SettingsStorage.getShopName(this)
                 )
             }
@@ -110,6 +112,7 @@ fun DashboardScreen(
     onDueClick: () -> Unit,
     onSupplierDueClick: () -> Unit,
     onGlobalSearchClick: () -> Unit,
+    onBackupClick: () -> Unit,
     onFinancialCalendarClick: () -> Unit,
     shopName: String
 ) {
@@ -190,6 +193,8 @@ fun DashboardScreen(
                 DashboardMenuRow(listOf("🤝" to ("পার্টনার" to onPartnerClick), "💸" to ("খরচ/উত্তোলন" to onFinanceClick), "👤" to ("ক্রেতার বাকি" to onDueClick)))
                 Spacer(Modifier.height(10.dp))
                 DashboardMenuRow(listOf("🏭" to ("সরবরাহকারীর বাকি" to onSupplierDueClick)))
+                Spacer(Modifier.height(10.dp))
+                DashboardMenuRow(listOf("☁️" to ("ডাটা ব্যাকআপ" to onBackupClick)))
                 Spacer(Modifier.height(90.dp))
             }
         }
