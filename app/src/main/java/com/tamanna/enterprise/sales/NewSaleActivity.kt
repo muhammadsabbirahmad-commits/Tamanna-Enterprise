@@ -265,6 +265,7 @@ private fun NewSaleScreen(
                         return@Button
                     }
                     val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                    val transactionId = "TX-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
                     val customerText = customer.trim() + if (mobile.isNotBlank()) " • " + mobile.trim() else ""
                     if (due > 0.0) {
                         CustomerDueStorage.addSaleDue(
@@ -278,6 +279,7 @@ private fun NewSaleScreen(
                             context,
                             Sale(
                                 id = System.currentTimeMillis() + index,
+                                transactionId = transactionId,
                                 date = now,
                                 productCode = item.product.code,
                                 productName = item.product.name,
