@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,7 +53,16 @@ private fun ReportsScreen() {
 
     val sales = SalesStorage.getSales(context)
     val purchases = PurchaseStorage.getPurchases(context)
-    val products = ProductStorage.getProducts(context)
+    var stockRefresh by remember { mutableStateOf(0) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) stockRefresh++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val products = remember(stockRefresh) { ProductStorage.getProducts(context) }
 
     val validRange = fromDate.length == 10 &&
         toDate.length == 10 &&
