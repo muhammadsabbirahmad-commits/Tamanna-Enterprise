@@ -32,6 +32,8 @@ import com.tamanna.enterprise.sales.SalesActivity
 import com.tamanna.enterprise.sales.SalesScanActivity
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.settings.SettingsActivity
+import com.tamanna.enterprise.security.SecurityStorage
+import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.settings.SettingsStorage
 import com.tamanna.enterprise.settings.ThemeStorage
 import com.tamanna.enterprise.search.GlobalSearchActivity
@@ -44,9 +46,11 @@ class DashboardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val sales = SalesStorage.getSales(this)
-        val purchases = PurchaseStorage.getPurchases(this)
-        val products = ProductStorage.getProducts(this)
+        val loggedIn = SecurityStorage.getCurrentUser(this) != null &&
+            FirebaseAuth.getInstance().currentUser != null
+        val sales = if (loggedIn) SalesStorage.getSales(this) else emptyList()
+        val purchases = if (loggedIn) PurchaseStorage.getPurchases(this) else emptyList()
+        val products = if (loggedIn) ProductStorage.getProducts(this) else emptyList()
         val todaySales = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.salePrice }
         val todayPurchases = purchases.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.purchasePrice }
         val todayProfit = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
@@ -55,24 +59,24 @@ class DashboardActivity : ComponentActivity() {
         setContent {
             TamannaTheme(ThemeStorage.getTheme(this)) {
                 DashboardScreen(
-                    todaySales, todayPurchases, todayProfit, totalStock,
-                    onProductClick = { startActivity(Intent(this, ProductActivity::class.java)) },
-                    onPurchaseClick = { startActivity(Intent(this, PurchaseActivity::class.java)) },
-                    onSalesClick = { startActivity(Intent(this, SalesActivity::class.java)) },
-                    onStockClick = { startActivity(Intent(this, StockActivity::class.java)) },
-                    onStockAlertClick = { startActivity(Intent(this, StockAlertActivity::class.java)) },
-                    onReportsClick = { startActivity(Intent(this, ReportsActivity::class.java)) },
-                    onFinancialDashboardClick = { startActivity(Intent(this, FinancialDashboardActivity::class.java)) },
-                    onFinancialCalendarClick = { startActivity(Intent(this, FinancialCalendarActivity::class.java)) },
-                    onProfitClick = { startActivity(Intent(this, ProfitActivity::class.java)) },
-                    onScannerClick = { startActivity(Intent(this, SalesScanActivity::class.java)) },
+                    todaySales, todayPurchases, todayProfit, totalStock, loggedIn,
+                    onProductClick = { if (loggedIn) startActivity(Intent(this, ProductActivity::class.java)) },
+                    onPurchaseClick = { if (loggedIn) startActivity(Intent(this, PurchaseActivity::class.java)) },
+                    onSalesClick = { if (loggedIn) startActivity(Intent(this, SalesActivity::class.java)) },
+                    onStockClick = { if (loggedIn) startActivity(Intent(this, StockActivity::class.java)) },
+                    onStockAlertClick = { if (loggedIn) startActivity(Intent(this, StockAlertActivity::class.java)) },
+                    onReportsClick = { if (loggedIn) startActivity(Intent(this, ReportsActivity::class.java)) },
+                    onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(this, FinancialDashboardActivity::class.java)) },
+                    onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(this, FinancialCalendarActivity::class.java)) },
+                    onProfitClick = { if (loggedIn) startActivity(Intent(this, ProfitActivity::class.java)) },
+                    onScannerClick = { if (loggedIn) startActivity(Intent(this, SalesScanActivity::class.java)) },
                     onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
-                    onPartnerClick = { startActivity(Intent(this, PartnerActivity::class.java)) },
-                    onFinanceClick = { startActivity(Intent(this, FinanceActivity::class.java)) },
-                    onDueClick = { startActivity(Intent(this, CustomerDueActivity::class.java)) },
-                    onSupplierDueClick = { startActivity(Intent(this, SupplierDueActivity::class.java)) },
-                    onGlobalSearchClick = { startActivity(Intent(this, GlobalSearchActivity::class.java)) },
-                    onBackupClick = { startActivity(Intent(this, CloudBackupActivity::class.java)) },
+                    onPartnerClick = { if (loggedIn) startActivity(Intent(this, PartnerActivity::class.java)) },
+                    onFinanceClick = { if (loggedIn) startActivity(Intent(this, FinanceActivity::class.java)) },
+                    onDueClick = { if (loggedIn) startActivity(Intent(this, CustomerDueActivity::class.java)) },
+                    onSupplierDueClick = { if (loggedIn) startActivity(Intent(this, SupplierDueActivity::class.java)) },
+                    onGlobalSearchClick = { if (loggedIn) startActivity(Intent(this, GlobalSearchActivity::class.java)) },
+                    onBackupClick = { if (loggedIn) startActivity(Intent(this, CloudBackupActivity::class.java)) },
                     shopName = SettingsStorage.getShopName(this)
                 )
             }
@@ -97,6 +101,7 @@ fun DashboardScreen(
     todayPurchases: Double,
     todayProfit: Double,
     totalStock: Int,
+    loggedIn: Boolean,
     onProductClick: () -> Unit,
     onPurchaseClick: () -> Unit,
     onSalesClick: () -> Unit,
@@ -167,6 +172,14 @@ fun DashboardScreen(
             ) {
                 Text(shopName, style = MaterialTheme.typography.headlineMedium)
                 Text("Shop Management System", style = MaterialTheme.typography.bodyMedium)
+                if (!loggedIn) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "🔒 ব্যবসায়িক ডাটা লক করা আছে। সেটিংস → Admin Login অথবা Partner Login থেকে প্রবেশ করুন।",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
                 Spacer(Modifier.height(18.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
