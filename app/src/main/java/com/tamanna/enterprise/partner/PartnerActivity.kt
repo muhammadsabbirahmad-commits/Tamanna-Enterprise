@@ -19,6 +19,7 @@ import com.tamanna.enterprise.security.SecurityStorage
 class PartnerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canManage(this)) { finish(); return }
         setContent { PartnerScreen(this) }
     }
 }
