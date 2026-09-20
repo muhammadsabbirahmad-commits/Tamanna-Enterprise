@@ -75,7 +75,6 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
 
-
 val ocrDataDir = layout.projectDirectory.dir("src/main/assets/tessdata")
 
 tasks.register("downloadOcrData") {
@@ -92,7 +91,7 @@ tasks.register("downloadOcrData") {
         files.forEach { (name, url) ->
             val target = ocrDataDir.file(name).asFile
             if (!target.exists() || target.length() < 100_000) {
-                java.net.URI(url).toURL().openStream().use { input ->
+                URI(url).toURL().openStream().use { input ->
                     target.outputStream().use { output -> input.copyTo(output) }
                 }
             }
