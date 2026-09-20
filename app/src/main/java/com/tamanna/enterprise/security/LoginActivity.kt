@@ -150,7 +150,7 @@ class LoginActivity : ComponentActivity() {
 
                         if (showMaster) {
                             Text(
-                                "Admin Gmail সফলভাবে সংযুক্ত হয়েছে। প্রথম Admin হিসেবে প্রবেশ করতে Master Password একবার দিন। Admin-কে কেউ Approve করবে না।",
+                                "Google/Gmail account সফলভাবে সংযুক্ত হয়েছে। এখন Master Password দিন। Admin-কে কেউ Approve করবে না।",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(Modifier.height(12.dp))
@@ -227,8 +227,8 @@ class LoginActivity : ComponentActivity() {
                             ) {
                                 Text(
                                     if (loading) "Google সংযোগ হচ্ছে..."
-                                    else if (adminLoginMode) "👑 Admin Gmail Connect"
-                                    else "👤 Partner Gmail Connect"
+                                    else if (adminLoginMode) "👑 Gmail Connect → Master Password"
+                                    else "👤 Gmail Connect → Admin Approval"
                                 )
                             }
 
