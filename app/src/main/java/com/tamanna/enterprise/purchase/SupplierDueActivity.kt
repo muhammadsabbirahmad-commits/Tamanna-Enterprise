@@ -33,12 +33,12 @@ private fun SupplierDueScreen() {
     var payment by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    var refresh by remember { mutableStateOf(0) }
+    var refresh by remember { mutableStateOf(0) }\n    var showAdd by remember { mutableStateOf(false) }\n    var name by remember { mutableStateOf("") }\n    var mobile by remember { mutableStateOf("") }\n    var address by remember { mutableStateOf("") }
 
-    val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
+    val suppliers = remember(refresh) { SupplierDueStorage.getSuppliers(context) }\n    val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
     val entries = remember(refresh) { SupplierDueStorage.getEntries(context) }
     @Suppress("UNUSED_EXPRESSION")
-    val filtered = balances.filter { it.first.contains(query.trim(), true) }
+    val filtered = suppliers.filter { it.name.contains(query.trim(), true) }
     val total = balances.sumOf { it.second }
     val selectedBalance = if (selected.isBlank()) 0.0 else SupplierDueStorage.getBalance(context, selected)
 
@@ -47,15 +47,15 @@ private fun SupplierDueScreen() {
             Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("মোট পরিশোধযোগ্য: ৳ %.2f".format(total), style = MaterialTheme.typography.titleLarge)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("মোট পরিশোধযোগ্য: ৳ %.2f".format(total), style = MaterialTheme.typography.titleLarge); Button(onClick={name="";mobile="";address="";message="";showAdd=true}){Text("＋ সরবরাহকারী যোগ")} }
             OutlinedTextField(query, { query = it }, label = { Text("সরবরাহকারী খুঁজুন") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true)
 
             LazyColumn(Modifier.height(150.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(filtered, key = { it.first }) { item ->
-                    Card(onClick = { selected = item.first }, modifier = Modifier.fillMaxWidth()) {
+                items(filtered, key = { it.id }) { supplier ->
+                    Card(onClick = { selected = supplier.name }, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(item.first)
+                            Text(supplier.name)
                             Text("৳ %.2f".format(item.second))
                         }
                     }
