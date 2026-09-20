@@ -123,6 +123,10 @@
             android:name=".security.UserManagementActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".security.ActivityLogActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".notifications.NotificationReceiver"
             android:exported="false" />
