@@ -21,14 +21,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
 class SalesActivity : ComponentActivity() {
     override fun onResume() {
@@ -39,18 +39,30 @@ class SalesActivity : ComponentActivity() {
             }
         }
     }
-
 }
 
-@Composable
-private fun SalesScreen(onNewSale: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var sales by remember { mutableStateOf(SalesStorage.getSales(context)) }
-    var selectedSale by remember { mutableStateOf<Sale?>(null) }
+private data class SaleGroup(
+    val transactionId: String,
+    val lines: List<Sale>,
+    val transaction: SaleTransaction?
+)
 
-    LaunchedEffect(Unit) {
-        sales = SalesStorage.getSales(context)
-    }
+@androidx.compose.runtime.Composable
+private fun SalesScreen(onNewSale: () -> Unit) {
+    val context = LocalContext.current
+    var selectedGroup by remember { mutableStateOf<SaleGroup?>(null) }
+
+    val sales = remember { SalesStorage.getSales(context) }
+    val transactions = remember { SalesTransactionStorage.getTransactions(context) }
+
+    val groups = sales
+        .groupBy { it.transactionId }
+        .values
+        .map { lines ->
+            val id = lines.first().transactionId
+            SaleGroup(id, lines.sortedBy { it.id }, transactions.firstOrNull { it.transactionId == id })
+        }
+        .sortedByDescending { it.lines.maxOfOrNull { line -> line.id } ?: 0L }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -59,21 +71,44 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("বিক্রয় ব্যবস্থাপনা", style = MaterialTheme.typography.headlineSmall)
+                    Text("বিক্রয় ইতিহাস", style = MaterialTheme.typography.headlineSmall)
                     Button(onClick = onNewSale) { Text("নতুন বিক্রয়") }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                if (sales.isEmpty()) {
+                if (groups.isEmpty()) {
                     Text("এখনো কোনো বিক্রয় রেকর্ড নেই।")
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(sales, key = { it.id }) { sale ->
-                            Card(modifier = Modifier.fillMaxWidth().clickable { selectedSale = sale }) {
-                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                    Text(sale.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: " + sale.productCode + "  •  " + sale.date, style = MaterialTheme.typography.bodySmall)
+                        items(groups, key = { it.transactionId }) { group ->
+                            val tx = group.transaction
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedGroup = group }
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        "ইনভয়েস: " + group.transactionId,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        (tx?.date ?: group.lines.first().date) +
+                                            "  •  " + group.lines.size + "টি পণ্য"
+                                    )
+                                    if (!tx?.customer.isNullOrBlank()) {
+                                        Text("ক্রেতা: " + tx!!.customer)
+                                    }
+                                    if (tx != null) {
+                                        Text(
+                                            "মোট: ৳ " + money(tx.total) +
+                                                "  •  বাকি: ৳ " + money(tx.due)
+                                        )
+                                    } else {
+                                        val total = group.lines.sumOf { it.quantity * it.salePrice }
+                                        Text("মোট: ৳ " + money(total))
+                                    }
                                 }
                             }
                         }
@@ -83,5 +118,42 @@ private fun SalesScreen(onNewSale: () -> Unit) {
         }
     }
 
-    selectedSale?.let { sale -> AlertDialog(onDismissRequest = { selectedSale = null }, title = { Text(sale.productName) }, text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("কোড: " + sale.productCode); Text("তারিখ: " + sale.date); Text("পরিমাণ: " + sale.quantity + " ইউনিট"); Text("একক বিক্রয়মূল্য: ৳ " + "%.2f".format(sale.salePrice)); Text("মোট বিক্রয়: ৳ " + "%.2f".format(sale.quantity * sale.salePrice)); Text("লাভ: ৳ " + "%.2f".format(sale.quantity * (sale.salePrice-sale.purchasePrice))); if(sale.customer.isNotBlank()) Text("ক্রেতা: " + sale.customer) } }, confirmButton = { Button({ selectedSale = null }) { Text("বন্ধ") } }) }
+    selectedGroup?.let { group ->
+        val tx = group.transaction
+        AlertDialog(
+            onDismissRequest = { selectedGroup = null },
+            title = { Text("বিক্রয় বিস্তারিত") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Transaction ID: " + group.transactionId)
+                    Text("তারিখ: " + (tx?.date ?: group.lines.first().date))
+                    if (!tx?.customer.isNullOrBlank()) Text("ক্রেতা: " + tx!!.customer)
+                    if (!tx?.mobile.isNullOrBlank()) Text("মোবাইল: " + tx!!.mobile)
+
+                    group.lines.forEachIndexed { index, line ->
+                        Text(
+                            (index + 1).toString() + ". " + line.productName +
+                                " × " + line.quantity +
+                                " = ৳ " + money(line.quantity * line.salePrice)
+                        )
+                    }
+
+                    if (tx != null) {
+                        Text("সাবটোটাল: ৳ " + money(tx.subtotal))
+                        Text("ছাড়: ৳ " + money(tx.discount))
+                        Text("মোট: ৳ " + money(tx.total))
+                        Text("জমা: ৳ " + money(tx.paid))
+                        Text("বাকি: ৳ " + money(tx.due))
+                        Text("পেমেন্ট: " + tx.paymentMethod)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { selectedGroup = null }) { Text("বন্ধ") }
+            }
+        )
+    }
 }
+
+private fun money(value: Double): String =
+    String.format(Locale.getDefault(), "%.2f", value)
