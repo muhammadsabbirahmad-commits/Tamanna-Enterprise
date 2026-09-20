@@ -58,8 +58,28 @@ class LoginActivity : ComponentActivity() {
                 auth.signInWithCredential(credential)
                     .addOnCompleteListener(this) { task ->
                         if (task.isSuccessful) {
-                            CloudSyncManager.pullThenSync(this@LoginActivity) {
-                                googleOnSuccess?.invoke()
+                            val email = FirebaseAuth.getInstance().currentUser?.email.orEmpty()
+                            val existing = SecurityStorage.findByGoogleEmail(this@LoginActivity, email)
+                            val approvedUser = existing?.takeIf { it.approved }
+                            if (approvedUser != null) {
+                                SecurityStorage.login(this@LoginActivity, approvedUser)
+                                CloudSyncManager.pullThenSync(this@LoginActivity) {
+                                    googleOnSuccess?.invoke()
+                                }
+                            } else if (existing != null && !existing.approved) {
+                                FirebaseAuth.getInstance().signOut()
+                                googleOnError?.invoke("এই Google অ্যাকাউন্টটি এখনো Admin অনুমোদন করেননি। অনুমোদনের পর লগইন করতে পারবেন।")
+                            } else {
+                                val admin = SecurityStorage.registerGoogleAdmin(this@LoginActivity, email, masterPassword)
+                                if (admin != null) {
+                                    SecurityStorage.login(this@LoginActivity, admin)
+                                    CloudSyncManager.pullThenSync(this@LoginActivity) {
+                                        googleOnSuccess?.invoke()
+                                    }
+                                } else {
+                                    FirebaseAuth.getInstance().signOut()
+                                    googleOnError?.invoke("নতুন Google অ্যাকাউন্টকে Admin করতে সঠিক Master Password দিন।")
+                                }
                             }
                         } else {
                             googleOnError?.invoke(
@@ -97,6 +117,7 @@ class LoginActivity : ComponentActivity() {
             var password by remember { mutableStateOf("") }
             var error by remember { mutableStateOf("") }
             var googleLoading by remember { mutableStateOf(false) }
+            var masterPassword by remember { mutableStateOf("") }
 
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -151,6 +172,16 @@ class LoginActivity : ComponentActivity() {
 
                         Spacer(Modifier.height(12.dp))
 
+                        OutlinedTextField(
+                            value = masterPassword,
+                            onValueChange = { masterPassword = it; error = "" },
+                            label = { Text("Master Password (নতুন Google Admin-এর জন্য)") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+
                         Button(
                             onClick = {
                                 error = ""
@@ -181,7 +212,7 @@ class LoginActivity : ComponentActivity() {
 
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "প্রথমবারের ডিফল্ট অ্যাডমিন: admin / 1234 — লগইন চালু করার পর অবশ্যই পরিবর্তন করুন।",
+                            "Google দিয়ে নতুন Admin চালু করতে Master Password প্রয়োজন। Partner হলে Admin অনুমোদন না দেওয়া পর্যন্ত লগইন হবে না।",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
