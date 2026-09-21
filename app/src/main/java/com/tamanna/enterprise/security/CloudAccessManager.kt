@@ -2,6 +2,7 @@ package com.tamanna.enterprise.security
 
 import android.content.Context
 import com.tamanna.enterprise.business.BusinessAccountStorage
+import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -412,6 +413,11 @@ object CloudAccessManager {
         BusinessAccountStorage.ensureInitialized(context)
         if (user.role == SecurityStorage.ROLE_ADMIN) {
             BusinessAccountStorage.setOwnerUid(context, user.uid)
+            val business = BusinessAccountStorage.get(context)
+            BusinessMembershipManager.createOrUpdateOwner(
+                business.businessId,
+                user.email
+            ) { _, _ -> }
         }
         SecurityStorage.upsertGoogleUser(context, user.email, user.role, user.approved, user.uid)
         val local = SecurityStorage.findByGoogleEmail(context, user.email)
