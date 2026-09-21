@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.dashboard.DashboardActivity
+import com.tamanna.enterprise.business.LicenseActivationActivity
+import com.tamanna.enterprise.business.LicenseStorage
 import com.tamanna.enterprise.security.CloudAccessManager
 import com.tamanna.enterprise.security.LoginActivity
 import com.tamanna.enterprise.security.SecurityStorage
@@ -17,6 +19,12 @@ class MainActivity : ComponentActivity() {
 
         SecurityStorage.ensureInitialized(this)
         NotificationScheduler.scheduleDaily(this)
+
+        if (!LicenseStorage.isActive(this)) {
+            startActivity(Intent(this, LicenseActivationActivity::class.java))
+            finish()
+            return
+        }
 
         val partnerSession = com.tamanna.enterprise.partner.PartnerStorage.getCurrentPartner(this)
         if (partnerSession != null) {
