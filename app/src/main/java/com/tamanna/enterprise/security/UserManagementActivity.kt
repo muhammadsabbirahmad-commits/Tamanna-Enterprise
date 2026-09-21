@@ -41,6 +41,7 @@ class UserManagementActivity : ComponentActivity() {
             var loading by remember { mutableStateOf(true) }
             var message by remember { mutableStateOf("") }
             var refresh by remember { mutableStateOf(0) }
+            var pendingAction by remember { mutableStateOf<Pair<String, CloudAccessUser>?>(null) }
 
             LaunchedEffect(refresh) {
                 loading = true
@@ -51,104 +52,144 @@ class UserManagementActivity : ComponentActivity() {
                 }
             }
 
-            val pending = users.filter { !it.approved && it.role == SecurityStorage.ROLE_PARTNER }
+            val pending = users.filter { !it.approved && !it.blocked && it.role == SecurityStorage.ROLE_PARTNER }
             val approvedAdmins = users.filter { it.approved && it.role == SecurityStorage.ROLE_ADMIN }
-            val approvedPartners = users.filter { it.approved && it.role == SecurityStorage.ROLE_PARTNER }
+            val activePartners = users.filter { it.approved && !it.blocked && it.role == SecurityStorage.ROLE_PARTNER }
+            val blockedPartners = users.filter { it.blocked && it.role == SecurityStorage.ROLE_PARTNER }
 
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-                        Text("ইউজার ম্যানেজমেন্ট", style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Google account-ই পরিচয়। Gmail connected থাকলেই Admin হওয়া যাবে না।",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-
-                        Spacer(Modifier.height(18.dp))
+                    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                        Text("ইউজার ম্যানেজমেন্ট", style = MaterialTheme.typography.headlineSmall)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Partner access এখান থেকেই নিয়ন্ত্রণ করুন।", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(12.dp))
 
                         if (loading) {
                             Text("তালিকা লোড হচ্ছে...")
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                item {
-                                    Text("অনুমোদিত Admin", style = MaterialTheme.typography.titleLarge)
-                                }
+                                item { Text("অনুমোদিত Admin", style = MaterialTheme.typography.titleMedium) }
                                 if (approvedAdmins.isEmpty()) {
-                                    item { Text("কোনো অনুমোদিত Admin পাওয়া যায়নি।") }
+                                    item { Text("কোনো Admin নেই।", style = MaterialTheme.typography.bodySmall) }
                                 } else {
                                     items(approvedAdmins, key = { "admin-" + it.uid }) { user ->
-                                        UserRow(
-                                            user = user,
-                                            actionLabel = null,
-                                            onAction = {}
-                                        )
+                                        UserRow(user, "🟢 Active", emptyList(), {}, {})
                                     }
                                 }
 
                                 item {
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("অনুমোদিত Partner", style = MaterialTheme.typography.titleLarge)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Active Partner", style = MaterialTheme.typography.titleMedium)
                                 }
-                                if (approvedPartners.isEmpty()) {
-                                    item { Text("কোনো অনুমোদিত Partner নেই।") }
+                                if (activePartners.isEmpty()) {
+                                    item { Text("কোনো Active Partner নেই।", style = MaterialTheme.typography.bodySmall) }
                                 } else {
-                                    items(approvedPartners, key = { "partner-" + it.uid }) { user ->
+                                    items(activePartners, key = { "active-" + it.uid }) { user ->
                                         UserRow(
                                             user = user,
-                                            actionLabel = "অ্যাক্সেস বাতিল",
-                                            onAction = {
-                                                CloudAccessManager.revokeUser(this@UserManagementActivity, user.uid) { ok, msg ->
-                                                    message = msg
-                                                    if (ok) refresh++
-                                                }
-                                            }
+                                            statusLabel = "🟢 Active",
+                                            actions = listOf("Block", "Remove"),
+                                            onAction = { action -> pendingAction = action to user }
                                         )
                                     }
                                 }
 
                                 item {
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Pending Partner", style = MaterialTheme.typography.titleLarge)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Blocked Partner", style = MaterialTheme.typography.titleMedium)
+                                }
+                                if (blockedPartners.isEmpty()) {
+                                    item { Text("কোনো Blocked Partner নেই।", style = MaterialTheme.typography.bodySmall) }
+                                } else {
+                                    items(blockedPartners, key = { "blocked-" + it.uid }) { user ->
+                                        UserRow(
+                                            user = user,
+                                            statusLabel = "🔴 Blocked",
+                                            actions = listOf("Unblock", "Remove"),
+                                            onAction = { action -> pendingAction = action to user }
+                                        )
+                                    }
+                                }
+
+                                item {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Pending Partner", style = MaterialTheme.typography.titleMedium)
                                 }
                                 if (pending.isEmpty()) {
-                                    item { Text("অনুমোদনের অপেক্ষায় কোনো Partner নেই।") }
+                                    item { Text("অনুমোদনের অপেক্ষায় কেউ নেই।", style = MaterialTheme.typography.bodySmall) }
                                 } else {
                                     items(pending, key = { "pending-" + it.uid }) { user ->
                                         UserRow(
                                             user = user,
-                                            actionLabel = "অনুমোদন করুন",
-                                            secondaryActionLabel = "প্রত্যাখ্যান করুন",
-                                            onAction = {
-                                                CloudAccessManager.approvePartner(
-                                                    this@UserManagementActivity,
-                                                    user.uid
-                                                ) { ok, msg ->
-                                                    message = msg
-                                                    if (ok) refresh++
-                                                }
-                                            },
-                                            onSecondaryAction = {
-                                                CloudAccessManager.rejectPendingPartner(user.uid) { ok, msg ->
-                                                    message = msg
-                                                    if (ok) refresh++
-                                                }
-                                            }
+                                            statusLabel = "🟡 Pending",
+                                            actions = listOf("Approve", "Reject"),
+                                            onAction = { action -> pendingAction = action to user }
                                         )
                                     }
                                 }
 
                                 if (message.isNotBlank()) {
                                     item {
-                                        Spacer(Modifier.height(8.dp))
+                                        Spacer(Modifier.height(4.dp))
                                         Text(message, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                             }
                         }
+                    }
+
+                    val action = pendingAction
+                    if (action != null) {
+                        val (type, user) = action
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { pendingAction = null },
+                            title = { Text(type) },
+                            text = {
+                                Text(
+                                    when (type) {
+                                        "Block" -> "এই Partner-এর প্রবেশ সাময়িকভাবে বন্ধ করবেন?"
+                                        "Unblock" -> "এই Partner-এর প্রবেশ আবার চালু করবেন?"
+                                        "Remove" -> "এই Partner-কে তালিকা থেকে সম্পূর্ণভাবে Remove করবেন?"
+                                        "Approve" -> "এই Partner-এর আবেদন অনুমোদন করবেন?"
+                                        else -> "এই Partner-এর আবেদন প্রত্যাখ্যান করবেন?"
+                                    }
+                                )
+                            },
+                            confirmButton = {
+                                Button(onClick = {
+                                    pendingAction = null
+                                    when (type) {
+                                        "Block" -> CloudAccessManager.blockPartner(this@UserManagementActivity, user.uid) { ok, msg ->
+                                            message = msg
+                                            if (ok) refresh++
+                                        }
+                                        "Unblock" -> CloudAccessManager.unblockPartner(this@UserManagementActivity, user.uid) { ok, msg ->
+                                            message = msg
+                                            if (ok) refresh++
+                                        }
+                                        "Remove" -> CloudAccessManager.removePartner(user.uid) { ok, msg ->
+                                            message = msg
+                                            if (ok) refresh++
+                                        }
+                                        "Approve" -> CloudAccessManager.approvePartner(this@UserManagementActivity, user.uid) { ok, msg ->
+                                            message = msg
+                                            if (ok) refresh++
+                                        }
+                                        "Reject" -> CloudAccessManager.rejectPendingPartner(user.uid) { ok, msg ->
+                                            message = msg
+                                            if (ok) refresh++
+                                        }
+                                    }
+                                }) { Text("হ্যাঁ") }
+                            },
+                            dismissButton = {
+                                Button(onClick = { pendingAction = null }) { Text("না") }
+                            }
+                        )
                     }
                 }
             }
@@ -158,28 +199,31 @@ class UserManagementActivity : ComponentActivity() {
     @androidx.compose.runtime.Composable
     private fun UserRow(
         user: CloudAccessUser,
-        actionLabel: String?,
-        secondaryActionLabel: String? = null,
-        onAction: () -> Unit,
-        onSecondaryAction: () -> Unit = {}
+        statusLabel: String,
+        actions: List<String>,
+        onAction: (String) -> Unit,
+        @Suppress("UNUSED_PARAMETER") onSecondaryAction: () -> Unit
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            tonalElevation = 2.dp,
+            shape = MaterialTheme.shapes.medium
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(user.email, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    SecurityStorage.roleLabel(user.role) +
-                        if (user.approved) " • অনুমোদিত" else " • অনুমোদনের অপেক্ষায়",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            if (actionLabel != null) {
-                Button(onClick = onAction) { Text(actionLabel) }
-            }
-            if (secondaryActionLabel != null) {
-                Button(onClick = onSecondaryAction) { Text(secondaryActionLabel) }
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(user.email, style = MaterialTheme.typography.bodyMedium)
+                Text(statusLabel, style = MaterialTheme.typography.bodySmall)
+                if (actions.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        actions.forEach { action ->
+                            Button(onClick = { onAction(action) }) {
+                                Text(action)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
