@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.purchase
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,7 +22,7 @@ object SupplierDueStorage {
     private const val SUPPLIERS_KEY = "suppliers"
 
     fun getEntries(context: Context): List<SupplierDueEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
+        val raw = BusinessStorage.prefs(context, PREFS).getString(KEY, "[]") ?: "[]"
         val array = JSONArray(raw)
         return buildList {
             for (i in 0 until array.length()) {
@@ -33,7 +34,7 @@ object SupplierDueStorage {
     }
 
     fun getSuppliers(context: Context): List<Supplier> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(SUPPLIERS_KEY, "[]") ?: "[]"
+        val raw = BusinessStorage.prefs(context, PREFS).getString(SUPPLIERS_KEY, "[]") ?: "[]"
         val a = JSONArray(raw)
         return buildList {
             for (i in 0 until a.length()) {
@@ -88,7 +89,7 @@ object SupplierDueStorage {
                 put("type", it.type); put("amount", it.amount); put("note", it.note)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
     }
 
     private fun now(): String =
