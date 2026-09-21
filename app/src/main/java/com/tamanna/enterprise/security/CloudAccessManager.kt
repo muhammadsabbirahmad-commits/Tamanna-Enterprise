@@ -13,6 +13,12 @@ object CloudAccessManager {
 
     fun resolveGoogleLogin(context:Context,email:String,adminLogin:Boolean,onResult:(Boolean,String,CloudAccessUser?)->Unit){
         val u=auth().currentUser ?: run { onResult(false,"Google authentication সম্পন্ন হয়নি।",null); return }
+        val verifiedEmail = u.email?.trim().orEmpty()
+        if (verifiedEmail.isBlank()) {
+            auth().signOut()
+            onResult(false, "Google account-এর verified email পাওয়া যায়নি।", null)
+            return
+        }
         val b=BusinessAccountStorage.get(context)
         if(b.businessId.isBlank()||b.businessId==BusinessAccountStorage.LEGACY_BUSINESS_ID||!LicenseStorage.isActive(context)){
             auth().signOut()
@@ -28,26 +34,26 @@ object CloudAccessManager {
                     !adminLogin&&m.role!="PARTNER" -> { auth().signOut(); onResult(false,"এই Gmail Partner account হিসেবে অনুমোদিত নয়।",null) }
                     else -> {
                         val role=if(m.role=="OWNER") SecurityStorage.ROLE_ADMIN else SecurityStorage.ROLE_PARTNER
-                        val user=CloudAccessUser(u.uid,email.trim(),role,true,false)
+                        val user=CloudAccessUser(u.uid,verifiedEmail,role,true,false)
                         if(role==SecurityStorage.ROLE_ADMIN) BusinessAccountStorage.setOwnerUid(context,u.uid)
                         saveLocalLogin(context,user)
                         onResult(true,"",user)
                     }
                 }
             } else if(adminLogin){
-                BusinessMembershipManager.createOrUpdateOwner(b.businessId,email.trim()){ok,msg->
+                BusinessMembershipManager.createOrUpdateOwner(b.businessId,verifiedEmail){ok,msg->
                     if(!ok){ auth().signOut(); onResult(false,msg,null) }
                     else {
-                        val user=CloudAccessUser(u.uid,email.trim(),SecurityStorage.ROLE_ADMIN,true,false)
+                        val user=CloudAccessUser(u.uid,verifiedEmail,SecurityStorage.ROLE_ADMIN,true,false)
                         BusinessAccountStorage.setOwnerUid(context,u.uid)
                         saveLocalLogin(context,user)
                         onResult(true,"",user)
                     }
                 }
             } else {
-                BusinessMembershipManager.requestPartner(b.businessId,email.trim()){ok,msg->
+                BusinessMembershipManager.requestPartner(b.businessId,verifiedEmail){ok,msg->
                     auth().signOut()
-                    onResult(false,msg,if(ok) CloudAccessUser(u.uid,email.trim(),SecurityStorage.ROLE_PARTNER,false,false) else null)
+                    onResult(false,msg,if(ok) CloudAccessUser(u.uid,verifiedEmail,SecurityStorage.ROLE_PARTNER,false,false) else null)
                 }
             }
         }
