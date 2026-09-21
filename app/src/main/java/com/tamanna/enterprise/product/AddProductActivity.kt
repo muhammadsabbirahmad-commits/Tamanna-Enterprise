@@ -32,7 +32,6 @@ class AddProductActivity : ComponentActivity() {
 @androidx.compose.runtime.Composable
 fun AddProductScreen() {
     val context = LocalContext.current
-    var productCode by remember { mutableStateOf("") }
     var productName by remember { mutableStateOf("") }
     var purchasePrice by remember { mutableStateOf("") }
     var salePrice by remember { mutableStateOf("") }
@@ -45,7 +44,8 @@ fun AddProductScreen() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("নতুন পণ্য যোগ করুন", style = MaterialTheme.typography.headlineMedium)
-                OutlinedTextField(productCode, { productCode = it }, label = { Text("Product Code") }, modifier = Modifier.fillMaxWidth())
+                Text("অটোমেটিক Product Code: ${ProductStorage.nextProductCode(context)}", style = MaterialTheme.typography.titleMedium)
+                Text("কোড নিজে টাইপ করতে হবে না। প্রতিটি নতুন পণ্যের জন্য ইউনিক কোড তৈরি হবে।")
                 OutlinedTextField(productName, { productName = it }, label = { Text("পণ্যের নাম") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(purchasePrice, { purchasePrice = it }, label = { Text("ক্রয়মূল্য") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(salePrice, { salePrice = it }, label = { Text("বিক্রয়মূল্য") }, modifier = Modifier.fillMaxWidth())
@@ -57,8 +57,8 @@ fun AddProductScreen() {
                         val sale = salePrice.toDoubleOrNull()
                         val stock = stockQuantity.toIntOrNull()
                         when {
-                            productCode.isBlank() || productName.isBlank() ->
-                                Toast.makeText(context, "Product Code ও পণ্যের নাম দিন", Toast.LENGTH_SHORT).show()
+                            productName.isBlank() ->
+                                Toast.makeText(context, "পণ্যের নাম দিন", Toast.LENGTH_SHORT).show()
                             purchase == null || purchase < 0 ->
                                 Toast.makeText(context, "সঠিক ক্রয়মূল্য দিন", Toast.LENGTH_SHORT).show()
                             sale == null || sale < 0 ->
@@ -68,13 +68,13 @@ fun AddProductScreen() {
                             else -> {
                                 val saved = ProductStorage.addProduct(
                                     context,
-                                    Product(productCode.trim(), productName.trim(), purchase, sale, stock)
+                                    Product(ProductStorage.nextProductCode(context), productName.trim(), purchase, sale, stock)
                                 )
                                 if (saved) {
                                     Toast.makeText(context, "পণ্য সফলভাবে সংরক্ষণ হয়েছে", Toast.LENGTH_SHORT).show()
                                     (context as? ComponentActivity)?.finish()
                                 } else {
-                                    Toast.makeText(context, "এই Product Code আগে থেকেই আছে", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "পণ্য সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
