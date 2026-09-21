@@ -73,6 +73,26 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
+    // Commercial license records. License documents are readable only by
+    // authenticated users; only the approved Admin can manage them.
+    match /licenses/{licenseCode} {
+      allow read: if signedIn();
+      allow create, update, delete: if admin();
+    }
+
+    // Business identity and membership foundation.
+    match /businesses/{businessId} {
+      allow read: if approvedUser()
+        && exists(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid));
+      allow create, update, delete: if admin();
+
+      match /members/{memberId} {
+        allow read: if approvedUser()
+          && (request.auth.uid == memberId || admin());
+        allow create, update, delete: if admin();
+      }
+    }
+
     // Business data: Admin has full access; approved Partners/Viewers are
     // read-only. Each user's cloud data remains isolated unless the requester
     // is the approved Admin.
