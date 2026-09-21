@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.product.ProductStorage
+import com.tamanna.enterprise.security.ActivityLogStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -160,29 +161,36 @@ private fun AddPurchaseScreen(
                 val paidAmount = paid.toDoubleOrNull() ?: 0.0
                 val totalAmount = (qty ?: 0) * (price ?: 0.0)
                 val dueAmount = totalAmount - paidAmount
+                val latestProduct = productCode.trim().takeIf { it.isNotBlank() }?.let { code ->
+                    ProductStorage.getProducts(context).firstOrNull {
+                        it.code.equals(code, ignoreCase = true)
+                    }
+                }
 
                 when {
-                    selectedProduct == null -> message = "সঠিক পণ্য কোড দিন।"
+                    latestProduct == null -> message = "সঠিক পণ্য কোড দিন।"
                     qty == null || qty <= 0 -> message = "সঠিক পরিমাণ দিন।"
                     price == null || price < 0 -> message = "সঠিক ক্রয়মূল্য দিন।"
+                    latestProduct.stockQuantity > Int.MAX_VALUE - qty -> message = "স্টক সীমা অতিক্রম করছে।"
                     paidAmount < 0 || paidAmount > totalAmount -> message = "পরিশোধের পরিমাণ মোট ক্রয়মূল্যের মধ্যে দিন।"
                     dueAmount > 0 && supplier.trim().isBlank() -> message = "বাকি ক্রয়ের জন্য সরবরাহকারীর নাম দিন।"
                     else -> {
-                        ProductStorage.updateProduct(
-                            context,
-                            selectedProduct.copy(
-                                purchasePrice = price,
-                                stockQuantity = selectedProduct.stockQuantity + qty
-                            )
+                        val updatedProduct = latestProduct.copy(
+                            purchasePrice = price,
+                            stockQuantity = latestProduct.stockQuantity + qty
                         )
+                        ProductStorage.updateProduct(context, updatedProduct)
+
+                        val purchaseId = System.currentTimeMillis()
+                        val purchaseDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
 
                         PurchaseStorage.addPurchase(
                             context,
                             Purchase(
-                                id = System.currentTimeMillis(),
-                                date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
-                                productCode = selectedProduct.code,
-                                productName = selectedProduct.name,
+                                id = purchaseId,
+                                date = purchaseDate,
+                                productCode = latestProduct.code,
+                                productName = latestProduct.name,
                                 quantity = qty,
                                 purchasePrice = price,
                                 supplier = supplier.trim(),
@@ -194,9 +202,15 @@ private fun AddPurchaseScreen(
                                 context,
                                 supplier.trim(),
                                 dueAmount,
-                                "ক্রয়: " + selectedProduct.name + " x" + qty + if (memoNumber.isBlank()) "" else " • মেমো " + memoNumber.trim()
+                                "ক্রয়: " + latestProduct.name + " x" + qty + if (memoNumber.isBlank()) "" else " • মেমো " + memoNumber.trim()
                             )
                         }
+                        ActivityLogStorage.add(
+                            context,
+                            "পণ্য ক্রয় ও Stock In",
+                            latestProduct.name + " (" + latestProduct.code + ") x" + qty +
+                                " • নতুন স্টক: " + updatedProduct.stockQuantity
+                        )
                         onSaved()
                     }
                 }
