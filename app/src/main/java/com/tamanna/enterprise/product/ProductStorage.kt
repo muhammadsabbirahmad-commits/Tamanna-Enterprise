@@ -9,12 +9,14 @@ data class Product(
     val name: String,
     val purchasePrice: Double,
     val salePrice: Double,
-    val stockQuantity: Int
+    val stockQuantity: Int,
+    val createdAt: Long = System.currentTimeMillis()
 )
 
 object ProductStorage {
     private const val PREFS = "tamanna_enterprise_products"
     private const val KEY_PRODUCTS = "products"
+    private const val KEY_NEXT_CODE = "next_product_code"
 
     fun getProducts(context: Context): List<Product> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -28,16 +30,35 @@ object ProductStorage {
                     item.getString("name"),
                     item.getDouble("purchasePrice"),
                     item.getDouble("salePrice"),
-                    item.getInt("stockQuantity")
+                    item.getInt("stockQuantity"),
+                    item.optLong("createdAt", i.toLong())
                 ))
             }
         }
     }
 
+    fun nextProductCode(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = prefs.getInt(KEY_NEXT_CODE, -1)
+        if (stored >= 1) return "P-" + stored.toString().padStart(4, '0')
+        val maxExisting = getProducts(context).mapNotNull { p ->
+            Regex("^P-(\\\\d+)$", RegexOption.IGNORE_CASE).matchEntire(p.code.trim())?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }.maxOrNull() ?: 0
+        val next = maxExisting + 1
+        prefs.edit().putInt(KEY_NEXT_CODE, next).apply()
+        return "P-" + next.toString().padStart(4, '0')
+    }
+
     fun addProduct(context: Context, product: Product): Boolean {
         val products = getProducts(context).toMutableList()
         if (products.any { it.code.equals(product.code, ignoreCase = true) }) return false
-        products.add(product)
+        val nextNumber = product.code.removePrefix("P-").toIntOrNull()
+        if (nextNumber != null) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val currentNext = prefs.getInt(KEY_NEXT_CODE, 1)
+            if (nextNumber >= currentNext) prefs.edit().putInt(KEY_NEXT_CODE, nextNumber + 1).apply()
+        }
+        products.add(product.copy(createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()))
         saveProducts(context, products)
         return true
     }
@@ -72,6 +93,7 @@ object ProductStorage {
                 put("purchasePrice", it.purchasePrice)
                 put("salePrice", it.salePrice)
                 put("stockQuantity", it.stockQuantity)
+                put("createdAt", it.createdAt)
             })
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
