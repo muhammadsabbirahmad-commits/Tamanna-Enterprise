@@ -194,8 +194,24 @@ fun ProductScreen(
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (canWrite) {
-                        Button(onClick = { selectedProduct = null; editingProduct = product }) { Text("Edit") }
-                        Button(onClick = { selectedProduct = null; stockProduct = product }) { Text("Stock") }
+                        Button(onClick = {
+                            val latest = ProductStorage.getProducts(context).firstOrNull {
+                                it.code.equals(product.code, ignoreCase = true)
+                            }
+                            if (latest != null) {
+                                selectedProduct = null
+                                editingProduct = latest
+                            }
+                        }) { Text("Edit") }
+                        Button(onClick = {
+                            val latest = ProductStorage.getProducts(context).firstOrNull {
+                                it.code.equals(product.code, ignoreCase = true)
+                            }
+                            if (latest != null) {
+                                selectedProduct = null
+                                stockProduct = latest
+                            }
+                        }) { Text("Stock") }
                     }
                 }
             },
