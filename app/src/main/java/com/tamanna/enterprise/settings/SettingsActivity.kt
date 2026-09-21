@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.dashboard.TamannaTheme
 
 object SettingsStorage {
@@ -42,7 +43,7 @@ object SettingsStorage {
     private const val DEFAULT_SHOP_NAME = "Tamanna Enterprise"
 
     fun getShopName(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .getString(KEY_SHOP_NAME, DEFAULT_SHOP_NAME)
             ?: DEFAULT_SHOP_NAME
 
