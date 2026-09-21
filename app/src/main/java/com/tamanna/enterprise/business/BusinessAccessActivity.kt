@@ -120,7 +120,8 @@ class BusinessAccessActivity : ComponentActivity() {
             runOnUiThread {
                 if (member != null && member.approved && !member.blocked) {
                     val email = member.email.ifBlank { user.email.orEmpty() }
-                    val local = SecurityStorage.upsertGoogleUser(this, email, member.role, true, user.uid)
+                    val localRole = if (member.role == "OWNER") SecurityStorage.ROLE_ADMIN else member.role
+                    val local = SecurityStorage.upsertGoogleUser(this, email, localRole, true, user.uid)
                     SecurityStorage.login(this, local)
                     openDashboard()
                 } else {
