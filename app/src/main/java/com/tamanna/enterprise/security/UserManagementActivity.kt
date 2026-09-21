@@ -45,7 +45,7 @@ class UserManagementActivity : ComponentActivity() {
 
             LaunchedEffect(refresh) {
                 loading = true
-                CloudAccessManager.listUsers { result, error ->
+                CloudAccessManager.listBusinessMembers(this@UserManagementActivity) { result, error ->
                     users = result
                     message = error.orEmpty()
                     loading = false
@@ -171,7 +171,7 @@ class UserManagementActivity : ComponentActivity() {
                                             message = msg
                                             if (ok) refresh++
                                         }
-                                        "Remove" -> CloudAccessManager.removePartner(user.uid) { ok, msg ->
+                                        "Remove" -> CloudAccessManager.removePartner(this@UserManagementActivity, user.uid) { ok, msg ->
                                             message = msg
                                             if (ok) refresh++
                                         }
@@ -179,7 +179,7 @@ class UserManagementActivity : ComponentActivity() {
                                             message = msg
                                             if (ok) refresh++
                                         }
-                                        "Reject" -> CloudAccessManager.rejectPendingPartner(user.uid) { ok, msg ->
+                                        "Reject" -> CloudAccessManager.removePartner(this@UserManagementActivity, user.uid) { ok, msg ->
                                             message = msg
                                             if (ok) refresh++
                                         }
