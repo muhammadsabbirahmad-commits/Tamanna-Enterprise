@@ -1,38 +1,25 @@
 package com.tamanna.enterprise.reports
 
+import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.due.CustomerDueStorage
+import com.tamanna.enterprise.finance.ExpenseStorage
+import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
+import com.tamanna.enterprise.purchase.SupplierDueStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 class ReportsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,183 +28,116 @@ class ReportsActivity : ComponentActivity() {
     }
 }
 
+private data class ReportOption(val key: String, val title: String)
+
 @Composable
 private fun ReportsScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var fromDate by remember {
-        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+    val context = LocalContext.current
+    val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    var fromDate by remember { mutableStateOf(today) }
+    var toDate by remember { mutableStateOf(today) }
+    val options = remember {
+        listOf(
+            ReportOption("stock", "পণ্য ও বর্তমান স্টক"),
+            ReportOption("purchase", "ক্রয় হিসাব"),
+            ReportOption("sales", "বিক্রয় হিসাব"),
+            ReportOption("profit", "লাভের হিসাব"),
+            ReportOption("partners", "পার্টনার বিনিয়োগ ও লাভের অংশ"),
+            ReportOption("withdrawal", "পার্টনার উত্তোলন"),
+            ReportOption("expense", "ব্যবসার খরচ"),
+            ReportOption("damage", "নষ্ট/ড্যামেজ পণ্য"),
+            ReportOption("customerDue", "কাস্টমারের বাকি"),
+            ReportOption("supplierDue", "সাপ্লায়ারের বাকি")
+        )
     }
-    var toDate by remember {
-        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+    val selected = remember { mutableStateMapOf<String, Boolean>().apply { options.forEach { this[it.key] = true } } }
+    var message by remember { mutableStateOf("") }
+
+    fun chooseDate(isFrom: Boolean) {
+        val current = (if (isFrom) fromDate else toDate).split("-")
+        val y = current.getOrNull(0)?.toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
+        val m = (current.getOrNull(1)?.toIntOrNull() ?: 1) - 1
+        val d = current.getOrNull(2)?.toIntOrNull() ?: 1
+        DatePickerDialog(context, { _, year, month, day ->
+            val value = "%04d-%02d-%02d".format(year, month + 1, day)
+            if (isFrom) fromDate = value else toDate = value
+        }, y, m, d).show()
     }
 
-    val sales = SalesStorage.getSales(context)
-    val purchases = PurchaseStorage.getPurchases(context)
-    var stockRefresh by remember { mutableStateOf(0) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) stockRefresh++
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    val products = remember(stockRefresh) { ProductStorage.getProducts(context) }
-
-    val validRange = fromDate.length == 10 &&
-        toDate.length == 10 &&
+    val validRange = runCatching {
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }.parse(fromDate)
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }.parse(toDate)
         fromDate <= toDate
+    }.getOrDefault(false)
 
-    val rangeSales = if (validRange) {
-        sales.filter {
-            val date = it.date.substringBefore(" ")
-            date in fromDate..toDate
-        }
-    } else {
-        emptyList()
-    }
+    fun inRange(date: String): Boolean = date.substringBefore(" ") in fromDate..toDate
 
-    val rangePurchases = if (validRange) {
-        purchases.filter {
-            val date = it.date.substringBefore(" ")
-            date in fromDate..toDate
-        }
-    } else {
-        emptyList()
-    }
+    val sales = SalesStorage.getSales(context).filter { inRange(it.date) }
+    val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
+    val products = ProductStorage.getProducts(context)
+    val expenses = ExpenseStorage.getExpenses(context).filter { inRange(it.date) }
+    val withdrawals = ExpenseStorage.getWithdrawals(context).filter { inRange(it.date) }
+    val damages = ExpenseStorage.getDamages(context).filter { inRange(it.date) }
+    val customerDue = CustomerDueStorage.getEntries(context).filter { inRange(it.date) }
+    val supplierDue = SupplierDueStorage.getEntries(context).filter { inRange(it.date) }
+    val partners = PartnerStorage.getPartners(context)
 
-    val salesAmount = rangeSales.sumOf { it.quantity * it.salePrice }
-    val costOfSales = rangeSales.sumOf { it.quantity * it.purchasePrice }
-    val profit = salesAmount - costOfSales
-    val purchaseAmount = rangePurchases.sumOf { it.quantity * it.purchasePrice }
-    val soldUnits = rangeSales.sumOf { it.quantity }
-    val purchasedUnits = rangePurchases.sumOf { it.quantity }
-    val currentStockUnits = products.sumOf { it.stockQuantity }
-    val stockValueAtPurchase = products.sumOf { it.stockQuantity * it.purchasePrice }
+    val canExport = validRange && selected.values.any { it }
 
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Text("বিস্তারিত রিপোর্ট", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        if (validRange) {
-                            ReportPdfExporter.exportAndShare(
-                                context = context,
-                                fromDate = fromDate,
-                                toDate = toDate,
-                                sales = rangeSales,
-                                purchases = rangePurchases,
-                                currentStockUnits = currentStockUnits,
-                                stockValueAtPurchase = stockValueAtPurchase
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    Text("PDF রিপোর্ট কাস্টমাইজ", style = MaterialTheme.typography.headlineSmall)
+                    Text("তারিখ নির্বাচন করুন এবং যে হিসাব চান শুধু সেগুলোতে টিক দিন।")
+                }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { chooseDate(true) }, Modifier.weight(1f)) { Text("শুরু: " + fromDate) }
+                        OutlinedButton(onClick = { chooseDate(false) }, Modifier.weight(1f)) { Text("শেষ: " + toDate) }
+                    }
+                }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { options.forEach { selected[it.key] = true } }, Modifier.weight(1f)) { Text("☑ সবগুলো") }
+                        OutlinedButton(onClick = { options.forEach { selected[it.key] = false } }, Modifier.weight(1f)) { Text("সব বাদ") }
+                    }
+                }
+                items(options.size) { index ->
+                    val option = options[index]
+                    Card(Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                            Checkbox(
+                                checked = selected[option.key] == true,
+                                onCheckedChange = { selected[option.key] = it }
                             )
-                        }
-                    },
-                    enabled = validRange,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("PDF রিপোর্ট তৈরি ও শেয়ার") }
-                Spacer(Modifier.height(10.dp))
-
-                OutlinedTextField(
-                    value = fromDate,
-                    onValueChange = { fromDate = it },
-                    label = { Text("শুরুর তারিখ (yyyy-MM-dd)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = toDate,
-                    onValueChange = { toDate = it },
-                    label = { Text("শেষ তারিখ (yyyy-MM-dd)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                if (!validRange) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("তারিখের ফরম্যাট বা তারিখের পরিসর সঠিক নয়।")
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportCard("মোট বিক্রয়", "৳ %.2f".format(salesAmount), Modifier.weight(1f))
-                    ReportCard("ক্রয় ব্যয়", "৳ %.2f".format(purchaseAmount), Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportCard("লাভ", "৳ %.2f".format(profit), Modifier.weight(1f))
-                    ReportCard("বর্তমান স্টক", "\${currentStockUnits ইউনিট", Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(8.dp))
-                Text("বিক্রিত: \${soldUnits ইউনিট | ক্রয়কৃত: \${purchasedUnits ইউনিট")
-                Text("বিক্রয়ের পণ্যমূল্য: ৳ %.2f".format(costOfSales))
-                Text("বর্তমান স্টকের ক্রয়মূল্য: ৳ %.2f".format(stockValueAtPurchase))
-
-                Spacer(Modifier.height(14.dp))
-                Text("বিক্রয় বিস্তারিত", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(6.dp))
-
-                if (rangeSales.isEmpty()) {
-                    Text("নির্বাচিত সময়ে কোনো বিক্রয় নেই।")
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(rangeSales, key = { it.id }) { sale ->
-                            Card(Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(sale.productName, style = MaterialTheme.typography.titleMedium)
-                                    Text("কোড: \${{sale.productCode}")
-                                    Text("পরিমাণ: \${{sale.quantity} ইউনিট")
-                                    Text("বিক্রয়: ৳ %.2f".format(sale.quantity * sale.salePrice))
-                                    Text("লাভ: ৳ %.2f".format(
-                                        sale.quantity * (sale.salePrice - sale.purchasePrice)
-                                    ))
-                                    Text("তারিখ: \${{sale.date}")
-                                    if (sale.customer.isNotBlank()) Text("ক্রেতা: \${{sale.customer}")
-                                }
-                            }
-                        }
-
-                        item {
-                            Spacer(Modifier.height(8.dp))
-                            Text("ক্রয় বিস্তারিত", style = MaterialTheme.typography.titleLarge)
-                        }
-
-                        if (rangePurchases.isEmpty()) {
-                            item { Text("নির্বাচিত সময়ে কোনো ক্রয় নেই।") }
-                        } else {
-                            items(rangePurchases, key = { it.id }) { purchase ->
-                                Card(Modifier.fillMaxWidth()) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(purchase.productName, style = MaterialTheme.typography.titleMedium)
-                                        Text("কোড: \${{purchase.productCode}")
-                                        Text("পরিমাণ: \${{purchase.quantity} ইউনিট")
-                                        Text("ক্রয়মূল্য: ৳ %.2f".format(purchase.quantity * purchase.purchasePrice))
-                                        Text("তারিখ: \${{purchase.date}")
-                                        if (purchase.supplier.isNotBlank()) Text("সরবরাহকারী: \${{purchase.supplier}")
-                                        if (purchase.memoNumber.isNotBlank()) Text("মেমো: \${{purchase.memoNumber}")
-                                    }
-                                }
-                            }
+                            Text(option.title, Modifier.padding(top = 12.dp))
                         }
                     }
                 }
+                item {
+                    Button(
+                        onClick = {
+                            message = ReportPdfExporter.exportToDownloads(
+                                context, fromDate, toDate,
+                                selected = selected.filterValues { it }.keys,
+                                sales = sales, purchases = purchases, products = products,
+                                partners = partners, expenses = expenses, withdrawals = withdrawals,
+                                damages = damages, customerDue = customerDue, supplierDue = supplierDue
+                            )
+                        },
+                        enabled = canExport,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("📄 PDF তৈরি ও Download") }
+                    if (message.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(message)
+                    }
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun ReportCard(title: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(12.dp).fillMaxWidth()) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            Text(value, style = MaterialTheme.typography.titleMedium)
         }
     }
 }
