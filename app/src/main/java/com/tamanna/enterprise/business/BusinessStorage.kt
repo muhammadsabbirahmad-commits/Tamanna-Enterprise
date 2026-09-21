@@ -12,14 +12,18 @@ import android.content.Context
 object BusinessStorage {
     private const val META_PREFS = "tamanna_business_context"
     private const val ACTIVE_BUSINESS_ID = "active_business_id"
-    const val LEGACY_BUSINESS_ID = "legacy-business"
+    const val LEGACY_BUSINESS_ID = BusinessAccountStorage.LEGACY_BUSINESS_ID
 
-    fun getActiveBusinessId(context: Context): String =
-        context.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE)
+    fun getActiveBusinessId(context: Context): String {
+        BusinessAccountStorage.ensureInitialized(context)
+        val accountId = BusinessAccountStorage.get(context).businessId
+        if (accountId.isNotBlank()) return accountId
+        return context.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE)
             .getString(ACTIVE_BUSINESS_ID, LEGACY_BUSINESS_ID)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: LEGACY_BUSINESS_ID
+    }
 
     fun setActiveBusinessId(context: Context, businessId: String) {
         val clean = businessId.trim()
@@ -28,6 +32,8 @@ object BusinessStorage {
             .edit()
             .putString(ACTIVE_BUSINESS_ID, clean)
             .apply()
+        BusinessAccountStorage.ensureInitialized(context)
+        BusinessAccountStorage.setActiveBusinessId(context, clean)
     }
 
     fun isLegacyBusiness(context: Context): Boolean =
