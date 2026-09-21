@@ -94,14 +94,13 @@ service cloud.firestore {
               && request.resource.data.role == "PARTNER"
               && request.resource.data.approved == false
               && request.resource.data.blocked == false);
-        allow update, delete: if businessAdmin(businessId)
-          && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid;
-
         allow update: if businessAdmin(businessId)
           && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid
           && request.resource.data.uid == memberId
           && request.resource.data.role == "PARTNER"
           && request.resource.data.email == resource.data.email;
+        allow delete: if businessAdmin(businessId)
+          && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid;
       }
 
       match /data/{document} {
