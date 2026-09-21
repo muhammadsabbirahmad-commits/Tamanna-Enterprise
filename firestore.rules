@@ -14,6 +14,7 @@ service cloud.firestore {
     function approvedUser() {
       return signedIn()
         && currentAccess().data.approved == true
+        && currentAccess().data.blocked != true
         && (
           currentAccess().data.role == "ADMIN" ||
           currentAccess().data.role == "PARTNER" ||
@@ -24,6 +25,7 @@ service cloud.firestore {
     function admin() {
       return signedIn()
         && currentAccess().data.approved == true
+        && currentAccess().data.blocked != true
         && currentAccess().data.role == "ADMIN";
     }
 
@@ -94,6 +96,7 @@ service cloud.firestore {
     }
 
     // Legacy user-scoped data is retained temporarily for migration.
+    // Blocked/revoked accounts cannot read the legacy data.
     match /users/{userId}/data/{document} {
       allow read: if approvedUser() && (request.auth.uid == userId || admin());
       allow write: if admin();
