@@ -41,13 +41,20 @@ object ProductStorage {
 
     fun nextProductCode(context: Context): String {
         val prefs = BusinessStorage.prefs(context, PREFS)
-        val stored = prefs.getInt(KEY_NEXT_CODE, -1)
-        if (stored >= FIRST_PRODUCT_NUMBER) return "P-" + stored.toString().padStart(6, '0')
-        val maxExisting = getProducts(context).mapNotNull { p ->
-            Regex("^P-(\\d+)$", RegexOption.IGNORE_CASE).matchEntire(p.code.trim())?.groupValues?.getOrNull(1)?.toIntOrNull()
-        }.maxOrNull() ?: 0
-        val next = maxOf(FIRST_PRODUCT_NUMBER, maxExisting + 1)
-        prefs.edit().putInt(KEY_NEXT_CODE, next).apply()
+        var next = prefs.getInt(KEY_NEXT_CODE, -1)
+
+        if (next < FIRST_PRODUCT_NUMBER) {
+            val maxExisting = getProducts(context).mapNotNull { product ->
+                Regex("^P-(\\d+)$", RegexOption.IGNORE_CASE)
+                    .matchEntire(product.code.trim())
+                    ?.groupValues?.getOrNull(1)
+                    ?.toIntOrNull()
+            }.maxOrNull() ?: 0
+            next = maxOf(FIRST_PRODUCT_NUMBER, maxExisting + 1)
+        }
+
+        // Reserve this number immediately so repeated calls cannot return the same code.
+        prefs.edit().putInt(KEY_NEXT_CODE, next + 1).apply()
         return "P-" + next.toString().padStart(6, '0')
     }
 
@@ -58,7 +65,9 @@ object ProductStorage {
         if (nextNumber != null) {
             val prefs = BusinessStorage.prefs(context, PREFS)
             val currentNext = prefs.getInt(KEY_NEXT_CODE, FIRST_PRODUCT_NUMBER)
-            if (nextNumber >= currentNext) prefs.edit().putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, nextNumber + 1)).apply()
+            if (nextNumber >= currentNext) {
+                prefs.edit().putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, nextNumber + 1)).apply()
+            }
         }
         products.add(product.copy(createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()))
         saveProducts(context, products)
