@@ -34,6 +34,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.due.CustomerDueStorage
+import com.tamanna.enterprise.activity.ActivityLogStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -264,11 +265,29 @@ private fun NewSaleScreen(
                         message = "বাকি বিক্রয়ের জন্য ক্রেতার নাম দিন।"
                         return@Button
                     }
+                    val latestProducts = ProductStorage.getProducts(context)
+                    val latestByCode = latestProducts.associateBy { it.code.lowercase(Locale.ROOT) }
+                    val latestCart = cart.mapNotNull { item ->
+                        latestByCode[item.product.code.lowercase(Locale.ROOT)]?.let { latest ->
+                            item.copy(product = latest)
+                        }
+                    }
+                    if (latestCart.size != cart.size) {
+                        message = "কার্টের একটি বা একাধিক পণ্য আর পাওয়া যাচ্ছে না। আবার পণ্য নির্বাচন করুন।"
+                        return@Button
+                    }
+                    val stockProblem = latestCart.firstOrNull { it.quantity > it.product.stockQuantity }
+                    if (stockProblem != null) {
+                        message = stockProblem.product.name + " এর বর্তমান স্টক " +
+                            stockProblem.product.stockQuantity + "। আবার চেষ্টা করুন।"
+                        return@Button
+                    }
+
                     val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                     val transactionId = "TX-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
                     val customerText = customer.trim() + if (mobile.isNotBlank()) " • " + mobile.trim() else ""
-                    val dueNote = "বিক্রয়: " + cart.joinToString(", ") { it.product.name + " x" + it.quantity }
-                    val originalStocks = cart.associate { it.product.code to it.product.stockQuantity }
+                    val dueNote = "বিক্রয়: " + latestCart.joinToString(", ") { it.product.name + " x" + it.quantity }
+                    val originalStocks = latestCart.associate { it.product.code to it.product.stockQuantity }
 
                     try {
                         SalesTransactionStorage.addTransaction(
@@ -293,7 +312,7 @@ private fun NewSaleScreen(
                             )
                         }
 
-                        cart.forEachIndexed { index, item ->
+                        latestCart.forEachIndexed { index, item ->
                             ProductStorage.updateStock(
                                 context, item.product.code,
                                 item.product.stockQuantity - item.quantity
@@ -313,6 +332,16 @@ private fun NewSaleScreen(
                                 )
                             )
                         }
+                        ActivityLogStorage.add(
+                            context,
+                            "পণ্য বিক্রয় ও Stock Out",
+                            latestCart.joinToString(" • ") {
+                                it.product.name + " (" + it.product.code + ") x" + it.quantity
+                            } + " • নতুন স্টক: " +
+                                latestCart.joinToString(", ") {
+                                    it.product.code + "=" + (it.product.stockQuantity - it.quantity)
+                                }
+                        )
                     } catch (e: Exception) {
                         cart.forEach { item ->
                             ProductStorage.updateStock(
@@ -334,7 +363,7 @@ private fun NewSaleScreen(
                     InvoicePdfUtil.shareInvoice(
                         context = context,
                         transactionId = transactionId,
-                        cart = cart.map { InvoiceLine(it.product.name, it.quantity, it.unitPrice) },
+                        cart = latestCart.map { InvoiceLine(it.product.name, it.quantity, it.unitPrice) },
                         customer = customer.trim(),
                         mobile = mobile.trim(),
                         subtotal = subtotal,
