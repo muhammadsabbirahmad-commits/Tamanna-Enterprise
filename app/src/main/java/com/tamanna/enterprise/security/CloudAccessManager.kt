@@ -23,12 +23,7 @@ object CloudAccessManager {
     private fun auth() = FirebaseAuth.getInstance()
     const val MASTER_REQUIRED = "MASTER_REQUIRED"
 
-    fun hasApprovedAdmin(onResult: (Boolean) -> Unit) {
-        db().collection(USERS).whereEqualTo("role", SecurityStorage.ROLE_ADMIN)
-            .whereEqualTo("approved", true).limit(1).get()
-            .addOnSuccessListener { onResult(!it.isEmpty) }
-            .addOnFailureListener { onResult(false) }
-    }
+    fun hasApprovedAdmin(onResult: (Boolean) -> Unit) { onResult(false) }
 
     fun resolveGoogleLogin(context: Context, email: String, masterPassword: String, adminLogin: Boolean, onResult: (Boolean, String, CloudAccessUser?) -> Unit) {
         val firebaseUser = auth().currentUser
@@ -36,160 +31,56 @@ object CloudAccessManager {
             onResult(false, "Google authentication সম্পন্ন হয়নি।", null)
             return
         }
+        val business = BusinessAccountStorage.get(context)
+        val license = com.tamanna.enterprise.business.LicenseStorage.get(context)
+        if (business.businessId.isBlank() || business.businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID || !license.isActive()) {
+            auth().signOut()
+            onResult(false, "আগে বৈধ License Activate করতে হবে।", null)
+            return
+        }
+
         val uid = firebaseUser.uid
         val normalizedEmail = email.trim()
 
-        if (adminLogin && masterPassword.isBlank()) {
-            onResult(false, MASTER_REQUIRED, null)
-            return
-        }
-
-        db().collection(CONFIG).document(ADMIN).get().addOnSuccessListener { adminSnapshot ->
-            val adminExists = adminSnapshot.exists()
-
-            if (adminLogin && !adminExists) {
-                if (SecurityStorage.isMasterPassword(masterPassword)) {
-                    bootstrapFirstAdmin(context, uid, normalizedEmail, onResult)
+        BusinessMembershipManager.currentMember(business.businessId) { member ->
+            if (member != null) {
+                if (member.blocked) {
+                    auth().signOut()
+                    onResult(false, "এই Partner account Block করা হয়েছে।", null)
+                } else if (!member.approved) {
+                    auth().signOut()
+                    onResult(false, "আপনার Partner access এখনো Admin অনুমোদন করেননি।", null)
+                } else if (adminLogin && member.role != "OWNER") {
+                    auth().signOut()
+                    onResult(false, "এই Gmail Business Owner নয়।", null)
+                } else if (!adminLogin && member.role != "PARTNER") {
+                    auth().signOut()
+                    onResult(false, "এই Gmail Partner account হিসেবে অনুমোদিত নয়।", null)
                 } else {
-                    onResult(false, MASTER_REQUIRED, null)
+                    val role = if (member.role == "OWNER") SecurityStorage.ROLE_ADMIN else SecurityStorage.ROLE_PARTNER
+                    val user = CloudAccessUser(uid, normalizedEmail, role, true, false)
+                    if (role == SecurityStorage.ROLE_ADMIN) BusinessAccountStorage.setOwnerUid(context, uid)
+                    saveLocalLogin(context, user)
+                    onResult(true, "", user)
                 }
-                return@addOnSuccessListener
-            }
-
-            db().collection(USERS).document(uid).get().addOnSuccessListener { snapshot ->
-                if (snapshot.exists()) {
-                    val role = snapshot.getString("role").orEmpty()
-                    val approved = snapshot.getBoolean("approved") == true
-                    val blocked = snapshot.getBoolean("blocked") == true
-                    val cloudUser = CloudAccessUser(uid, normalizedEmail, role, approved, blocked)
-
-                    if (blocked && role == SecurityStorage.ROLE_PARTNER) {
+            } else if (adminLogin) {
+                BusinessMembershipManager.createOrUpdateOwner(business.businessId, normalizedEmail) { ok, message ->
+                    if (!ok) {
                         auth().signOut()
-                        onResult(false, "এই Partner account সাময়িকভাবে Block করা হয়েছে। Admin-এর অনুমতি ছাড়া প্রবেশ করা যাবে না।", null)
-                        return@addOnSuccessListener
+                        onResult(false, message, null)
+                    } else {
+                        val user = CloudAccessUser(uid, normalizedEmail, SecurityStorage.ROLE_ADMIN, true, false)
+                        BusinessAccountStorage.setOwnerUid(context, uid)
+                        saveLocalLogin(context, user)
+                        onResult(true, "", user)
                     }
-
-                    if (approved && role == SecurityStorage.ROLE_ADMIN) {
-                        if (adminLogin) {
-                            cacheAndLogin(context, cloudUser) { ok, message ->
-                                onResult(ok, message, if (ok) cloudUser else null)
-                            }
-                        } else {
-                            auth().signOut()
-                            onResult(false, "এই Gmail ইতিমধ্যে Admin হিসেবে নিবন্ধিত। Partner Login-এর জন্য অন্য Gmail ব্যবহার করুন।", null)
-                        }
-                        return@addOnSuccessListener
-                    }
-
-                    if (approved && role == SecurityStorage.ROLE_PARTNER) {
-                        if (!adminLogin) {
-                            // Partner membership is created by the Admin approval flow.
-                            // Partner login only uses the already-approved membership.
-                            cacheAndLogin(context, cloudUser) { saved, savedMessage ->
-                                onResult(saved, savedMessage, if (saved) cloudUser else null)
-                            }
-                        } else {
-                            auth().signOut()
-                            onResult(false, "এই Gmail Partner account হিসেবে অনুমোদিত। Admin Login-এর জন্য Admin-এর Gmail ব্যবহার করুন।", null)
-                        }
-                        return@addOnSuccessListener
-                    }
-
-                    if (!approved && role == SecurityStorage.ROLE_PARTNER) {
-                        auth().signOut()
-                        onResult(false, "আপনার Partner access এখনো Admin অনুমোদন করেননি। অনুমোদনের পর Partner Login দিয়ে প্রবেশ করুন।", null)
-                        return@addOnSuccessListener
-                    }
-
-                    auth().signOut()
-                    onResult(false, "এই Google account-এর জন্য অনুমোদিত access পাওয়া যায়নি।", null)
-                    return@addOnSuccessListener
                 }
-
-                if (adminLogin) {
+            } else {
+                BusinessMembershipManager.requestPartner(business.businessId, normalizedEmail) { ok, message ->
                     auth().signOut()
-                    onResult(false, if (adminExists) "Admin account ইতিমধ্যে সেটআপ করা আছে। এই Gmail Admin নয়।" else "Admin account সেটআপ করা যায়নি। আবার চেষ্টা করুন।", null)
-                } else if (!adminExists) {
-                    auth().signOut()
-                    onResult(false, "প্রথমে Admin Login দিয়ে Admin account সেটআপ করতে হবে।", null)
-                } else {
-                    createPendingPartner(context, uid, normalizedEmail, onResult)
+                    onResult(false, message, if (ok) CloudAccessUser(uid, normalizedEmail, SecurityStorage.ROLE_PARTNER, false, false) else null)
                 }
-            }.addOnFailureListener {
-                auth().signOut()
-                onResult(false, it.localizedMessage ?: "Google access record যাচাই করা যায়নি।", null)
             }
-        }.addOnFailureListener {
-            auth().signOut()
-            onResult(false, it.localizedMessage ?: "Admin configuration যাচাই করা যায়নি।", null)
-        }
-    }
-
-    fun bootstrapAfterMaster(context: Context, masterPassword: String, onResult: (Boolean, String) -> Unit) {
-        val user = auth().currentUser
-        val email = user?.email.orEmpty()
-        val uid = user?.uid.orEmpty()
-        if (uid.isBlank() || email.isBlank()) {
-            onResult(false, "Google authentication পাওয়া যায়নি।")
-            return
-        }
-        if (!SecurityStorage.isMasterPassword(masterPassword)) {
-            onResult(false, "Master Password সঠিক নয়।")
-            return
-        }
-        db().collection(CONFIG).document(ADMIN).get().addOnSuccessListener { existing ->
-            if (existing.exists()) onResult(false, "Admin ইতোমধ্যে সেটআপ করা আছে.")
-            else bootstrapFirstAdmin(context, uid, email) { ok, message, _ ->
-                if (ok) onResult(true, "প্রথম Admin সফলভাবে অনুমোদিত হয়েছে।") else onResult(false, message)
-            }
-        }.addOnFailureListener {
-            onResult(false, it.localizedMessage ?: "Admin configuration যাচাই করা যায়নি।")
-        }
-    }
-
-    private fun bootstrapFirstAdmin(context: Context, uid: String, email: String, onResult: (Boolean, String, CloudAccessUser?) -> Unit) {
-        val access = mapOf(
-            "uid" to uid, "email" to email, "role" to SecurityStorage.ROLE_ADMIN,
-            "approved" to true, "blocked" to false,
-            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-        )
-        db().collection(USERS).document(uid).set(access, SetOptions.merge()).addOnSuccessListener {
-            db().collection(CONFIG).document(ADMIN).set(
-                mapOf(
-                    "uid" to uid, "email" to email, "role" to SecurityStorage.ROLE_ADMIN,
-                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ), SetOptions.merge()
-            ).addOnSuccessListener {
-                val user = CloudAccessUser(uid, email, SecurityStorage.ROLE_ADMIN, true)
-                cacheAndLogin(context, user) { ok, message ->
-                    onResult(ok, message, if (ok) user else null)
-                }
-            }.addOnFailureListener {
-                auth().signOut()
-                onResult(false, "Admin নিরাপত্তা রেকর্ড সংরক্ষণ করা যায়নি।", null)
-            }
-        }.addOnFailureListener {
-            auth().signOut()
-            onResult(false, it.localizedMessage ?: "প্রথম Admin সেটআপ ব্যর্থ হয়েছে।", null)
-        }
-    }
-
-    private fun createPendingPartner(context: Context, uid: String, email: String, onResult: (Boolean, String, CloudAccessUser?) -> Unit) {
-        val access = mapOf(
-            "uid" to uid, "email" to email, "role" to SecurityStorage.ROLE_PARTNER,
-            "approved" to false, "blocked" to false,
-            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-        )
-        db().collection(USERS).document(uid).set(access, SetOptions.merge()).addOnSuccessListener {
-            val pending = CloudAccessUser(uid, email, SecurityStorage.ROLE_PARTNER, false)
-            SecurityStorage.upsertGoogleUser(context, email, SecurityStorage.ROLE_PARTNER, false, uid)
-            auth().signOut()
-            onResult(false, "আপনার Google অ্যাকাউন্ট Partner হিসেবে অনুমোদনের অপেক্ষায় আছে। Admin অনুমোদন করার পর লগইন করতে পারবেন।", pending)
-        }.addOnFailureListener {
-            auth().signOut()
-            onResult(false, it.localizedMessage ?: "Partner approval request সংরক্ষণ করা যায়নি।", null)
         }
     }
 
@@ -213,74 +104,50 @@ object CloudAccessManager {
     }
 
     fun listUsers(onResult: (List<CloudAccessUser>, String?) -> Unit) {
-        db().collection(USERS).get().addOnSuccessListener { snapshot ->
-            val users = snapshot.documents.mapNotNull { d ->
-                val uid = d.id
-                val email = d.getString("email").orEmpty()
-                val role = d.getString("role").orEmpty()
-                if (email.isBlank() || role.isBlank()) null
-                else CloudAccessUser(uid, email, role, d.getBoolean("approved") == true, d.getBoolean("blocked") == true)
-            }
-            onResult(users.sortedWith(compareBy<CloudAccessUser> { it.approved }.thenBy { it.email.lowercase() }), null)
-        }.addOnFailureListener { onResult(emptyList(), it.localizedMessage ?: "ইউজার তালিকা আনা যায়নি।") }
+        val contextBusinessId = ""
+        onResult(emptyList(), "Legacy user list is no longer used.")
     }
 
     fun approvePartner(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
-        db().collection(USERS).document(uid).update(
-            mapOf("role" to SecurityStorage.ROLE_PARTNER, "approved" to true, "blocked" to false,
-                "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp())
-        ).addOnSuccessListener {
-            listUsers { users, _ ->
-                users.firstOrNull { it.uid == uid }?.let {
-                    SecurityStorage.upsertGoogleUser(context, it.email, it.role, true, it.uid)
-                    val businessId = BusinessAccountStorage.get(context).businessId
-                    BusinessMembershipManager.createOrUpdatePartner(businessId, it.uid, it.email) { _, _ -> }
-                }
-            }
-            onResult(true, "Partner অনুমোদন হয়েছে।")
-        }.addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner অনুমোদন করা যায়নি।") }
+        val businessId = BusinessAccountStorage.get(context).businessId
+        BusinessMembershipManager.setPartnerAccess(businessId, uid, true, false, onResult)
     }
 
     fun rejectPendingPartner(uid: String, onResult: (Boolean, String) -> Unit) {
-        db().collection(USERS).document(uid).delete()
-            .addOnSuccessListener { onResult(true, "Partner আবেদন প্রত্যাখ্যান করা হয়েছে।") }
-            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner আবেদন প্রত্যাখ্যান করা যায়নি।") }
+        onResult(false, "Partner আবেদনটি এখন Business Membership থেকে পরিচালিত হয়।")
     }
 
     fun blockPartner(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
-        db().collection(USERS).document(uid).update(
-            mapOf("approved" to false, "blocked" to true, "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp())
-        ).addOnSuccessListener {
-            listUsers { users, _ ->
-                users.firstOrNull { it.uid == uid }?.let {
-                    SecurityStorage.upsertGoogleUser(context, it.email, it.role, false, it.uid)
-                    val businessId = BusinessAccountStorage.get(context).businessId
-                    BusinessMembershipManager.createOrUpdatePartner(businessId, it.uid, it.email, true) { _, _ -> }
-                }
-            }
-            onResult(true, "Partner Block করা হয়েছে।")
-        }.addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Block করা যায়নি।") }
+        val businessId = BusinessAccountStorage.get(context).businessId
+        BusinessMembershipManager.setPartnerAccess(businessId, uid, false, true, onResult)
     }
 
     fun unblockPartner(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
-        db().collection(USERS).document(uid).update(
-            mapOf("approved" to true, "blocked" to false, "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp())
-        ).addOnSuccessListener {
-            listUsers { users, _ ->
-                users.firstOrNull { it.uid == uid }?.let {
-                    SecurityStorage.upsertGoogleUser(context, it.email, it.role, true, it.uid)
-                    val businessId = BusinessAccountStorage.get(context).businessId
-                    BusinessMembershipManager.createOrUpdatePartner(businessId, it.uid, it.email) { _, _ -> }
-                }
-            }
-            onResult(true, "Partner আবার Active হয়েছে।")
-        }.addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Unblock করা যায়নি।") }
+        val businessId = BusinessAccountStorage.get(context).businessId
+        BusinessMembershipManager.setPartnerAccess(businessId, uid, true, false, onResult)
     }
 
-    fun removePartner(uid: String, onResult: (Boolean, String) -> Unit) {
-        db().collection(USERS).document(uid).delete()
-            .addOnSuccessListener { onResult(true, "Partner তালিকা থেকে Remove করা হয়েছে।") }
-            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Remove করা যায়নি।") }
+    fun removePartner(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
+        val businessId = BusinessAccountStorage.get(context).businessId
+        BusinessMembershipManager.removeMember(businessId, uid, onResult)
+    }
+
+    fun listBusinessMembers(context: Context, onResult: (List<CloudAccessUser>, String?) -> Unit) {
+        val businessId = BusinessAccountStorage.get(context).businessId
+        BusinessMembershipManager.listMembers(businessId) { members, error ->
+            onResult(
+                members.map {
+                    CloudAccessUser(
+                        uid = it.uid,
+                        email = it.email,
+                        role = if (it.role == "OWNER") SecurityStorage.ROLE_ADMIN else SecurityStorage.ROLE_PARTNER,
+                        approved = it.approved,
+                        blocked = it.blocked
+                    )
+                },
+                error
+            )
+        }
     }
 
     private fun cacheAndLogin(context: Context, user: CloudAccessUser, onResult: (Boolean, String) -> Unit) {
