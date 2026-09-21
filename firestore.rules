@@ -84,8 +84,16 @@ service cloud.firestore {
       allow update, delete: if businessAdmin(businessId);
 
       match /members/{memberId} {
-        allow read: if member(businessId) && (request.auth.uid == memberId || businessAdmin(businessId));
-        allow create: if businessAdmin(businessId) || (signedIn() && memberId == request.auth.uid && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid && request.resource.data.role == "OWNER");
+        allow read: if businessAdmin(businessId) || (member(businessId) && request.auth.uid == memberId);
+        allow create: if businessAdmin(businessId)
+          || (signedIn()
+              && memberId == request.auth.uid
+              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid != ""
+              && request.resource.data.uid == request.auth.uid
+              && request.resource.data.email == request.auth.token.email
+              && request.resource.data.role == "PARTNER"
+              && request.resource.data.approved == false
+              && request.resource.data.blocked == false);
         allow update, delete: if businessAdmin(businessId);
       }
 
