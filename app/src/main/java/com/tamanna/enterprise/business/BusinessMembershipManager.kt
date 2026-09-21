@@ -57,35 +57,45 @@ object BusinessMembershipManager {
             return
         }
 
-        db().collection(BUSINESSES).document(businessId)
-            .set(
-                mapOf(
-                    "businessId" to businessId,
-                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ),
-                SetOptions.merge()
-            )
-            .addOnSuccessListener {
-                db().collection(BUSINESSES).document(businessId)
-                    .collection(MEMBERS).document(uid)
-                    .set(
-                        mapOf(
-                            "uid" to uid,
-                            "email" to email,
-                            "role" to "OWNER",
-                            "approved" to true,
-                            "blocked" to false,
-                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                        ),
-                        SetOptions.merge()
-                    )
-                    .addOnSuccessListener { onResult(true, "Business Owner membership তৈরি হয়েছে।") }
-                    .addOnFailureListener {
-                        onResult(false, it.localizedMessage ?: "Business membership তৈরি করা যায়নি।")
-                    }
+        val businessRef = db().collection(BUSINESSES).document(businessId)
+        businessRef.get()
+            .addOnSuccessListener { existing ->
+                val existingOwnerUid = existing.getString("ownerUid").orEmpty()
+                if (existingOwnerUid.isNotBlank() && existingOwnerUid != uid) {
+                    onResult(false, "এই Business-এর Owner ইতিমধ্যে অন্য Account হিসেবে নির্ধারিত আছে।")
+                    return@addOnSuccessListener
+                }
+
+                businessRef.set(
+                    mapOf(
+                        "businessId" to businessId,
+                        "ownerUid" to uid,
+                        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                    ),
+                    SetOptions.merge()
+                ).addOnSuccessListener {
+                    businessRef.collection(MEMBERS).document(uid)
+                        .set(
+                            mapOf(
+                                "uid" to uid,
+                                "email" to email,
+                                "role" to "OWNER",
+                                "approved" to true,
+                                "blocked" to false,
+                                "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                            ),
+                            SetOptions.merge()
+                        )
+                        .addOnSuccessListener { onResult(true, "Business Owner membership তৈরি হয়েছে।") }
+                        .addOnFailureListener {
+                            onResult(false, it.localizedMessage ?: "Business membership তৈরি করা যায়নি.")
+                        }
+                }.addOnFailureListener {
+                    onResult(false, it.localizedMessage ?: "Business Owner সংরক্ষণ করা যায়নি.")
+                }
             }
             .addOnFailureListener {
-                onResult(false, it.localizedMessage ?: "Business তৈরি করা যায়নি।")
+                onResult(false, it.localizedMessage ?: "Business Owner যাচাই করা যায়নি.")
             }
     }
 
