@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.product
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -20,7 +21,7 @@ object ProductStorage {
     private const val FIRST_PRODUCT_NUMBER = 228622
 
     fun getProducts(context: Context): List<Product> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_PRODUCTS, "[]") ?: "[]"
         val array = JSONArray(raw)
         return buildList {
@@ -39,7 +40,7 @@ object ProductStorage {
     }
 
     fun nextProductCode(context: Context): String {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = BusinessStorage.prefs(context, PREFS)
         val stored = prefs.getInt(KEY_NEXT_CODE, -1)
         if (stored >= FIRST_PRODUCT_NUMBER) return "P-" + stored.toString().padStart(6, '0')
         val maxExisting = getProducts(context).mapNotNull { p ->
@@ -55,7 +56,7 @@ object ProductStorage {
         if (products.any { it.code.equals(product.code, ignoreCase = true) }) return false
         val nextNumber = product.code.removePrefix("P-").toIntOrNull()
         if (nextNumber != null) {
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val prefs = BusinessStorage.prefs(context, PREFS)
             val currentNext = prefs.getInt(KEY_NEXT_CODE, FIRST_PRODUCT_NUMBER)
             if (nextNumber >= currentNext) prefs.edit().putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, nextNumber + 1)).apply()
         }
@@ -97,7 +98,7 @@ object ProductStorage {
                 put("createdAt", it.createdAt)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_PRODUCTS, array.toString()).apply()
     }
 }
