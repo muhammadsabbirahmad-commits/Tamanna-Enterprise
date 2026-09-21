@@ -60,7 +60,7 @@ class CloudBackupActivity : ComponentActivity() {
                     onClick = {
                         busy = true
                         message = "ক্লাউডে ব্যাকআপ নেওয়া হচ্ছে..."
-                        CloudSyncManager.syncAll(this@CloudBackupActivity) {
+                        CloudSyncManager.manualBackup(this@CloudBackupActivity) {
                             busy = false
                             message = "ব্যাকআপ সফলভাবে সম্পন্ন হয়েছে।"
                         }
