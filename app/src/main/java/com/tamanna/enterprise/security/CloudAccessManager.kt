@@ -83,18 +83,10 @@ object CloudAccessManager {
 
                     if (approved && role == SecurityStorage.ROLE_PARTNER) {
                         if (!adminLogin) {
-                            val businessId = BusinessAccountStorage.get(context).businessId
-                            BusinessMembershipManager.createOrUpdatePartner(
-                                businessId, uid, normalizedEmail
-                            ) { ok, message ->
-                                if (!ok) {
-                                    auth().signOut()
-                                    onResult(false, message, null)
-                                } else {
-                                    cacheAndLogin(context, cloudUser) { saved, savedMessage ->
-                                        onResult(saved, savedMessage, if (saved) cloudUser else null)
-                                    }
-                                }
+                            // Partner membership is created by the Admin approval flow.
+                            // Partner login only uses the already-approved membership.
+                            cacheAndLogin(context, cloudUser) { saved, savedMessage ->
+                                onResult(saved, savedMessage, if (saved) cloudUser else null)
                             }
                         } else {
                             auth().signOut()
