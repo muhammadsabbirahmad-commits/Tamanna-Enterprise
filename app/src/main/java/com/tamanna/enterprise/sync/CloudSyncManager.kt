@@ -3,6 +3,7 @@ package com.tamanna.enterprise.sync
 import android.content.Context
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessStorage
@@ -20,6 +21,9 @@ object CloudSyncManager {
     private const val BUSINESSES = "businesses"
     private const val DATA = "data"
     private const val MIGRATION_MARKER = "_legacy_cloud_migration"
+    private const val MIGRATION_RUNNING = "running"
+    private const val MIGRATION_COMPLETED = "completed"
+    private const val MIGRATION_STALE_MS = 10 * 60 * 1000L
 
     private val namespaces = listOf(
         "tamanna_enterprise_products",
@@ -147,92 +151,148 @@ object CloudSyncManager {
 
             markerRef.get()
                 .addOnSuccessListener { marker ->
-                    if (marker.exists() && marker.getBoolean("completed") == true) {
+                    val markerStatus = marker.getString("status")
+                    val markerStartedAt = marker.getLong("startedAt") ?: 0L
+                    if (markerStatus == MIGRATION_COMPLETED ||
+                        marker.getBoolean("completed") == true
+                    ) {
                         onComplete(true, "পুরোনো Cloud Data Migration আগে থেকেই সম্পন্ন হয়েছে।")
                         return@addOnSuccessListener
                     }
 
-                    legacyCollection.get()
-                        .addOnSuccessListener { legacySnapshots ->
-                            if (legacySnapshots.isEmpty) {
-                                onComplete(false, "পুরোনো Cloud Data পাওয়া যায়নি।")
-                                return@addOnSuccessListener
-                            }
+                    if (markerStatus == MIGRATION_RUNNING &&
+                        markerStartedAt > 0L &&
+                        System.currentTimeMillis() - markerStartedAt < MIGRATION_STALE_MS
+                    ) {
+                        onComplete(false, "একটি Cloud Migration ইতিমধ্যে চলছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।")
+                        return@addOnSuccessListener
+                    }
 
-                            val targetRefs = namespaces.map { namespace ->
-                                targetCollection.document(namespace).get()
-                            }
-
-                            Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(targetRefs)
-                                .addOnSuccessListener { targetSnapshots ->
-                                    val existingTargets = targetSnapshots.mapIndexedNotNull { index, snapshot ->
-                                        if (snapshot.exists()) namespaces[index] else null
-                                    }.toSet()
-
-                                    val batch = db().batch()
-                                    var migrated = 0
-
-                                    legacySnapshots.documents.forEach { legacy ->
-                                        if (!legacy.exists()) return@forEach
-                                        val namespace = legacy.id
-                                        if (!namespaces.contains(namespace)) return@forEach
-                                        if (existingTargets.contains(namespace)) return@forEach
-
-                                        val values = legacy.get("values")
-                                        if (values is Map<*, *>) {
-                                            val existing = legacy.get("updatedAt")
-                                            val payload = mutableMapOf<String, Any?>("values" to values)
-                                            if (existing != null) payload["updatedAt"] = existing
-                                            batch.set(
-                                                targetCollection.document(namespace),
-                                                payload,
-                                                SetOptions.merge()
-                                            )
-                                            migrated++
-                                        }
-                                    }
-
-                                    if (migrated == 0) {
-                                        onComplete(
-                                            false,
-                                            "নতুন Business Cloud-এ একই Data আগে থেকেই আছে অথবা মাইগ্রেট করার মতো Data নেই। পুরোনো Data overwrite করা হয়নি।"
-                                        )
-                                        return@addOnSuccessListener
-                                    }
-
-                                    batch.set(
-                                        markerRef,
-                                        mapOf(
-                                            "completed" to true,
-                                            "migratedNamespaces" to migrated,
-                                            "migratedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                        ),
-                                        SetOptions.merge()
-                                    )
-
-                                    batch.commit()
-                                        .addOnSuccessListener {
-                                            onComplete(
-                                                true,
-                                                "পুরোনো Cloud Data নিরাপদভাবে নতুন Business Data-তে মাইগ্রেট হয়েছে। বিদ্যমান Data overwrite করা হয়নি।"
-                                            )
-                                        }
-                                        .addOnFailureListener {
-                                            onComplete(false, it.localizedMessage ?: "Cloud Migration ব্যর্থ হয়েছে।")
-                                        }
-                                }
-                                .addOnFailureListener {
-                                    onComplete(false, it.localizedMessage ?: "নতুন Business Cloud Data যাচাই করা যায়নি।")
-                                }
-                        }
-                        .addOnFailureListener {
-                            onComplete(false, it.localizedMessage ?: "পুরোনো Cloud Data পড়া যায়নি।")
-                        }
+                    markerRef.set(
+                        mapOf(
+                            "status" to MIGRATION_RUNNING,
+                            "completed" to false,
+                            "startedAt" to System.currentTimeMillis(),
+                            "startedBy" to uid
+                        ),
+                        SetOptions.merge()
+                    ).addOnSuccessListener {
+                        readAndMigrateLegacy(
+                            appContext,
+                            legacyCollection,
+                            targetCollection,
+                            markerRef,
+                            uid,
+                            onComplete
+                        )
+                    }.addOnFailureListener {
+                        onComplete(false, it.localizedMessage ?: "Migration শুরু করা যায়নি।")
+                    }
                 }
                 .addOnFailureListener {
                     onComplete(false, it.localizedMessage ?: "Migration status যাচাই করা যায়নি।")
                 }
         }
+    }
+
+    private fun readAndMigrateLegacy(
+        context: Context,
+        legacyCollection: com.google.firebase.firestore.CollectionReference,
+        targetCollection: com.google.firebase.firestore.CollectionReference,
+        markerRef: com.google.firebase.firestore.DocumentReference,
+        uid: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        legacyCollection.get()
+            .addOnSuccessListener { legacySnapshots ->
+                if (legacySnapshots.isEmpty) {
+                    clearMigrationMarker(markerRef)
+                    onComplete(false, "পুরোনো Cloud Data পাওয়া যায়নি।")
+                    return@addOnSuccessListener
+                }
+
+                val targetRefs = namespaces.map { namespace ->
+                    targetCollection.document(namespace).get()
+                }
+
+                Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(targetRefs)
+                    .addOnSuccessListener { targetSnapshots ->
+                        val existingTargets = targetSnapshots.mapIndexedNotNull { index, snapshot ->
+                            if (snapshot.exists()) namespaces[index] else null
+                        }.toSet()
+
+                        val batch = db().batch()
+                        val migratedNamespaces = mutableListOf<String>()
+
+                        legacySnapshots.documents.forEach { legacy ->
+                            if (!legacy.exists()) return@forEach
+                            val namespace = legacy.id
+                            if (!namespaces.contains(namespace)) return@forEach
+                            if (existingTargets.contains(namespace)) return@forEach
+
+                            val values = legacy.get("values")
+                            if (values is Map<*, *>) {
+                                val payload = mutableMapOf<String, Any?>("values" to values)
+                                legacy.get("updatedAt")?.let { payload["updatedAt"] = it }
+
+                                // This namespace was confirmed absent in the target before this write.
+                                batch.set(
+                                    targetCollection.document(namespace),
+                                    payload,
+                                    SetOptions.merge()
+                                )
+                                migratedNamespaces.add(namespace)
+                            }
+                        }
+
+                        if (migratedNamespaces.isEmpty()) {
+                            clearMigrationMarker(markerRef)
+                            onComplete(
+                                false,
+                                "নতুন Business Cloud-এ একই Data আগে থেকেই আছে অথবা মাইগ্রেট করার মতো Data নেই। পুরোনো Data overwrite করা হয়নি।"
+                            )
+                            return@addOnSuccessListener
+                        }
+
+                        batch.set(
+                            markerRef,
+                            mapOf(
+                                "status" to MIGRATION_COMPLETED,
+                                "completed" to true,
+                                "migratedNamespaces" to migratedNamespaces,
+                                "migratedCount" to migratedNamespaces.size,
+                                "migratedAt" to FieldValue.serverTimestamp(),
+                                "startedBy" to uid
+                            ),
+                            SetOptions.merge()
+                        )
+
+                        batch.commit()
+                            .addOnSuccessListener {
+                                onComplete(
+                                    true,
+                                    "পুরোনো Cloud Data নিরাপদভাবে নতুন Business Data-তে মাইগ্রেট হয়েছে। বিদ্যমান Data overwrite করা হয়নি।"
+                                )
+                            }
+                            .addOnFailureListener {
+                                // Do not mark the migration as completed if the batch failed.
+                                clearMigrationMarker(markerRef)
+                                onComplete(false, it.localizedMessage ?: "Cloud Migration ব্যর্থ হয়েছে।")
+                            }
+                    }
+                    .addOnFailureListener {
+                        clearMigrationMarker(markerRef)
+                        onComplete(false, it.localizedMessage ?: "নতুন Business Cloud Data যাচাই করা যায়নি।")
+                    }
+            }
+            .addOnFailureListener {
+                clearMigrationMarker(markerRef)
+                onComplete(false, it.localizedMessage ?: "পুরোনো Cloud Data পড়া যায়নি।")
+            }
+    }
+
+    private fun clearMigrationMarker(markerRef: com.google.firebase.firestore.DocumentReference) {
+        markerRef.delete()
     }
 
     fun syncAll(context: Context, onComplete: () -> Unit = {}) {
@@ -254,7 +314,7 @@ object CloudSyncManager {
                     ref,
                     mapOf(
                         "values" to values,
-                        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        "updatedAt" to FieldValue.serverTimestamp()
                     ),
                     SetOptions.merge()
                 )
