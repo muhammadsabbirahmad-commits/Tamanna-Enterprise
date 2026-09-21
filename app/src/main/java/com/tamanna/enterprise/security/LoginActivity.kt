@@ -146,7 +146,7 @@ class LoginActivity : ComponentActivity() {
                             if (adminLoginMode) "Admin Login" else "Partner Login",
                             style = MaterialTheme.typography.titleLarge
                         )
-                        Spacer(Modifier.height(18.dp))
+                        Spacer(Modifier.height(12.dp))
 
                         if (showMaster) {
                             Text(
@@ -195,12 +195,12 @@ class LoginActivity : ComponentActivity() {
                         } else {
                             Text(
                                 if (adminLoginMode)
-                                    "Admin Gmail Connect করুন। প্রথমবার Master Password দিলে সরাসরি Admin হিসেবে প্রবেশ করবেন। কোনো Approval লাগবে না।"
+                                    "Gmail Connect করুন। প্রথমবার Master Password দিয়ে Admin সেটআপ হবে।"
                                 else
-                                    "Partner Gmail Connect করলে Access Request Admin-এর কাছে যাবে। Admin Approve না করা পর্যন্ত ব্যবসায়িক ডাটায় প্রবেশ করা যাবে না।",
+                                    "Gmail Connect করুন। Admin অনুমোদনের পর Partner Login চালু হবে।",
                                 style = MaterialTheme.typography.bodyMedium
                             )
-                            Spacer(Modifier.height(16.dp))
+                            Spacer(Modifier.height(12.dp))
 
                             if (error.isNotBlank()) {
                                 Text(error, color = MaterialTheme.colorScheme.error)
@@ -228,7 +228,7 @@ class LoginActivity : ComponentActivity() {
                                 Text(
                                     if (loading) "Google সংযোগ হচ্ছে..."
                                     else if (adminLoginMode) "👑 Gmail Connect → Master Password"
-                                    else "👤 Gmail Connect → Admin Approval"
+                                    else "Gmail Connect"
                                 )
                             }
 
