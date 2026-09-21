@@ -128,7 +128,21 @@ class BusinessAccessActivity : ComponentActivity() {
         LicenseManager.verify(license.code) { ok, remoteLicense, message ->
             runOnUiThread {
                 if (!ok || remoteLicense == null || remoteLicense.businessId != business.businessId) {
-                    setStatus?.invoke("License যাচাই ব্যর্থ: ${message.ifBlank { "Business-এর সাথে মিল নেই।" }}")
+                    if (remoteLicense != null && (
+                            remoteLicense.status == LicenseStatus.EXPIRED.name ||
+                            remoteLicense.status == LicenseStatus.BLOCKED.name ||
+                            remoteLicense.businessId != business.businessId
+                        )
+                    ) {
+                        LicenseStorage.clear(this)
+                        FirebaseAuth.getInstance().signOut()
+                        SecurityStorage.logout(this)
+                        startActivity(Intent(this, LicenseActivationActivity::class.java))
+                        finish()
+                        return@runOnUiThread
+                    }
+
+                    setStatus?.invoke("License যাচাই ব্যর্থ: ${message.ifBlank { "সাময়িকভাবে যাচাই করা যায়নি।" }}")
                     FirebaseAuth.getInstance().signOut()
                     SecurityStorage.logout(this)
                     return@runOnUiThread
