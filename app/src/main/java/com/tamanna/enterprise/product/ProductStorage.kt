@@ -42,7 +42,7 @@ object ProductStorage {
         val stored = prefs.getInt(KEY_NEXT_CODE, -1)
         if (stored >= 1) return "P-" + stored.toString().padStart(4, '0')
         val maxExisting = getProducts(context).mapNotNull { p ->
-            Regex("^P-(\\\\d+)$", RegexOption.IGNORE_CASE).matchEntire(p.code.trim())?.groupValues?.getOrNull(1)?.toIntOrNull()
+            Regex("^P-(\\d+)$", RegexOption.IGNORE_CASE).matchEntire(p.code.trim())?.groupValues?.getOrNull(1)?.toIntOrNull()
         }.maxOrNull() ?: 0
         val next = maxExisting + 1
         prefs.edit().putInt(KEY_NEXT_CODE, next).apply()
