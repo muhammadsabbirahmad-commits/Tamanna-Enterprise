@@ -317,52 +317,55 @@ fun StockDialog(
     val context = LocalContext.current
     var quantity by remember(product.code) { mutableStateOf("") }
     var add by remember(product.code) { mutableStateOf(true) }
+    var error by remember(product.code) { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Stock In / Out") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("বর্তমান স্টক: " + product.stockQuantity)
-                Button(onClick = { add = true }) {
-                    Text("Stock In")
+                val latest = ProductStorage.getProducts(context).firstOrNull {
+                    it.code.equals(product.code, ignoreCase = true)
                 }
-                Button(onClick = { add = false }) {
-                    Text("Stock Out")
-                }
+                Text("বর্তমান স্টক: " + (latest?.stockQuantity ?: product.stockQuantity))
+                Button(onClick = { add = true; error = "" }) { Text("Stock In") }
+                Button(onClick = { add = false; error = "" }) { Text("Stock Out") }
                 OutlinedTextField(
                     quantity,
-                    { quantity = it },
-                    label = { Text("পরিমাণ") }
+                    { quantity = it.filter(Char::isDigit); error = "" },
+                    label = { Text("পরিমাণ") },
+                    singleLine = true
                 )
+                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             }
         },
         confirmButton = {
             Button(onClick = {
                 val q = quantity.toIntOrNull()
-
-                if (q != null && q > 0) {
-                    val newStock =
-                        if (add) product.stockQuantity + q
-                        else product.stockQuantity - q
-
-                    if (newStock >= 0) {
-                        ProductStorage.updateStock(
+                val latest = ProductStorage.getProducts(context).firstOrNull {
+                    it.code.equals(product.code, ignoreCase = true)
+                }
+                when {
+                    latest == null -> error = "পণ্যটি আর পাওয়া যাচ্ছে না।"
+                    q == null || q <= 0 -> error = "সঠিক পরিমাণ দিন।"
+                    add && latest.stockQuantity > Int.MAX_VALUE - q ->
+                        error = "স্টক সীমা অতিক্রম করছে।"
+                    !add && q > latest.stockQuantity ->
+                        error = "Stock Out করা যাবে না। বর্তমান স্টক: " + latest.stockQuantity
+                    else -> {
+                        val newStock = if (add) latest.stockQuantity + q else latest.stockQuantity - q
+                        ProductStorage.updateStock(context, latest.code, newStock)
+                        ActivityLogStorage.add(
                             context,
-                            product.code,
-                            newStock
+                            if (add) "Manual Stock In" else "Manual Stock Out",
+                            latest.name + " (" + latest.code + ") x" + q +
+                                " • " + latest.stockQuantity + " → " + newStock
                         )
                         onSaved()
                     }
                 }
-            }) {
-                Text("Save")
-            }
+            }) { Text("Save") }
         },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
     )
 }
