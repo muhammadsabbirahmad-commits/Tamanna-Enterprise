@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
 
 class LicenseActivationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,20 +66,34 @@ class LicenseActivationActivity : ComponentActivity() {
                             onClick = {
                                 loading = true
                                 message = ""
-                                LicenseManager.verify(code) { ok, info, text ->
-                                    loading = false
-                                    if (ok && info != null) {
-                                        LicenseManager.saveVerifiedLicense(this@LicenseActivationActivity, info)
-                                        startActivity(
-                                            android.content.Intent(
-                                                this@LicenseActivationActivity,
-                                                com.tamanna.enterprise.security.LoginActivity::class.java
+                                fun verifyLicenseAfterAuth() {
+                                    LicenseManager.verify(code) { ok, info, text ->
+                                        loading = false
+                                        if (ok && info != null) {
+                                            LicenseManager.saveVerifiedLicense(this@LicenseActivationActivity, info)
+                                            startActivity(
+                                                android.content.Intent(
+                                                    this@LicenseActivationActivity,
+                                                    com.tamanna.enterprise.security.LoginActivity::class.java
+                                                )
                                             )
-                                        )
-                                        finish()
-                                    } else {
-                                        message = text
+                                            finish()
+                                        } else {
+                                            message = text
+                                        }
                                     }
+                                }
+
+                                val currentUser = FirebaseAuth.getInstance().currentUser
+                                if (currentUser != null) {
+                                    verifyLicenseAfterAuth()
+                                } else {
+                                    FirebaseAuth.getInstance().signInAnonymously()
+                                        .addOnSuccessListener { verifyLicenseAfterAuth() }
+                                        .addOnFailureListener {
+                                            loading = false
+                                            message = "License যাচাইয়ের আগে নিরাপদ সংযোগ তৈরি করা যায়নি। আবার চেষ্টা করুন।"
+                                        }
                                 }
                             },
                             enabled = !loading && code.isNotBlank(),
