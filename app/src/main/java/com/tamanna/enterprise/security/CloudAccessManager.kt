@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.security
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -408,6 +409,10 @@ object CloudAccessManager {
     }
 
     private fun cacheAndLogin(context: Context, user: CloudAccessUser) {
+        BusinessAccountStorage.ensureInitialized(context)
+        if (user.role == SecurityStorage.ROLE_ADMIN) {
+            BusinessAccountStorage.setOwnerUid(context, user.uid)
+        }
         SecurityStorage.upsertGoogleUser(context, user.email, user.role, user.approved, user.uid)
         val local = SecurityStorage.findByGoogleEmail(context, user.email)
         if (local != null) SecurityStorage.login(context, local)
