@@ -126,6 +126,66 @@ object CloudSyncManager {
         }
     }
 
+    fun migrateLegacyCloudData(context: Context, onComplete: (Boolean, String) -> Unit = { _, _ -> }) {
+        val appContext = context.applicationContext
+        approvedMember(appContext) { approved, owner ->
+            if (!approved || !owner || !SecurityStorage.canWrite(appContext)) {
+                onComplete(false, "শুধু অনুমোদিত Business Owner পুরোনো Cloud Data Migration করতে পারবেন।")
+                return@approvedMember
+            }
+
+            val uid = auth().currentUser?.uid
+            if (uid.isNullOrBlank()) {
+                onComplete(false, "Google Account সংযুক্ত নেই।")
+                return@approvedMember
+            }
+
+            val legacyCollection = db().collection("users").document(uid).collection(DATA)
+            legacyCollection.get()
+                .addOnSuccessListener { legacySnapshots ->
+                    if (legacySnapshots.isEmpty) {
+                        onComplete(false, "পুরোনো Cloud Data পাওয়া যায়নি।")
+                        return@addOnSuccessListener
+                    }
+
+                    val targetCollection = businessDataCollection(appContext)
+                    val batch = db().batch()
+                    var migrated = 0
+
+                    legacySnapshots.documents.forEach { legacy ->
+                        if (!legacy.exists()) return@forEach
+                        val namespace = legacy.id
+                        if (!namespaces.contains(namespace)) return@forEach
+                        val target = targetCollection.document(namespace)
+                        val values = legacy.get("values")
+                        if (values is Map<*, *>) {
+                            val existing = legacy.get("updatedAt")
+                            val payload = mutableMapOf<String, Any?>("values" to values)
+                            if (existing != null) payload["updatedAt"] = existing
+                            batch.set(target, payload, SetOptions.merge())
+                            migrated++
+                        }
+                    }
+
+                    if (migrated == 0) {
+                        onComplete(false, "পুরোনো Cloud Data-তে মাইগ্রেট করার মতো Business Data পাওয়া যায়নি।")
+                        return@addOnSuccessListener
+                    }
+
+                    batch.commit()
+                        .addOnSuccessListener {
+                            onComplete(true, "পুরোনো Cloud Data নতুন Business Data-তে মাইগ্রেট হয়েছে।")
+                        }
+                        .addOnFailureListener {
+                            onComplete(false, it.localizedMessage ?: "Cloud Migration ব্যর্থ হয়েছে।")
+                        }
+                }
+                .addOnFailureListener {
+                    onComplete(false, it.localizedMessage ?: "পুরোনো Cloud Data পড়া যায়নি।")
+                }
+        }
+    }
+
     fun syncAll(context: Context, onComplete: () -> Unit = {}) {
         val appContext = context.applicationContext
         approvedMember(appContext) { approved, owner ->
