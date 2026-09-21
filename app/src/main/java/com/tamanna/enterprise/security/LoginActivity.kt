@@ -36,7 +36,6 @@ class LoginActivity : ComponentActivity() {
     private var adminLoginMode = true
     private var googleOnSuccess: (() -> Unit)? = null
     private var googleOnError: ((String) -> Unit)? = null
-    private var masterPrompt: (() -> Unit)? = null
 
     private val googleSignInLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -59,7 +58,7 @@ class LoginActivity : ComponentActivity() {
                             clearCallbacks()
                             return@addOnCompleteListener
                         }
-                        resolveCurrentGoogle("")
+                        resolveCurrentGoogle()
                     }
             } catch (e: ApiException) {
                 val message = when (e.statusCode) {
@@ -76,19 +75,17 @@ class LoginActivity : ComponentActivity() {
             }
         }
 
-    private fun resolveCurrentGoogle(masterPassword: String) {
+    private fun resolveCurrentGoogle() {
         val email = auth.currentUser?.email.orEmpty()
         CloudAccessManager.resolveGoogleLogin(
             context = this,
             email = email,
-            masterPassword = masterPassword,
+            masterPassword = "",
             adminLogin = adminLoginMode
         ) { success, message, _ ->
             if (success) {
                 googleOnSuccess?.invoke()
                 clearCallbacks()
-            } else if (adminLoginMode && message == CloudAccessManager.MASTER_REQUIRED) {
-                masterPrompt?.invoke()
             } else {
                 googleOnError?.invoke(message)
                 clearCallbacks()
@@ -123,17 +120,6 @@ class LoginActivity : ComponentActivity() {
         setContent {
             var error by remember { mutableStateOf("") }
             var loading by remember { mutableStateOf(false) }
-            var showMaster by remember { mutableStateOf(false) }
-            var master by remember { mutableStateOf("") }
-            var masterLoading by remember { mutableStateOf(false) }
-
-            masterPrompt = {
-                showMaster = true
-                loading = false
-                error = ""
-                masterLoading = false
-            }
-
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(
@@ -148,51 +134,7 @@ class LoginActivity : ComponentActivity() {
                         )
                         Spacer(Modifier.height(12.dp))
 
-                        if (showMaster) {
-                            Text(
-                                "Google/Gmail account সফলভাবে সংযুক্ত হয়েছে। এখন Master Password দিন। Admin-কে কেউ Approve করবে না।",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            OutlinedTextField(
-                                value = master,
-                                onValueChange = { master = it; error = "" },
-                                label = { Text("Master Password") },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(12.dp))
-
-                            if (error.isNotBlank()) {
-                                Text(error, color = MaterialTheme.colorScheme.error)
-                                Spacer(Modifier.height(8.dp))
-                            }
-
-                            Button(
-                                onClick = {
-                                    error = ""
-                                    masterLoading = true
-                                    resolveCurrentGoogle(master)
-                                },
-                                enabled = !masterLoading && master.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(if (masterLoading) "Admin লগইন হচ্ছে..." else "Master Password দিয়ে Admin প্রবেশ")
-                            }
-
-                            Spacer(Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    auth.signOut()
-                                    finish()
-                                },
-                                enabled = !masterLoading,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("ফিরে যান")
-                            }
-                        } else {
+                        if (true) {
                             Text(
                                 if (adminLoginMode)
                                     "Gmail Connect করুন। প্রথমবার Master Password দিয়ে Admin সেটআপ হবে।"
@@ -227,7 +169,7 @@ class LoginActivity : ComponentActivity() {
                             ) {
                                 Text(
                                     if (loading) "Google সংযোগ হচ্ছে..."
-                                    else if (adminLoginMode) "👑 Gmail Connect → Master Password"
+                                    else if (adminLoginMode) "👑 Gmail Connect → Admin প্রবেশ"
                                     else "Gmail Connect"
                                 )
                             }
