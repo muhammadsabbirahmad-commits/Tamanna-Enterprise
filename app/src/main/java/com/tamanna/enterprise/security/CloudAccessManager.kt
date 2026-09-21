@@ -9,7 +9,8 @@ data class CloudAccessUser(
     val uid: String,
     val email: String,
     val role: String,
-    val approved: Boolean
+    val approved: Boolean,
+    val blocked: Boolean = false
 )
 
 object CloudAccessManager {
@@ -81,7 +82,14 @@ object CloudAccessManager {
                         if (snapshot.exists()) {
                             val role = snapshot.getString("role").orEmpty()
                             val approved = snapshot.getBoolean("approved") == true
-                            val cloudUser = CloudAccessUser(uid, normalizedEmail, role, approved)
+                            val blocked = snapshot.getBoolean("blocked") == true
+                            val cloudUser = CloudAccessUser(uid, normalizedEmail, role, approved, blocked)
+
+                            if (blocked && role == SecurityStorage.ROLE_PARTNER) {
+                                auth().signOut()
+                                onResult(false, "এই Partner account সাময়িকভাবে Block করা হয়েছে। Admin-এর অনুমতি ছাড়া প্রবেশ করা যাবে না।", null)
+                                return@addOnSuccessListener
+                            }
 
                             if (approved && role == SecurityStorage.ROLE_ADMIN) {
                                 if (adminLogin) {
@@ -191,6 +199,7 @@ object CloudAccessManager {
             "email" to email,
             "role" to SecurityStorage.ROLE_ADMIN,
             "approved" to true,
+            "blocked" to false,
             "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
             "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
         )
@@ -231,6 +240,7 @@ object CloudAccessManager {
             "email" to email,
             "role" to SecurityStorage.ROLE_PARTNER,
             "approved" to false,
+            "blocked" to false,
             "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
             "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
         )
@@ -259,7 +269,15 @@ object CloudAccessManager {
             .addOnSuccessListener { snapshot ->
                 val role = snapshot.getString("role").orEmpty()
                 val approved = snapshot.getBoolean("approved") == true
+                val blocked = snapshot.getBoolean("blocked") == true
                 val email = snapshot.getString("email").orEmpty().ifBlank { user.email.orEmpty() }
+
+                if (blocked) {
+                    SecurityStorage.logout(context)
+                    auth().signOut()
+                    onResult(false)
+                    return@addOnSuccessListener
+                }
 
                 if (approved && (role == SecurityStorage.ROLE_ADMIN || role == SecurityStorage.ROLE_PARTNER)) {
                     val cached = SecurityStorage.upsertGoogleUser(
@@ -310,6 +328,7 @@ object CloudAccessManager {
                 mapOf(
                     "role" to SecurityStorage.ROLE_PARTNER,
                     "approved" to true,
+                    "blocked" to false,
                     "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                 )
             )
@@ -335,11 +354,12 @@ object CloudAccessManager {
             }
     }
 
-    fun revokeUser(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
+    fun blockPartner(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
         db().collection(USERS).document(uid)
             .update(
                 mapOf(
                     "approved" to false,
+                    "blocked" to true,
                     "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                 )
             )
@@ -349,9 +369,36 @@ object CloudAccessManager {
                         SecurityStorage.upsertGoogleUser(context, it.email, it.role, false, it.uid)
                     }
                 }
-                onResult(true, "অ্যাক্সেস বাতিল হয়েছে।")
+                onResult(true, "Partner Block করা হয়েছে।")
             }
-            .addOnFailureListener { onResult(false, it.localizedMessage ?: "অ্যাক্সেস বাতিল করা যায়নি।") }
+            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Block করা যায়নি।") }
+    }
+
+    fun unblockPartner(context: Context, uid: String, onResult: (Boolean, String) -> Unit) {
+        db().collection(USERS).document(uid)
+            .update(
+                mapOf(
+                    "approved" to true,
+                    "blocked" to false,
+                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                listUsers { users, _ ->
+                    users.firstOrNull { it.uid == uid }?.let {
+                        SecurityStorage.upsertGoogleUser(context, it.email, it.role, true, it.uid)
+                    }
+                }
+                onResult(true, "Partner আবার Active হয়েছে।")
+            }
+            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Unblock করা যায়নি।") }
+    }
+
+    fun removePartner(uid: String, onResult: (Boolean, String) -> Unit) {
+        db().collection(USERS).document(uid)
+            .delete()
+            .addOnSuccessListener { onResult(true, "Partner তালিকা থেকে Remove করা হয়েছে।") }
+            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Remove করা যায়নি।") }
     }
 
     private fun cacheAndLogin(context: Context, user: CloudAccessUser) {
