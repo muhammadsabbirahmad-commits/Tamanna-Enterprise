@@ -93,6 +93,14 @@ service cloud.firestore {
               && request.resource.data.email == request.auth.token.email
               && request.resource.data.role == "PARTNER"
               && request.resource.data.approved == false
+              && request.resource.data.blocked == false)
+          || (signedIn()
+              && memberId == request.auth.uid
+              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
+              && request.resource.data.uid == request.auth.uid
+              && request.resource.data.email == request.auth.token.email
+              && request.resource.data.role == "OWNER"
+              && request.resource.data.approved == true
               && request.resource.data.blocked == false);
         allow update: if businessAdmin(businessId)
           && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid
