@@ -38,9 +38,9 @@ object CloudSyncManager {
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
 
-    private fun businessDataCollection() =
+    private fun businessDataCollection(context: Context) =
         db().collection(BUSINESSES)
-            .document(BusinessAccountStorage.get().businessId)
+            .document(BusinessAccountStorage.get(context).businessId)
             .collection(DATA)
 
     fun pullThenSync(context: Context, onComplete: (Boolean) -> Unit = {}) {
@@ -105,7 +105,7 @@ object CloudSyncManager {
             val values = toFirestoreMap(
                 BusinessStorage.prefs(appContext, namespace).all
             )
-            val ref = userDataCollection().document(namespace)
+            val ref = businessDataCollection(appContext).document(namespace)
             batch.set(
                 ref,
                 mapOf(
