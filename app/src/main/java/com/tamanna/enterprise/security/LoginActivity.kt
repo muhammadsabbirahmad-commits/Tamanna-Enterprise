@@ -96,7 +96,6 @@ class LoginActivity : ComponentActivity() {
     private fun clearCallbacks() {
         googleOnSuccess = null
         googleOnError = null
-        masterPrompt = null
     }
 
     private fun startGoogleLogin() {
