@@ -272,5 +272,4 @@ object CloudSyncManager {
                 else -> value
             }
         }
-    }
 }
