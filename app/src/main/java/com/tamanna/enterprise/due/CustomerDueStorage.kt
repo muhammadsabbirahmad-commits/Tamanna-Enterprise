@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.due
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,7 +27,7 @@ object CustomerDueStorage {
     private const val CUSTOMERS_KEY = "customers"
 
     fun getEntries(context: Context): List<DueEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
+        val raw = BusinessStorage.prefs(context, PREFS).getString(KEY, "[]") ?: "[]"
         val a = JSONArray(raw)
         return buildList {
             for (i in 0 until a.length()) {
@@ -38,7 +39,7 @@ object CustomerDueStorage {
     }
 
     fun getCustomers(context: Context): List<Customer> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(CUSTOMERS_KEY, "[]") ?: "[]"
         val a = JSONArray(raw)
         return buildList {
@@ -109,7 +110,7 @@ object CustomerDueStorage {
                 put("id", it.id); put("name", it.name); put("mobile", it.mobile)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        BusinessStorage.prefs(context, PREFS).edit()
             .putString(CUSTOMERS_KEY, a.toString()).apply()
     }
 
@@ -121,7 +122,7 @@ object CustomerDueStorage {
                 put("mobile", it.mobile); put("type", it.type); put("amount", it.amount); put("note", it.note)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY, a.toString()).apply()
     }
 
