@@ -19,10 +19,7 @@ object BusinessMembershipManager {
     private fun db() = FirebaseFirestore.getInstance()
     private fun auth() = FirebaseAuth.getInstance()
 
-    fun currentMember(
-        businessId: String,
-        onResult: (BusinessMember?) -> Unit
-    ) {
+    fun currentMember(businessId: String, onResult: (BusinessMember?) -> Unit) {
         val uid = auth().currentUser?.uid
         if (uid.isNullOrBlank() || businessId.isBlank()) {
             onResult(null)
@@ -49,11 +46,7 @@ object BusinessMembershipManager {
             .addOnFailureListener { onResult(null) }
     }
 
-    fun createOrUpdateOwner(
-        businessId: String,
-        email: String,
-        onResult: (Boolean, String) -> Unit
-    ) {
+    fun createOrUpdateOwner(businessId: String, email: String, onResult: (Boolean, String) -> Unit) {
         val uid = auth().currentUser?.uid
         if (uid.isNullOrBlank()) {
             onResult(false, "Google authentication পাওয়া যায়নি।")
@@ -93,6 +86,50 @@ object BusinessMembershipManager {
             }
             .addOnFailureListener {
                 onResult(false, it.localizedMessage ?: "Business তৈরি করা যায়নি।")
+            }
+    }
+
+    fun createOrUpdatePartner(
+        businessId: String,
+        uid: String,
+        email: String,
+        blocked: Boolean = false,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        if (businessId.isBlank() || uid.isBlank()) {
+            onResult(false, "Business বা Partner ID পাওয়া যায়নি।")
+            return
+        }
+
+        db().collection(BUSINESSES).document(businessId)
+            .set(
+                mapOf(
+                    "businessId" to businessId,
+                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            .addOnSuccessListener {
+                db().collection(BUSINESSES).document(businessId)
+                    .collection(MEMBERS).document(uid)
+                    .set(
+                        mapOf(
+                            "uid" to uid,
+                            "email" to email,
+                            "role" to "PARTNER",
+                            "approved" to !blocked,
+                            "blocked" to blocked,
+                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        ),
+                        SetOptions.merge()
+                    )
+                    .addOnSuccessListener { onResult(true, "Partner Business membership সংরক্ষণ হয়েছে।") }
+                    .addOnFailureListener {
+                        onResult(false, it.localizedMessage ?: "Partner membership সংরক্ষণ করা যায়নি।")
+                    }
+            }
+            .addOnFailureListener {
+                onResult(false, it.localizedMessage ?: "Business membership সংরক্ষণ করা যায়নি।")
             }
     }
 }
