@@ -138,7 +138,7 @@ class BusinessAccessActivity : ComponentActivity() {
                 BusinessMembershipManager.currentMember(business.businessId) { member ->
                     runOnUiThread {
                         if (member != null && member.approved && !member.blocked) {
-                            if (member.role == "OWNER" && business.ownerUid.isNotBlank() && business.ownerUid != user.uid) {
+                            if (member.role == "OWNER" && (business.ownerUid.isBlank() || business.ownerUid != user.uid)) {
                                 setStatus?.invoke("Business Owner Account-এর সাথে বর্তমান Account মিলছে না।")
                                 FirebaseAuth.getInstance().signOut()
                                 SecurityStorage.logout(this)
