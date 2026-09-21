@@ -36,6 +36,12 @@ class UserManagementActivity : ComponentActivity() {
             return
         }
 
+        CloudAccessManager.validateCurrentSession(this) { valid ->
+            runOnUiThread {
+                if (!valid) finish()
+            }
+        }
+
         setContent {
             var users by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
             var loading by remember { mutableStateOf(true) }
