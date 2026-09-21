@@ -33,7 +33,7 @@ object CloudAccessManager {
         }
         val business = BusinessAccountStorage.get(context)
         val license = com.tamanna.enterprise.business.LicenseStorage.get(context)
-        if (business.businessId.isBlank() || business.businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID || !license.isActive()) {
+        if (business.businessId.isBlank() || business.businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID || !com.tamanna.enterprise.business.LicenseStorage.isActive(context)) {
             auth().signOut()
             onResult(false, "আগে বৈধ License Activate করতে হবে।", null)
             return
