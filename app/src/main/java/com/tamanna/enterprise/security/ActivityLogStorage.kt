@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.security
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -37,12 +38,12 @@ object ActivityLogStorage {
                 put("action", it.action); put("details", it.details)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        BusinessStorage.prefs(context, PREFS).edit()
             .putString(KEY_LOGS, array.toString()).apply()
     }
 
     fun get(context: Context): List<ActivityLogEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_LOGS, "[]") ?: "[]"
         return runCatching {
             val a = JSONArray(raw)
