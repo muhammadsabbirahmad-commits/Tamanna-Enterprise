@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.stock
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -46,12 +47,12 @@ object InventoryMetaStorage {
                 put("damagedQuantity", m.damagedQuantity)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        BusinessStorage.prefs(context, PREFS).edit()
             .putString(KEY_META, array.toString()).apply()
     }
 
     fun getAllMeta(context: Context): List<InventoryMeta> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_META, "[]") ?: "[]"
         return runCatching {
             val array = JSONArray(raw)
@@ -86,12 +87,12 @@ object InventoryMetaStorage {
                 put("quantity", h.quantity); put("before", h.before); put("after", h.after); put("note", h.note)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        BusinessStorage.prefs(context, PREFS).edit()
             .putString(KEY_HISTORY, array.toString()).apply()
     }
 
     fun getHistory(context: Context): List<StockHistoryEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_HISTORY, "[]") ?: "[]"
         return runCatching {
             val array = JSONArray(raw)
