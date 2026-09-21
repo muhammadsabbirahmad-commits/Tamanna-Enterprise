@@ -74,6 +74,21 @@ class CloudBackupActivity : ComponentActivity() {
                 Button(
                     onClick = {
                         busy = true
+                        message = "পুরোনো Cloud Data Migration যাচাই করা হচ্ছে..."
+                        CloudSyncManager.migrateLegacyCloudData(this@CloudBackupActivity) { success, result ->
+                            busy = false
+                            message = result
+                        }
+                    },
+                    enabled = !busy && email != null,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("পুরোনো Cloud Data Migration")
+                }
+
+                Button(
+                    onClick = {
+                        busy = true
                         message = "ক্লাউড থেকে ডেটা ফিরিয়ে আনা হচ্ছে..."
                         CloudSyncManager.pullThenSync(this@CloudBackupActivity) { found ->
                             busy = false
