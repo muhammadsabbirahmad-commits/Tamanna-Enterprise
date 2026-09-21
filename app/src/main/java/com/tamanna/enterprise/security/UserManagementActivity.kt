@@ -66,10 +66,28 @@ class UserManagementActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        Text("ইউজার ম্যানেজমেন্ট", style = MaterialTheme.typography.headlineSmall)
-                        Spacer(Modifier.height(4.dp))
-                        Text("Partner access এখান থেকেই নিয়ন্ত্রণ করুন।", style = MaterialTheme.typography.bodySmall)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("ইউজার ম্যানেজমেন্ট", style = MaterialTheme.typography.headlineSmall)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Partner access এখান থেকেই নিয়ন্ত্রণ করুন।", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Button(
+                                onClick = { refresh++ },
+                                enabled = !loading
+                            ) {
+                                Text("Refresh")
+                            }
+                        }
                         Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Active: ${activePartners.size}  •  Pending: ${pending.size}  •  Blocked: ${blockedPartners.size}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(Modifier.height(8.dp))
 
                         if (loading) {
                             Text("তালিকা লোড হচ্ছে...")
