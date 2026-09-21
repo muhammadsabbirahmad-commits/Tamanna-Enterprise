@@ -123,14 +123,27 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 val q = quantities[i]
                                 if (q <= 0) null else SaleReturnLine(returnId, transactionId, rows[i].sale.productCode, rows[i].sale.productName, q, rows[i].sale.salePrice)
                             }
-                            val itemStocks = lines.associate { line ->
-                                line.productCode to (ProductStorage.getProducts(context).firstOrNull { it.code.equals(line.productCode, true) }?.stockQuantity ?: 0)
+                            // Re-read every affected product immediately before changing stock so the return
+                            // cannot use a stale quantity from the screen.
+                            val latestProducts = ProductStorage.getProducts(context)
+                            val currentProducts = lines.associate { line ->
+                                line.productCode.lowercase(Locale.getDefault()) to
+                                    (latestProducts.firstOrNull { it.code.equals(line.productCode, true) }
+                                        ?: error("পণ্য পাওয়া যায়নি: " + line.productCode))
                             }
+                            currentProducts.values.forEach { product ->
+                                val returnQty = lines.filter { it.productCode.equals(product.code, true) }.sumOf { it.quantity }
+                                if (returnQty > Int.MAX_VALUE - product.stockQuantity) {
+                                    error("Stock সীমা অতিক্রম করছে: " + product.name)
+                                }
+                            }
+                            val itemStocks = currentProducts.values.associate { it.code to it.stockQuantity }
                             try {
-                                lines.forEach { line ->
-                                    val current = ProductStorage.getProducts(context).firstOrNull { it.code.equals(line.productCode, true) }
-                                        ?: error("পণ্য পাওয়া যায়নি: " + line.productCode)
-                                    ProductStorage.updateStock(context, line.productCode, current.stockQuantity + line.quantity)
+                                lines.groupBy { it.productCode.lowercase(Locale.getDefault()) }.forEach { (_, groupedLines) ->
+                                    val product = currentProducts[groupedLines.first().productCode.lowercase(Locale.getDefault())]
+                                        ?: error("পণ্য পাওয়া যায়নি: " + groupedLines.first().productCode)
+                                    val totalQty = groupedLines.sumOf { it.quantity }
+                                    ProductStorage.updateStock(context, product.code, product.stockQuantity + totalQty)
                                 }
                                 SaleReturnStorage.addReturn(context, SaleReturn(returnId, transactionId, now, returnAmount, dueReduction, refundAmount, refundMethod), lines)
                                 if (dueReduction > 0.0 && tx.customer.isNotBlank()) {
