@@ -34,7 +34,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.due.CustomerDueStorage
-import com.tamanna.enterprise.activity.ActivityLogStorage
+import com.tamanna.enterprise.security.ActivityLogStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
