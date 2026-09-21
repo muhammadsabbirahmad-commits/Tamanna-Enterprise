@@ -26,22 +26,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
+import com.tamanna.enterprise.sales.SalesStorage
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
+private enum class ProductSort(val label: String) {
+    NEWEST("Newest First"),
+    OLDEST("Oldest First"),
+    STOCK_OUT("Stock Out First"),
+    MOST_SOLD("Most Sold First")
+}
+
 class ProductActivity : ComponentActivity() {
     private var products by mutableStateOf(emptyList<Product>())
     private var canWrite by mutableStateOf(false)
+    private var sortMode by mutableStateOf(ProductSort.NEWEST)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sortMode = loadSortMode()
         loadProducts()
         canWrite = SecurityStorage.canWrite(this)
         setContent {
             ProductScreen(
                 products = products,
                 canWrite = canWrite,
+                sortMode = sortMode,
+                onSortChanged = { sortMode = it; saveSortMode(it) },
                 onAddProductClick = {
                     startActivity(Intent(this, AddProductActivity::class.java))
                 },
@@ -56,8 +68,12 @@ class ProductActivity : ComponentActivity() {
         canWrite = SecurityStorage.canWrite(this)
     }
 
-    private fun loadProducts() {
-        products = ProductStorage.getProducts(this)
+    private fun loadProducts() { products = ProductStorage.getProducts(this) }
+    private fun loadSortMode(): ProductSort = runCatching {
+        ProductSort.valueOf(getPreferences(MODE_PRIVATE).getString("product_sort_mode", ProductSort.NEWEST.name) ?: ProductSort.NEWEST.name)
+    }.getOrDefault(ProductSort.NEWEST)
+    private fun saveSortMode(mode: ProductSort) {
+        getPreferences(MODE_PRIVATE).edit().putString("product_sort_mode", mode.name).apply()
     }
 }
 
@@ -65,6 +81,8 @@ class ProductActivity : ComponentActivity() {
 fun ProductScreen(
     products: List<Product>,
     canWrite: Boolean,
+    sortMode: ProductSort,
+    onSortChanged: (ProductSort) -> Unit,
     onAddProductClick: () -> Unit,
     onProductsChanged: () -> Unit
 ) {
@@ -75,6 +93,16 @@ fun ProductScreen(
     var deletePin by remember { mutableStateOf("") }
     var deleteError by remember { mutableStateOf("") }
     val context = LocalContext.current
+    var showSortDialog by remember { mutableStateOf(false) }
+    val salesByCode = remember(products) { SalesStorage.getSales(context).groupingBy { it.productCode.lowercase() }.fold(0) { total, sale -> total + sale.quantity } }
+    val sortedProducts = remember(products, sortMode, salesByCode) {
+        when (sortMode) {
+            ProductSort.NEWEST -> products.sortedByDescending { it.createdAt }
+            ProductSort.OLDEST -> products.sortedBy { it.createdAt }
+            ProductSort.STOCK_OUT -> products.sortedWith(compareBy<Product> { it.stockQuantity }.thenByDescending { it.createdAt })
+            ProductSort.MOST_SOLD -> products.sortedWith(compareByDescending<Product> { salesByCode[it.code.lowercase()] ?: 0 }.thenByDescending { it.createdAt })
+        }
+    }
 
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -92,6 +120,7 @@ fun ProductScreen(
                     Text(if (canWrite) "নতুন পণ্য যোগ করুন" else "নতুন পণ্য যোগ করুন (অ্যাডমিন অনুমতি প্রয়োজন)")
                 }
 
+                Button(onClick = { showSortDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("সাজানো: ${sortMode.label}") }
                 Text("পণ্যের তালিকা", style = MaterialTheme.typography.titleLarge)
 
                 if (products.isEmpty()) {
@@ -101,11 +130,12 @@ fun ProductScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(products, key = { it.code }) { item ->
+                        items(sortedProducts, key = { it.code }) { item ->
                             Card(modifier = Modifier.fillMaxWidth().clickable { selectedProduct = item }) {
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                     Text(item.name, style = MaterialTheme.typography.titleMedium)
                                     Text("কোড: " + item.code, style = MaterialTheme.typography.bodySmall)
+                                    Text("স্টক: ${item.stockQuantity} • বিক্রি: ${salesByCode[item.code.lowercase()] ?: 0}")
                                 }
                             }
                         }
@@ -113,6 +143,18 @@ fun ProductScreen(
                 }
             }
         }
+    }
+
+    if (showSortDialog) {
+        AlertDialog(onDismissRequest = { showSortDialog = false }, title = { Text("পণ্য কীভাবে সাজাবেন?") }, text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ProductSort.values().forEach { option ->
+                    Button(onClick = { onSortChanged(option); showSortDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (option == sortMode) "✓ ${option.label}" else option.label)
+                    }
+                }
+            }
+        }, confirmButton = {})
     }
 
     editingProduct?.let { product ->
