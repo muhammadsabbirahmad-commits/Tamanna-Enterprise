@@ -31,7 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-private enum class ProductSort(val label: String) {
+enum class ProductSort(val label: String) {
     NEWEST("Newest First"),
     OLDEST("Oldest First"),
     STOCK_OUT("Stock Out First"),
