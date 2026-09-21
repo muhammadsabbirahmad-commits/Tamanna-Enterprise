@@ -295,7 +295,9 @@ object CloudSyncManager {
         markerRef.delete()
     }
 
-    // Cloud backup is intentionally exposed only through the explicit manual-backup API.\n    // Keeping the underlying sync function private prevents accidental automatic callers.\n    fun manualBackup(context: Context, onComplete: () -> Unit = {}) {
+    // Cloud backup is intentionally exposed only through the explicit manual-backup API.
+    // Keeping the underlying sync function private prevents accidental automatic callers.
+    fun manualBackup(context: Context, onComplete: () -> Unit = {}) {
         val appContext = context.applicationContext
         approvedMember(appContext) { approved, owner ->
             if (!approved || !owner || !SecurityStorage.canWrite(appContext)) {
