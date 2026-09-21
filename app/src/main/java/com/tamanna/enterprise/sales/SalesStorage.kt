@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.sales
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,7 +22,7 @@ object SalesStorage {
     private const val KEY_SALES = "sales"
 
     fun getSales(context: Context): List<Sale> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_SALES, "[]") ?: "[]"
         val array = JSONArray(raw)
         return buildList {
@@ -59,7 +60,7 @@ object SalesStorage {
                 put("customer", it.customer)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_SALES, array.toString()).apply()
     }
     fun removeByTransaction(context: Context, transactionId: String) {
@@ -81,7 +82,7 @@ object SalesStorage {
                 put("customer", it.customer)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_SALES, array.toString()).apply()
     }
 
