@@ -14,7 +14,7 @@ import com.tamanna.enterprise.security.SecurityStorage
  * Firebase user. Security-sensitive local login data is deliberately excluded.
  *
  * Cloud path:
- * users/{FirebaseAuth.uid}/data/{namespace}
+ * businesses/{businessId}/data/{namespace}
  */
 object CloudSyncManager {
     private const val BUSINESSES = "businesses"
@@ -51,7 +51,7 @@ object CloudSyncManager {
         }
         val appContext = context.applicationContext
         val refs = namespaces.map { namespace ->
-            businessDataCollection().document(namespace).get()
+            businessDataCollection(appContext).document(namespace).get()
         }
 
         Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(refs)
