@@ -5,6 +5,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.security.SecurityStorage
 
 /**
@@ -27,7 +28,10 @@ object CloudSyncManager {
         "tamanna_enterprise_settings",
         "tamanna_customer_due",
         "tamanna_supplier_due",
-        "tamanna_inventory_meta"
+        "tamanna_inventory_meta",
+        "tamanna_enterprise_sale_transactions",
+        "tamanna_enterprise_sale_returns",
+        "tamanna_enterprise_activity_log"
     )
 
     private fun auth() = FirebaseAuth.getInstance()
@@ -58,8 +62,8 @@ object CloudSyncManager {
                     foundRemoteData = true
 
                     val namespace = namespaces[index]
-                    val editor = appContext
-                        .getSharedPreferences(namespace, Context.MODE_PRIVATE)
+                    val editor = BusinessStorage
+                        .prefs(appContext, namespace)
                         .edit()
                         .clear()
 
@@ -97,7 +101,7 @@ object CloudSyncManager {
 
         namespaces.forEach { namespace ->
             val values = toFirestoreMap(
-                appContext.getSharedPreferences(namespace, Context.MODE_PRIVATE).all
+                BusinessStorage.prefs(appContext, namespace).all
             )
             val ref = userDataCollection().document(namespace)
             batch.set(
