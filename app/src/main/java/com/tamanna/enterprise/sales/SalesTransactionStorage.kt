@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.sales
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -22,7 +23,7 @@ object SalesTransactionStorage {
     private const val KEY_TRANSACTIONS = "transactions"
 
     fun getTransactions(context: Context): List<SaleTransaction> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_TRANSACTIONS, "[]") ?: "[]"
         val array = JSONArray(raw)
         return buildList {
@@ -67,7 +68,7 @@ object SalesTransactionStorage {
             })
         }
 
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit()
             .putString(KEY_TRANSACTIONS, array.toString())
             .apply()
@@ -96,7 +97,7 @@ object SalesTransactionStorage {
                 put("paymentMethod", tx.paymentMethod)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_TRANSACTIONS, array.toString()).apply()
     }
 }
