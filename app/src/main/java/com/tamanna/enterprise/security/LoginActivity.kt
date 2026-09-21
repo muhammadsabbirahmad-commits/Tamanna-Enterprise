@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
@@ -21,14 +20,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
-import com.tamanna.enterprise.dashboard.DashboardActivity
 
 class LoginActivity : ComponentActivity() {
 
@@ -133,54 +130,52 @@ class LoginActivity : ComponentActivity() {
                         )
                         Spacer(Modifier.height(12.dp))
 
-                        if (true) {
+                        Text(
+                            if (adminLoginMode)
+                                "সক্রিয় License-এর Business Owner হিসেবে Gmail Connect করুন। প্রথমবার এই Business-এর Owner membership তৈরি হবে।"
+                            else
+                                "Gmail Connect করুন। Admin অনুমোদনের পর Partner Login চালু হবে।",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        if (error.isNotBlank()) {
+                            Text(error, color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(10.dp))
+                        }
+
+                        Button(
+                            onClick = {
+                                error = ""
+                                loading = true
+                                googleOnSuccess = {
+                                    loading = false
+                                    setResult(RESULT_OK)
+                                    finish()
+                                }
+                                googleOnError = {
+                                    loading = false
+                                    error = it
+                                }
+                                startGoogleLogin()
+                            },
+                            enabled = !loading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(
-                                if (adminLoginMode)
-                                    "Gmail Connect করুন। প্রথমবার Master Password দিয়ে Admin সেটআপ হবে।"
-                                else
-                                    "Gmail Connect করুন। Admin অনুমোদনের পর Partner Login চালু হবে।",
-                                style = MaterialTheme.typography.bodyMedium
+                                if (loading) "Google সংযোগ হচ্ছে..."
+                                else if (adminLoginMode) "👑 Gmail Connect → Admin প্রবেশ"
+                                else "Gmail Connect"
                             )
-                            Spacer(Modifier.height(12.dp))
+                        }
 
-                            if (error.isNotBlank()) {
-                                Text(error, color = MaterialTheme.colorScheme.error)
-                                Spacer(Modifier.height(10.dp))
-                            }
-
-                            Button(
-                                onClick = {
-                                    error = ""
-                                    loading = true
-                                    googleOnSuccess = {
-                                        loading = false
-                                        setResult(RESULT_OK)
-                                        finish()
-                                    }
-                                    googleOnError = {
-                                        loading = false
-                                        error = it
-                                    }
-                                    startGoogleLogin()
-                                },
-                                enabled = !loading,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    if (loading) "Google সংযোগ হচ্ছে..."
-                                    else if (adminLoginMode) "👑 Gmail Connect → Admin প্রবেশ"
-                                    else "Gmail Connect"
-                                )
-                            }
-
-                            Spacer(Modifier.height(8.dp))
-                            Button(
-                                onClick = { finish() },
-                                enabled = !loading,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("ফিরে যান")
-                            }
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { finish() },
+                            enabled = !loading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("ফিরে যান")
                         }
                     }
                 }
