@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.purchase
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -20,7 +21,7 @@ object PurchaseStorage {
     private const val KEY_PURCHASES = "purchases"
 
     fun getPurchases(context: Context): List<Purchase> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_PURCHASES, "[]") ?: "[]"
         val array = JSONArray(raw)
         return buildList {
@@ -62,7 +63,7 @@ object PurchaseStorage {
                 put("memoNumber", it.memoNumber)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_PURCHASES, array.toString()).apply()
     }
 }
