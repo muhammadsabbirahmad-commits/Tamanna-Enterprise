@@ -142,4 +142,90 @@ object BusinessMembershipManager {
                 onResult(false, it.localizedMessage ?: "Business membership সংরক্ষণ করা যায়নি।")
             }
     }
+
+    fun requestPartner(businessId: String, email: String, onResult: (Boolean, String) -> Unit) {
+        val uid = auth().currentUser?.uid
+        if (uid.isNullOrBlank() || businessId.isBlank() || email.isBlank()) {
+            onResult(false, "Partner account তথ্য পাওয়া যায়নি।")
+            return
+        }
+        val businessRef = db().collection(BUSINESSES).document(businessId)
+        businessRef.get().addOnSuccessListener { business ->
+            if (!business.exists() || business.getString("ownerUid").isNullOrBlank()) {
+                onResult(false, "Business Owner এখনো সেটআপ হয়নি।")
+                return@addOnSuccessListener
+            }
+            businessRef.collection(MEMBERS).document(uid).set(
+                mapOf(
+                    "uid" to uid,
+                    "email" to email,
+                    "role" to "PARTNER",
+                    "approved" to false,
+                    "blocked" to false,
+                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            ).addOnSuccessListener {
+                onResult(true, "Partner আবেদন Admin অনুমোদনের অপেক্ষায় আছে।")
+            }.addOnFailureListener {
+                onResult(false, it.localizedMessage ?: "Partner আবেদন সংরক্ষণ করা যায়নি।")
+            }
+        }.addOnFailureListener {
+            onResult(false, it.localizedMessage ?: "Business যাচাই করা যায়নি।")
+        }
+    }
+
+    fun listMembers(businessId: String, onResult: (List<BusinessMember>, String?) -> Unit) {
+        if (businessId.isBlank()) {
+            onResult(emptyList(), "Business ID পাওয়া যায়নি।")
+            return
+        }
+        db().collection(BUSINESSES).document(businessId).collection(MEMBERS).get()
+            .addOnSuccessListener { snapshot ->
+                val members = snapshot.documents.mapNotNull { d ->
+                    val uid = d.id
+                    val email = d.getString("email").orEmpty()
+                    val role = d.getString("role").orEmpty()
+                    if (uid.isBlank() || email.isBlank() || role.isBlank()) null
+                    else BusinessMember(
+                        uid = uid,
+                        email = email,
+                        role = role,
+                        approved = d.getBoolean("approved") == true,
+                        blocked = d.getBoolean("blocked") == true
+                    )
+                }
+                onResult(members.sortedWith(compareBy<BusinessMember> { it.approved }.thenBy { it.email.lowercase() }), null)
+            }
+            .addOnFailureListener { onResult(emptyList(), it.localizedMessage ?: "Business member তালিকা আনা যায়নি।") }
+    }
+
+    fun setPartnerAccess(businessId: String, uid: String, approved: Boolean, blocked: Boolean, onResult: (Boolean, String) -> Unit) {
+        if (businessId.isBlank() || uid.isBlank()) {
+            onResult(false, "Business বা Partner ID পাওয়া যায়নি।")
+            return
+        }
+        db().collection(BUSINESSES).document(businessId).collection(MEMBERS).document(uid)
+            .update(
+                mapOf(
+                    "approved" to approved,
+                    "blocked" to blocked,
+                    "role" to "PARTNER",
+                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener { onResult(true, "Partner access update হয়েছে।") }
+            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner access update করা যায়নি।") }
+    }
+
+    fun removeMember(businessId: String, uid: String, onResult: (Boolean, String) -> Unit) {
+        if (businessId.isBlank() || uid.isBlank()) {
+            onResult(false, "Business বা Partner ID পাওয়া যায়নি।")
+            return
+        }
+        db().collection(BUSINESSES).document(businessId).collection(MEMBERS).document(uid)
+            .delete()
+            .addOnSuccessListener { onResult(true, "Partner Remove করা হয়েছে।") }
+            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner Remove করা যায়নি।") }
+    }
 }
