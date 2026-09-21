@@ -71,17 +71,20 @@ service cloud.firestore {
     }
 
     match /licenses/{licenseCode} {
-      allow read: if signedIn();
+      allow get: if true;
+      allow list: if admin();
       allow create, update, delete: if admin();
     }
 
     match /businesses/{businessId} {
-      allow read: if member(businessId);
-      allow create, update, delete: if businessAdmin(businessId);
+      allow read: if member(businessId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if businessAdmin(businessId);
 
       match /members/{memberId} {
         allow read: if member(businessId) && (request.auth.uid == memberId || businessAdmin(businessId));
-        allow create, update, delete: if businessAdmin(businessId);
+        allow create: if businessAdmin(businessId) || (signedIn() && memberId == request.auth.uid && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid && request.resource.data.role == "OWNER");
+        allow update, delete: if businessAdmin(businessId);
       }
 
       match /data/{document} {
