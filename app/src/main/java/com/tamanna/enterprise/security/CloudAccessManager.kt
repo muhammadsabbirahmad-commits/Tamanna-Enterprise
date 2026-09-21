@@ -309,7 +309,13 @@ object CloudAccessManager {
                     val email = d.getString("email").orEmpty()
                     val role = d.getString("role").orEmpty()
                     if (email.isBlank() || role.isBlank()) null
-                    else CloudAccessUser(uid, email, role, d.getBoolean("approved") == true)
+                    else CloudAccessUser(
+                        uid,
+                        email,
+                        role,
+                        d.getBoolean("approved") == true,
+                        d.getBoolean("blocked") == true
+                    )
                 }
                 onResult(users.sortedWith(compareBy<CloudAccessUser> { it.approved }.thenBy { it.email.lowercase() }), null)
             }
