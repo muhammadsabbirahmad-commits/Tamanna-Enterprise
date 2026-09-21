@@ -17,6 +17,7 @@ object ProductStorage {
     private const val PREFS = "tamanna_enterprise_products"
     private const val KEY_PRODUCTS = "products"
     private const val KEY_NEXT_CODE = "next_product_code"
+    private const val FIRST_PRODUCT_NUMBER = 228622
 
     fun getProducts(context: Context): List<Product> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -40,13 +41,13 @@ object ProductStorage {
     fun nextProductCode(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getInt(KEY_NEXT_CODE, -1)
-        if (stored >= 1) return "P-" + stored.toString().padStart(4, '0')
+        if (stored >= FIRST_PRODUCT_NUMBER) return "P-" + stored.toString().padStart(6, '0')
         val maxExisting = getProducts(context).mapNotNull { p ->
             Regex("^P-(\\d+)$", RegexOption.IGNORE_CASE).matchEntire(p.code.trim())?.groupValues?.getOrNull(1)?.toIntOrNull()
         }.maxOrNull() ?: 0
-        val next = maxExisting + 1
+        val next = maxOf(FIRST_PRODUCT_NUMBER, maxExisting + 1)
         prefs.edit().putInt(KEY_NEXT_CODE, next).apply()
-        return "P-" + next.toString().padStart(4, '0')
+        return "P-" + next.toString().padStart(6, '0')
     }
 
     fun addProduct(context: Context, product: Product): Boolean {
@@ -55,8 +56,8 @@ object ProductStorage {
         val nextNumber = product.code.removePrefix("P-").toIntOrNull()
         if (nextNumber != null) {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val currentNext = prefs.getInt(KEY_NEXT_CODE, 1)
-            if (nextNumber >= currentNext) prefs.edit().putInt(KEY_NEXT_CODE, nextNumber + 1).apply()
+            val currentNext = prefs.getInt(KEY_NEXT_CODE, FIRST_PRODUCT_NUMBER)
+            if (nextNumber >= currentNext) prefs.edit().putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, nextNumber + 1)).apply()
         }
         products.add(product.copy(createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()))
         saveProducts(context, products)
