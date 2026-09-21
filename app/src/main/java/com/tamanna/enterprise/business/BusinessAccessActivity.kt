@@ -146,7 +146,14 @@ class BusinessAccessActivity : ComponentActivity() {
                             }
 
                             val email = member.email.ifBlank { user.email.orEmpty() }
-                            val localRole = if (member.role == "OWNER") SecurityStorage.ROLE_ADMIN else member.role
+                            if (member.role != "OWNER" && member.role != "PARTNER") {
+                                setStatus?.invoke("এই Business membership role বৈধ নয়।")
+                                FirebaseAuth.getInstance().signOut()
+                                SecurityStorage.logout(this)
+                                return@runOnUiThread
+                            }
+
+                            val localRole = if (member.role == "OWNER") SecurityStorage.ROLE_ADMIN else SecurityStorage.ROLE_PARTNER
                             val local = SecurityStorage.upsertGoogleUser(this, email, localRole, true, user.uid)
                             SecurityStorage.login(this, local)
                             openDashboard()
