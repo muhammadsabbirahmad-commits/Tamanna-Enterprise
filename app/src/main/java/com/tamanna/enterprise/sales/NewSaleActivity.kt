@@ -135,9 +135,20 @@ private fun NewSaleScreen(
 
     LaunchedEffect(scanNonce) {
         if (scanNonce <= 0 || scannedCode.isBlank()) return@LaunchedEffect
-        val product = products.firstOrNull { it.code.equals(scannedCode, ignoreCase = true) }
+        val currentProducts = ProductStorage.getProducts(context)
+        val rawCode = scannedCode.trim()
+        val normalizedCode = rawCode
+            .substringAfterLast("/")
+            .substringBefore("?")
+            .trim()
+        val product = currentProducts.firstOrNull {
+            it.code.equals(rawCode, ignoreCase = true) ||
+                it.code.equals(normalizedCode, ignoreCase = true)
+        }
         if (product == null) {
-            message = "এই বারকোডের কোনো পণ্য স্টকে পাওয়া যায়নি: $scannedCode"
+            message = "এই কোডের কোনো পণ্য পাওয়া যায়নি: $rawCode"
+        } else if (product.stockQuantity <= 0) {
+            message = product.name + " এর স্টক শেষ।"
         } else {
             addProduct(product)
         }
