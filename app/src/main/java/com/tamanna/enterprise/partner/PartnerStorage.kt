@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.partner
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -19,7 +20,7 @@ object PartnerStorage {
     private const val KEY_PARTNERS = "partners"
     private const val KEY_SESSION = "current_partner_id"
 
-    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = BusinessStorage.prefs(context, PREFS)
 
     fun getPartners(context: Context): List<Partner> {
         val raw = prefs(context).getString(KEY_PARTNERS, "[]") ?: "[]"
