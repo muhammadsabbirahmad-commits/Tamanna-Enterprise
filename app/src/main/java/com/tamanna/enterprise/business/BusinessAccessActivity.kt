@@ -97,7 +97,7 @@ class BusinessAccessActivity : ComponentActivity() {
 
     private fun checkAccess() {
         val license = LicenseStorage.get(this)
-        if (license == null || !LicenseStorage.isActive(this)) {
+        if (!LicenseStorage.isActive(this)) {
             startActivity(Intent(this, LicenseActivationActivity::class.java))
             finish()
             return
@@ -112,32 +112,59 @@ class BusinessAccessActivity : ComponentActivity() {
         val business = BusinessAccountStorage.get(this)
         if (business.businessId.isBlank() || business.businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID) {
             setStatus?.invoke("এই License-এর Business Account প্রস্তুত নয়।")
+            FirebaseAuth.getInstance().signOut()
+            SecurityStorage.logout(this)
             return
         }
 
-        setStatus?.invoke("Business membership যাচাই হচ্ছে...")
-        BusinessMembershipManager.currentMember(business.businessId) { member ->
+        if (license.businessId != business.businessId) {
+            setStatus?.invoke("License এবং Business Account মিলছে না। পুনরায় License যাচাই করুন।")
+            FirebaseAuth.getInstance().signOut()
+            SecurityStorage.logout(this)
+            return
+        }
+
+        setStatus?.invoke("License ও Business যাচাই হচ্ছে...")
+        LicenseManager.verify(license.code) { ok, remoteLicense, message ->
             runOnUiThread {
-                if (member != null && member.approved && !member.blocked) {
-                    val email = member.email.ifBlank { user.email.orEmpty() }
-                    val localRole = if (member.role == "OWNER") SecurityStorage.ROLE_ADMIN else member.role
-                    val local = SecurityStorage.upsertGoogleUser(this, email, localRole, true, user.uid)
-                    SecurityStorage.login(this, local)
-                    openDashboard()
-                } else {
-                    setStatus?.invoke(
-                        if (member?.blocked == true)
-                            "এই Business-এ আপনার access Block করা হয়েছে।"
-                        else
-                            "এই Business-এ আপনার Account এখনো অনুমোদিত নয়।"
-                    )
+                if (!ok || remoteLicense == null || remoteLicense.businessId != business.businessId) {
+                    setStatus?.invoke("License যাচাই ব্যর্থ: ${message.ifBlank { "Business-এর সাথে মিল নেই।" }}")
                     FirebaseAuth.getInstance().signOut()
                     SecurityStorage.logout(this)
+                    return@runOnUiThread
+                }
+
+                setStatus?.invoke("Business membership যাচাই হচ্ছে...")
+                BusinessMembershipManager.currentMember(business.businessId) { member ->
+                    runOnUiThread {
+                        if (member != null && member.approved && !member.blocked) {
+                            if (member.role == "OWNER" && business.ownerUid.isNotBlank() && business.ownerUid != user.uid) {
+                                setStatus?.invoke("Business Owner Account-এর সাথে বর্তমান Account মিলছে না।")
+                                FirebaseAuth.getInstance().signOut()
+                                SecurityStorage.logout(this)
+                                return@runOnUiThread
+                            }
+
+                            val email = member.email.ifBlank { user.email.orEmpty() }
+                            val localRole = if (member.role == "OWNER") SecurityStorage.ROLE_ADMIN else member.role
+                            val local = SecurityStorage.upsertGoogleUser(this, email, localRole, true, user.uid)
+                            SecurityStorage.login(this, local)
+                            openDashboard()
+                        } else {
+                            setStatus?.invoke(
+                                if (member?.blocked == true)
+                                    "এই Business-এ আপনার access Block করা হয়েছে।"
+                                else
+                                    "এই Business-এ আপনার Account এখনো অনুমোদিত নয়।"
+                            )
+                            FirebaseAuth.getInstance().signOut()
+                            SecurityStorage.logout(this)
+                        }
+                    }
                 }
             }
         }
     }
-
     private fun openDashboard() {
         startActivity(Intent(this, DashboardActivity::class.java))
         finish()
