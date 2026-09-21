@@ -39,14 +39,12 @@ class LoginActivity : ComponentActivity() {
             try {
                 val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
                     .getResult(ApiException::class.java)
-
                 val idToken = account.idToken
                 if (idToken.isNullOrBlank()) {
                     googleOnError?.invoke("Google ID Token পাওয়া যায়নি। Firebase/Google সেটআপ পরীক্ষা করতে হবে।")
                     clearCallbacks()
                     return@registerForActivityResult
                 }
-
                 val credential = GoogleAuthProvider.getCredential(idToken, null)
                 auth.signInWithCredential(credential)
                     .addOnCompleteListener(this) { task ->
@@ -77,7 +75,6 @@ class LoginActivity : ComponentActivity() {
         CloudAccessManager.resolveGoogleLogin(
             context = this,
             email = email,
-            masterPassword = "",
             adminLogin = adminLoginMode
         ) { success, message, _ ->
             if (success) {
@@ -100,7 +97,6 @@ class LoginActivity : ComponentActivity() {
             .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
             .requestEmail()
             .build()
-
         GoogleSignIn.getClient(this, gso)
             .signInIntent
             .also { googleSignInLauncher.launch(it) }
@@ -110,7 +106,6 @@ class LoginActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SecurityStorage.ensureInitialized(this)
         auth = FirebaseAuth.getInstance()
-
         adminLoginMode = intent.getStringExtra("LOGIN_MODE") != "PARTNER"
 
         setContent {
@@ -129,7 +124,6 @@ class LoginActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleLarge
                         )
                         Spacer(Modifier.height(12.dp))
-
                         Text(
                             if (adminLoginMode)
                                 "সক্রিয় License-এর Business Owner হিসেবে Gmail Connect করুন। প্রথমবার এই Business-এর Owner membership তৈরি হবে।"
@@ -138,12 +132,10 @@ class LoginActivity : ComponentActivity() {
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(Modifier.height(12.dp))
-
                         if (error.isNotBlank()) {
                             Text(error, color = MaterialTheme.colorScheme.error)
                             Spacer(Modifier.height(10.dp))
                         }
-
                         Button(
                             onClick = {
                                 error = ""
@@ -168,7 +160,6 @@ class LoginActivity : ComponentActivity() {
                                 else "Gmail Connect"
                             )
                         }
-
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = { finish() },
