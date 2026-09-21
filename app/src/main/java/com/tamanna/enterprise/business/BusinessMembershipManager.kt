@@ -106,46 +106,49 @@ object BusinessMembershipManager {
         blocked: Boolean = false,
         onResult: (Boolean, String) -> Unit
     ) {
-        if (businessId.isBlank() || uid.isBlank()) {
+        val currentUid = auth().currentUser?.uid
+        if (currentUid.isNullOrBlank() || businessId.isBlank() || uid.isBlank()) {
             onResult(false, "Business বা Partner ID পাওয়া যায়নি।")
             return
         }
 
-        db().collection(BUSINESSES).document(businessId)
-            .set(
-                mapOf(
-                    "businessId" to businessId,
-                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ),
-                SetOptions.merge()
-            )
-            .addOnSuccessListener {
-                db().collection(BUSINESSES).document(businessId)
-                    .collection(MEMBERS).document(uid)
-                    .set(
-                        mapOf(
-                            "uid" to uid,
-                            "email" to email,
-                            "role" to "PARTNER",
-                            "approved" to !blocked,
-                            "blocked" to blocked,
-                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                        ),
-                        SetOptions.merge()
-                    )
-                    .addOnSuccessListener { onResult(true, "Partner Business membership সংরক্ষণ হয়েছে।") }
-                    .addOnFailureListener {
-                        onResult(false, it.localizedMessage ?: "Partner membership সংরক্ষণ করা যায়নি।")
-                    }
+        val businessRef = db().collection(BUSINESSES).document(businessId)
+        businessRef.get().addOnSuccessListener { business ->
+            if (!business.exists() || business.getString("ownerUid") != currentUid) {
+                onResult(false, "শুধু Business Owner Partner access পরিচালনা করতে পারবেন।")
+                return@addOnSuccessListener
             }
-            .addOnFailureListener {
-                onResult(false, it.localizedMessage ?: "Business membership সংরক্ষণ করা যায়নি।")
+            if (uid == currentUid) {
+                onResult(false, "Owner account-কে Partner হিসেবে পরিবর্তন করা যাবে না।")
+                return@addOnSuccessListener
             }
+
+            businessRef.collection(MEMBERS).document(uid)
+                .set(
+                    mapOf(
+                        "uid" to uid,
+                        "email" to email,
+                        "role" to "PARTNER",
+                        "approved" to !blocked,
+                        "blocked" to blocked,
+                        "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                    ),
+                    SetOptions.merge()
+                )
+                .addOnSuccessListener { onResult(true, "Partner Business membership সংরক্ষণ হয়েছে।") }
+                .addOnFailureListener {
+                    onResult(false, it.localizedMessage ?: "Partner membership সংরক্ষণ করা যায়নি।")
+                }
+        }.addOnFailureListener {
+            onResult(false, it.localizedMessage ?: "Business Owner যাচাই করা যায়নি।")
+        }
     }
 
     fun requestPartner(businessId: String, email: String, onResult: (Boolean, String) -> Unit) {
-        val uid = auth().currentUser?.uid
-        if (uid.isNullOrBlank() || businessId.isBlank() || email.isBlank()) {
+        val user = auth().currentUser
+        val uid = user?.uid
+        val verifiedEmail = user?.email?.trim().orEmpty()
+        if (uid.isNullOrBlank() || businessId.isBlank() || verifiedEmail.isBlank()) {
             onResult(false, "Partner account তথ্য পাওয়া যায়নি।")
             return
         }
@@ -158,7 +161,7 @@ object BusinessMembershipManager {
             businessRef.collection(MEMBERS).document(uid).set(
                 mapOf(
                     "uid" to uid,
-                    "email" to email,
+                    "email" to verifiedEmail,
                     "role" to "PARTNER",
                     "approved" to false,
                     "blocked" to false,
