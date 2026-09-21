@@ -27,41 +27,38 @@ service cloud.firestore {
         && currentAccess().data.role == "ADMIN";
     }
 
-    // Google account access directory.
-    // A new Google account may create only its own pending Partner record.
-    // The first Admin bootstrap is allowed only while the singleton admin
-    // configuration does not exist. If the singleton already belongs to the
-    // same UID, the matching access record may also be created/repaired.
+    function member(businessId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.approved == true
+        && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.blocked == false;
+    }
+
+    function businessAdmin(businessId) {
+      return member(businessId)
+        && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.role == "OWNER";
+    }
+
     match /accessUsers/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || admin());
-
       allow create: if signedIn()
         && request.auth.uid == userId
         && request.resource.data.uid == request.auth.uid
         && request.auth.token.email_verified == true
         && (
-          (
-            request.resource.data.role == "PARTNER" &&
-            request.resource.data.approved == false &&
-            request.resource.data.email == request.auth.token.email
-          )
+          (request.resource.data.role == "PARTNER" &&
+           request.resource.data.approved == false &&
+           request.resource.data.email == request.auth.token.email)
           ||
-          (
-            request.resource.data.role == "ADMIN" &&
-            request.resource.data.approved == true &&
-            request.resource.data.email == request.auth.token.email &&
-            (
-              !exists(/databases/$(database)/documents/appConfig/admin)
-              ||
-              get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
-            )
-          )
+          (request.resource.data.role == "ADMIN" &&
+           request.resource.data.approved == true &&
+           request.resource.data.email == request.auth.token.email &&
+           (!exists(/databases/$(database)/documents/appConfig/admin) ||
+            get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid))
         );
-
       allow update, delete: if admin();
     }
 
-    // Singleton marker for the first approved Admin.
     match /appConfig/admin {
       allow read: if signedIn();
       allow create: if signedIn()
@@ -73,32 +70,29 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
-    // Commercial license records. License documents are readable only by
-    // authenticated users; only the approved Admin can manage them.
     match /licenses/{licenseCode} {
       allow read: if signedIn();
       allow create, update, delete: if admin();
     }
 
-    // Business identity and membership foundation.
     match /businesses/{businessId} {
-      allow read: if approvedUser()
-        && exists(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid));
-      allow create, update, delete: if admin();
+      allow read: if member(businessId);
+      allow create, update, delete: if businessAdmin(businessId);
 
       match /members/{memberId} {
-        allow read: if approvedUser()
-          && (request.auth.uid == memberId || admin());
-        allow create, update, delete: if admin();
+        allow read: if member(businessId) && (request.auth.uid == memberId || businessAdmin(businessId));
+        allow create, update, delete: if businessAdmin(businessId);
+      }
+
+      match /data/{document} {
+        allow read: if member(businessId);
+        allow write: if businessAdmin(businessId);
       }
     }
 
-    // Business data: Admin has full access; approved Partners/Viewers are
-    // read-only. Each user's cloud data remains isolated unless the requester
-    // is the approved Admin.
+    // Legacy user-scoped data is retained temporarily for migration.
     match /users/{userId}/data/{document} {
-      allow read: if approvedUser()
-        && (request.auth.uid == userId || admin());
+      allow read: if approvedUser() && (request.auth.uid == userId || admin());
       allow write: if admin();
     }
 
