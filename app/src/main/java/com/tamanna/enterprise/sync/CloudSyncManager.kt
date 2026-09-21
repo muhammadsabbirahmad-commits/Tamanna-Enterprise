@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.security.SecurityStorage
 
 /**
@@ -16,7 +17,7 @@ import com.tamanna.enterprise.security.SecurityStorage
  * users/{FirebaseAuth.uid}/data/{namespace}
  */
 object CloudSyncManager {
-    private const val USERS = "users"
+    private const val BUSINESSES = "businesses"
     private const val DATA = "data"
 
     private val namespaces = listOf(
@@ -37,8 +38,9 @@ object CloudSyncManager {
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
 
-    private fun userDataCollection() =
-        db().collection(USERS).document(auth().currentUser?.uid ?: "")
+    private fun businessDataCollection() =
+        db().collection(BUSINESSES)
+            .document(BusinessAccountStorage.get().businessId)
             .collection(DATA)
 
     fun pullThenSync(context: Context, onComplete: (Boolean) -> Unit = {}) {
@@ -49,7 +51,7 @@ object CloudSyncManager {
         }
         val appContext = context.applicationContext
         val refs = namespaces.map { namespace ->
-            userDataCollection().document(namespace).get()
+            businessDataCollection().document(namespace).get()
         }
 
         Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(refs)
