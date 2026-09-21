@@ -77,7 +77,7 @@ class UserManagementActivity : ComponentActivity() {
                                     item { Text("কোনো Admin নেই।", style = MaterialTheme.typography.bodySmall) }
                                 } else {
                                     items(approvedAdmins, key = { "admin-" + it.uid }) { user ->
-                                        UserRow(user, "🟢 Active", emptyList(), {}, {})
+                                        UserRow(user, "🟢 Active", emptyList(), {})
                                     }
                                 }
 
@@ -201,8 +201,7 @@ class UserManagementActivity : ComponentActivity() {
         user: CloudAccessUser,
         statusLabel: String,
         actions: List<String>,
-        onAction: (String) -> Unit,
-        @Suppress("UNUSED_PARAMETER") onSecondaryAction: () -> Unit
+        onAction: (String) -> Unit
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
