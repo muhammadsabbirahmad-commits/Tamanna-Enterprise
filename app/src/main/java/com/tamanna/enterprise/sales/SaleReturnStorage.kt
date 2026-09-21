@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.sales
 
 import android.content.Context
+import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -29,7 +30,7 @@ object SaleReturnStorage {
     private const val KEY_LINES = "lines"
 
     fun getReturns(context: Context): List<SaleReturn> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_RETURNS, "[]") ?: "[]"
         val a = JSONArray(raw)
         return buildList {
@@ -48,7 +49,7 @@ object SaleReturnStorage {
     }
 
     fun getLines(context: Context): List<SaleReturnLine> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_LINES, "[]") ?: "[]"
         val a = JSONArray(raw)
         return buildList {
@@ -116,7 +117,7 @@ object SaleReturnStorage {
                 put("unitPrice", it.unitPrice)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        BusinessStorage.prefs(context, PREFS).edit()
             .putString(KEY_RETURNS, ra.toString())
             .putString(KEY_LINES, la.toString())
             .apply()
