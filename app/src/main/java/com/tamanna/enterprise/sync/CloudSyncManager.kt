@@ -19,6 +19,7 @@ import com.tamanna.enterprise.security.SecurityStorage
 object CloudSyncManager {
     private const val BUSINESSES = "businesses"
     private const val DATA = "data"
+    private const val MIGRATION_MARKER = "_legacy_cloud_migration"
 
     private val namespaces = listOf(
         "tamanna_enterprise_products",
@@ -141,47 +142,95 @@ object CloudSyncManager {
             }
 
             val legacyCollection = db().collection("users").document(uid).collection(DATA)
-            legacyCollection.get()
-                .addOnSuccessListener { legacySnapshots ->
-                    if (legacySnapshots.isEmpty) {
-                        onComplete(false, "পুরোনো Cloud Data পাওয়া যায়নি।")
+            val targetCollection = businessDataCollection(appContext)
+            val markerRef = targetCollection.document(MIGRATION_MARKER)
+
+            markerRef.get()
+                .addOnSuccessListener { marker ->
+                    if (marker.exists() && marker.getBoolean("completed") == true) {
+                        onComplete(true, "পুরোনো Cloud Data Migration আগে থেকেই সম্পন্ন হয়েছে।")
                         return@addOnSuccessListener
                     }
 
-                    val targetCollection = businessDataCollection(appContext)
-                    val batch = db().batch()
-                    var migrated = 0
+                    legacyCollection.get()
+                        .addOnSuccessListener { legacySnapshots ->
+                            if (legacySnapshots.isEmpty) {
+                                onComplete(false, "পুরোনো Cloud Data পাওয়া যায়নি।")
+                                return@addOnSuccessListener
+                            }
 
-                    legacySnapshots.documents.forEach { legacy ->
-                        if (!legacy.exists()) return@forEach
-                        val namespace = legacy.id
-                        if (!namespaces.contains(namespace)) return@forEach
-                        val target = targetCollection.document(namespace)
-                        val values = legacy.get("values")
-                        if (values is Map<*, *>) {
-                            val existing = legacy.get("updatedAt")
-                            val payload = mutableMapOf<String, Any?>("values" to values)
-                            if (existing != null) payload["updatedAt"] = existing
-                            batch.set(target, payload, SetOptions.merge())
-                            migrated++
-                        }
-                    }
+                            val targetRefs = namespaces.map { namespace ->
+                                targetCollection.document(namespace).get()
+                            }
 
-                    if (migrated == 0) {
-                        onComplete(false, "পুরোনো Cloud Data-তে মাইগ্রেট করার মতো Business Data পাওয়া যায়নি।")
-                        return@addOnSuccessListener
-                    }
+                            Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(targetRefs)
+                                .addOnSuccessListener { targetSnapshots ->
+                                    val existingTargets = targetSnapshots.mapIndexedNotNull { index, snapshot ->
+                                        if (snapshot.exists()) namespaces[index] else null
+                                    }.toSet()
 
-                    batch.commit()
-                        .addOnSuccessListener {
-                            onComplete(true, "পুরোনো Cloud Data নতুন Business Data-তে মাইগ্রেট হয়েছে।")
+                                    val batch = db().batch()
+                                    var migrated = 0
+
+                                    legacySnapshots.documents.forEach { legacy ->
+                                        if (!legacy.exists()) return@forEach
+                                        val namespace = legacy.id
+                                        if (!namespaces.contains(namespace)) return@forEach
+                                        if (existingTargets.contains(namespace)) return@forEach
+
+                                        val values = legacy.get("values")
+                                        if (values is Map<*, *>) {
+                                            val existing = legacy.get("updatedAt")
+                                            val payload = mutableMapOf<String, Any?>("values" to values)
+                                            if (existing != null) payload["updatedAt"] = existing
+                                            batch.set(
+                                                targetCollection.document(namespace),
+                                                payload,
+                                                SetOptions.merge()
+                                            )
+                                            migrated++
+                                        }
+                                    }
+
+                                    if (migrated == 0) {
+                                        onComplete(
+                                            false,
+                                            "নতুন Business Cloud-এ একই Data আগে থেকেই আছে অথবা মাইগ্রেট করার মতো Data নেই। পুরোনো Data overwrite করা হয়নি।"
+                                        )
+                                        return@addOnSuccessListener
+                                    }
+
+                                    batch.set(
+                                        markerRef,
+                                        mapOf(
+                                            "completed" to true,
+                                            "migratedNamespaces" to migrated,
+                                            "migratedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                        ),
+                                        SetOptions.merge()
+                                    )
+
+                                    batch.commit()
+                                        .addOnSuccessListener {
+                                            onComplete(
+                                                true,
+                                                "পুরোনো Cloud Data নিরাপদভাবে নতুন Business Data-তে মাইগ্রেট হয়েছে। বিদ্যমান Data overwrite করা হয়নি।"
+                                            )
+                                        }
+                                        .addOnFailureListener {
+                                            onComplete(false, it.localizedMessage ?: "Cloud Migration ব্যর্থ হয়েছে।")
+                                        }
+                                }
+                                .addOnFailureListener {
+                                    onComplete(false, it.localizedMessage ?: "নতুন Business Cloud Data যাচাই করা যায়নি।")
+                                }
                         }
                         .addOnFailureListener {
-                            onComplete(false, it.localizedMessage ?: "Cloud Migration ব্যর্থ হয়েছে।")
+                            onComplete(false, it.localizedMessage ?: "পুরোনো Cloud Data পড়া যায়নি।")
                         }
                 }
                 .addOnFailureListener {
-                    onComplete(false, it.localizedMessage ?: "পুরোনো Cloud Data পড়া যায়নি।")
+                    onComplete(false, it.localizedMessage ?: "Migration status যাচাই করা যায়নি।")
                 }
         }
     }
@@ -223,4 +272,5 @@ object CloudSyncManager {
                 else -> value
             }
         }
+    }
 }
