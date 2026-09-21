@@ -24,7 +24,7 @@ object SecurityStorage {
     private const val KEY_USERS = "users"
     private const val KEY_LOGIN_ENABLED = "login_enabled"
     private const val KEY_CURRENT_USER = "current_user"
-    private const val MASTER_PASSWORD_HASH = "70e44e5698e141bb8ce716b771cc9029d8d01672881f6d685b14b5dcadc5af29"
+    // Legacy local-password compatibility. Commercial access is governed by Firebase License + Business membership.
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -104,8 +104,7 @@ object SecurityStorage {
         }
     }
 
-    fun isMasterPassword(password: String): Boolean =
-        hashPassword(password) == MASTER_PASSWORD_HASH
+    fun isMasterPassword(password: String): Boolean = false
 
     fun findByGoogleEmail(context: Context, email: String): AppUser? =
         getUsers(context).firstOrNull { it.googleEmail.equals(email.trim(), ignoreCase = true) }
