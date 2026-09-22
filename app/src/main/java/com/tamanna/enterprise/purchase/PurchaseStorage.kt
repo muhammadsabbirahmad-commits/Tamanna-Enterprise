@@ -27,18 +27,16 @@ object PurchaseStorage {
         return buildList {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
-                add(
-                    Purchase(
-                        id = item.getLong("id"),
-                        date = item.getString("date"),
-                        productCode = item.getString("productCode"),
-                        productName = item.getString("productName"),
-                        quantity = item.getInt("quantity"),
-                        purchasePrice = item.getDouble("purchasePrice"),
-                        supplier = item.getString("supplier"),
-                        memoNumber = item.getString("memoNumber")
-                    )
-                )
+                add(Purchase(
+                    id = item.getLong("id"),
+                    date = item.getString("date"),
+                    productCode = item.getString("productCode"),
+                    productName = item.getString("productName"),
+                    quantity = item.getInt("quantity"),
+                    purchasePrice = item.getDouble("purchasePrice"),
+                    supplier = item.getString("supplier"),
+                    memoNumber = item.getString("memoNumber")
+                ))
             }
         }.sortedByDescending { it.id }
     }
@@ -47,19 +45,24 @@ object PurchaseStorage {
         val purchases = getPurchases(context).toMutableList()
         val usedIds = purchases.asSequence().map { it.id }.toHashSet()
         var uniqueId = purchase.id
-        while (usedIds.contains(uniqueId)) {
-            uniqueId++
-        }
+        while (usedIds.contains(uniqueId)) uniqueId++
         val normalizedPurchase = purchase.copy(id = uniqueId)
         purchases.add(normalizedPurchase)
         savePurchases(context, purchases)
-
         return getPurchases(context).any {
             it.id == normalizedPurchase.id &&
                 it.productCode.equals(normalizedPurchase.productCode, true) &&
                 it.quantity == normalizedPurchase.quantity &&
                 it.purchasePrice == normalizedPurchase.purchasePrice
         }
+    }
+
+    fun removeById(context: Context, id: Long): Boolean {
+        val purchases = getPurchases(context)
+        val filtered = purchases.filterNot { it.id == id }
+        if (filtered.size == purchases.size) return false
+        savePurchases(context, filtered)
+        return getPurchases(context).none { it.id == id }
     }
 
     private fun savePurchases(context: Context, purchases: List<Purchase>) {
@@ -76,7 +79,7 @@ object PurchaseStorage {
                 put("memoNumber", it.memoNumber)
             })
         }
-        BusinessStorage.prefs(context, PREFS)
-            .edit().putString(KEY_PURCHASES, array.toString()).apply()
+        BusinessStorage.prefs(context, PREFS).edit()
+            .putString(KEY_PURCHASES, array.toString()).apply()
     }
 }
