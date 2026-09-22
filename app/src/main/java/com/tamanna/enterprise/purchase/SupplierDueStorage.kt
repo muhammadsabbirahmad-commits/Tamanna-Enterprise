@@ -113,7 +113,7 @@ object SupplierDueStorage {
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
-        return getEntries(context).any { it.id == normalizedEntry.id }
+        return if (getEntries(context).any { it.id == normalizedEntry.id }) normalizedEntry.id else 0L
     }
 
     private fun now(): String =
