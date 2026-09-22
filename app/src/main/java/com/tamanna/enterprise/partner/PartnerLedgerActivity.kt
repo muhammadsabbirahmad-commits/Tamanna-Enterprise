@@ -79,7 +79,8 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
  val sales=remember(refresh){SalesStorage.getSales(a)}
  val expenses=remember(refresh){ExpenseStorage.getExpenses(a)}
  val damages=remember(refresh){ExpenseStorage.getDamages(a)}
- val withdrawals=remember(refresh){ExpenseStorage.getWithdrawals(a)}\n val investments=remember(refresh){PartnerInvestmentStorage.getInvestments(a).filter{it.partnerId==partner.id}}
+ val withdrawals=remember(refresh){ExpenseStorage.getWithdrawals(a)}
+ val investments=remember(refresh){PartnerInvestmentStorage.getInvestments(a).filter{it.partnerId==partner.id}}
  val valid=from.length==10&&to.length==10&&from<=to
  val result=remember(refresh,from,to){calculateProfit(a,from,to)}
  val expenseAmount=if(valid)expenses.filter{inRange(it.date,from,to)}.sumOf{it.amount}else 0.0
@@ -101,7 +102,8 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(from,{from=it},label={Text("শুরু (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.weight(1f));OutlinedTextField(to,{to=it},label={Text("শেষ (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.weight(1f))}
    Spacer(Modifier.height(8.dp));Button({refresh++},enabled=valid,modifier=Modifier.fillMaxWidth()){Text("হিসাব আপডেট করুন")}
    Spacer(Modifier.height(10.dp))
-   Text("মোট বিনিয়োগ: ৳ "+"%.2f".format(Locale.US,partner.investment))\n   Text("বিনিয়োগ লেনদেন: "+investments.size)
+   Text("মোট বিনিয়োগ: ৳ "+"%.2f".format(Locale.US,partner.investment))
+   Text("বিনিয়োগ লেনদেন: "+investments.size)
    Text("লাভের অংশ: "+"%.2f".format(Locale.US,partner.percentage)+"%")
    Text("নেট বিক্রয় (রিটার্ন বাদ): ৳ "+"%.2f".format(Locale.US,result.revenue))
    Text("পণ্য ক্রয়মূল্য: ৳ "+"%.2f".format(Locale.US,result.cost))
@@ -116,7 +118,9 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
    Text("বর্তমান পাওনা: ৳ "+"%.2f".format(Locale.US,payable),style=MaterialTheme.typography.titleMedium)
    Spacer(Modifier.height(10.dp))
    Button({shareStatement(a,partner,from,to,netProfit,share,periodWithdrawn,accruedProfit,lifetimeWithdrawn,payable,periodWithdrawals)},enabled=valid,modifier=Modifier.fillMaxWidth()){Text("স্টেটমেন্ট PDF শেয়ার করুন")}
-   Spacer(Modifier.height(10.dp));Text("বিনিয়োগের ইতিহাস",style=MaterialTheme.typography.titleLarge)\n   LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp),modifier=Modifier.heightIn(max=220.dp)){items(investments.sortedByDescending{it.date}){x->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(x.date+" — ৳ "+"%.2f".format(Locale.US,x.amount));Text("TX: "+x.transactionId);if(x.note.isNotBlank())Text(x.note)}}}}\n   Spacer(Modifier.height(10.dp));Text("উত্তোলনের ইতিহাস",style=MaterialTheme.typography.titleLarge)
+   Spacer(Modifier.height(10.dp));Text("বিনিয়োগের ইতিহাস",style=MaterialTheme.typography.titleLarge)
+   LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp),modifier=Modifier.heightIn(max=220.dp)){items(investments.sortedByDescending{it.date}){x->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(x.date+" — ৳ "+"%.2f".format(Locale.US,x.amount));Text("TX: "+x.transactionId);if(x.note.isNotBlank())Text(x.note)}}}}
+   Spacer(Modifier.height(10.dp));Text("উত্তোলনের ইতিহাস",style=MaterialTheme.typography.titleLarge)
    LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)){items(periodWithdrawals){w->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(w.date+" — ৳ "+"%.2f".format(Locale.US,w.amount)+" — "+w.method);if(w.note.isNotBlank())Text(w.note)}}}}
   }
  }
