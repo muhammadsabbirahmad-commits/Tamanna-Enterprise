@@ -41,7 +41,7 @@ object PurchaseStorage {
         }.sortedByDescending { it.id }
     }
 
-    fun addPurchase(context: Context, purchase: Purchase): Boolean {
+    fun addPurchase(context: Context, purchase: Purchase): Long {
         val purchases = getPurchases(context).toMutableList()
         val usedIds = purchases.asSequence().map { it.id }.toHashSet()
         var uniqueId = purchase.id
@@ -49,12 +49,12 @@ object PurchaseStorage {
         val normalizedPurchase = purchase.copy(id = uniqueId)
         purchases.add(normalizedPurchase)
         savePurchases(context, purchases)
-        return getPurchases(context).any {
+        return if (getPurchases(context).any {
             it.id == normalizedPurchase.id &&
                 it.productCode.equals(normalizedPurchase.productCode, true) &&
                 it.quantity == normalizedPurchase.quantity &&
                 it.purchasePrice == normalizedPurchase.purchasePrice
-        }
+        }) normalizedPurchase.id else 0L
     }
 
     fun removeById(context: Context, id: Long): Boolean {
