@@ -37,6 +37,9 @@ fun AddProductScreen() {
     var salePrice by remember { mutableStateOf("") }
     var stockQuantity by remember { mutableStateOf("") }
 
+    // Reserve exactly one code for this form and reuse it on save.
+    val productCode = remember { ProductStorage.nextProductCode(context) }
+
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -44,7 +47,7 @@ fun AddProductScreen() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("নতুন পণ্য যোগ করুন", style = MaterialTheme.typography.headlineMedium)
-                Text("অটোমেটিক Product Code: ${ProductStorage.nextProductCode(context)}", style = MaterialTheme.typography.titleMedium)
+                Text("অটোমেটিক Product Code: $productCode", style = MaterialTheme.typography.titleMedium)
                 Text("কোড নিজে টাইপ করতে হবে না। প্রতিটি নতুন পণ্যের জন্য ইউনিক কোড তৈরি হবে।")
                 OutlinedTextField(productName, { productName = it }, label = { Text("পণ্যের নাম") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(purchasePrice, { purchasePrice = it }, label = { Text("ক্রয়মূল্য") }, modifier = Modifier.fillMaxWidth())
@@ -68,7 +71,7 @@ fun AddProductScreen() {
                             else -> {
                                 val saved = ProductStorage.addProduct(
                                     context,
-                                    Product(ProductStorage.nextProductCode(context), productName.trim(), purchase, sale, stock)
+                                    Product(productCode, productName.trim(), purchase, sale, stock)
                                 )
                                 if (saved) {
                                     Toast.makeText(context, "পণ্য সফলভাবে সংরক্ষণ হয়েছে", Toast.LENGTH_SHORT).show()
