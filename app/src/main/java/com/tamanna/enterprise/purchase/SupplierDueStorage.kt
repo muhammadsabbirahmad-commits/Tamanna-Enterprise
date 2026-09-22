@@ -63,15 +63,33 @@ object SupplierDueStorage {
         return id
     }
 
-    fun addPayment(context: Context, supplier: String, amount: Double, note: String) {
-        if (supplier.isBlank() || amount <= 0) return
-        add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PAYMENT", -amount, note))
+    fun addPayment(context: Context, supplier: String, amount: Double, note: String): Long {
+        if (supplier.isBlank() || amount <= 0) return 0L
+        val id = add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PAYMENT", -amount, note))
+        if (id <= 0L) return 0L
         ensureSupplier(context, supplier)
+        return id
     }
 
     private fun ensureSupplier(context: Context, name: String) {
         if(name.isBlank() || getSuppliers(context).any { it.name.equals(name.trim(),true) }) return
         addSupplier(context,name,"","")
+    }
+
+    fun removePaymentById(context: Context, id: Long): Boolean {
+        if (id <= 0L) return false
+        val entries = getEntries(context)
+        if (entries.none { it.id == id && it.type == "PAYMENT" }) return false
+        val remaining = entries.filterNot { it.id == id && it.type == "PAYMENT" }
+        val array = JSONArray()
+        remaining.forEach {
+            array.put(JSONObject().apply {
+                put("id", it.id); put("date", it.date); put("supplier", it.supplier)
+                put("type", it.type); put("amount", it.amount); put("note", it.note)
+            })
+        }
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
+        return getEntries(context).none { it.id == id && it.type == "PAYMENT" }
     }
 
     fun getBalance(context: Context, supplier: String): Double =
