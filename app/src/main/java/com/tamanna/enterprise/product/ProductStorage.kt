@@ -23,20 +23,22 @@ object ProductStorage {
     fun getProducts(context: Context): List<Product> {
         val raw = BusinessStorage.prefs(context, PREFS)
             .getString(KEY_PRODUCTS, "[]") ?: "[]"
-        val array = JSONArray(raw)
-        return buildList {
-            for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i)
-                add(Product(
-                    item.getString("code"),
-                    item.getString("name"),
-                    item.getDouble("purchasePrice"),
-                    item.getDouble("salePrice"),
-                    item.getInt("stockQuantity"),
-                    item.optLong("createdAt", i.toLong())
-                ))
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    add(Product(
+                        item.getString("code"),
+                        item.getString("name"),
+                        item.getDouble("purchasePrice"),
+                        item.getDouble("salePrice"),
+                        item.getInt("stockQuantity"),
+                        item.optLong("createdAt", i.toLong())
+                    ))
+                }
             }
-        }
+        }.getOrDefault(emptyList())
     }
 
     fun nextProductCode(context: Context): String {
