@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
 
 class AddProductActivity : ComponentActivity() {
@@ -84,8 +85,18 @@ fun AddProductScreen() {
                                     Product(productCode, productName.trim(), purchase, sale, stock)
                                 )
                                 if (saved) {
-                                    Toast.makeText(context, "পণ্য সফলভাবে সংরক্ষণ হয়েছে", Toast.LENGTH_SHORT).show()
-                                    (context as? ComponentActivity)?.finish()
+                                    val logId = ActivityLogStorage.addAndGetId(
+                                        context,
+                                        "নতুন পণ্য যোগ",
+                                        productName.trim() + " (" + productCode + ") • স্টক: " + stock
+                                    )
+                                    if (logId <= 0L) {
+                                        ProductStorage.deleteProduct(context, productCode)
+                                        Toast.makeText(context, "পণ্যের Activity Log সংরক্ষণ করা যায়নি। পণ্য rollback করা হয়েছে।", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "পণ্য সফলভাবে সংরক্ষণ হয়েছে", Toast.LENGTH_SHORT).show()
+                                        (context as? ComponentActivity)?.finish()
+                                    }
                                 } else {
                                     Toast.makeText(context, "পণ্য সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।", Toast.LENGTH_SHORT).show()
                                 }
