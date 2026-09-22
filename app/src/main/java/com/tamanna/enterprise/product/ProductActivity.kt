@@ -2,6 +2,7 @@ package com.tamanna.enterprise.product
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -275,12 +276,16 @@ fun ProductScreen(
                         admin == null || admin.passwordHash != SecurityStorage.hashPassword(deletePin) ->
                             deleteError = "ভুল Admin PIN।"
                         else -> {
-                            ProductStorage.deleteProduct(context, latest.code)
-                            ActivityLogStorage.add(context, "পণ্য মুছে ফেলা", latest.name + " (" + latest.code + ")")
-                            deletePin = ""
-                            deleteError = ""
-                            deleteProduct = null
-                            onProductsChanged()
+                            val deleted = ProductStorage.deleteProduct(context, latest.code)
+                            if (deleted) {
+                                ActivityLogStorage.add(context, "পণ্য মুছে ফেলা", latest.name + " (" + latest.code + ")")
+                                deletePin = ""
+                                deleteError = ""
+                                deleteProduct = null
+                                onProductsChanged()
+                            } else {
+                                deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
+                            }
                         }
                     }
                 }
@@ -336,7 +341,7 @@ fun EditProductDialog(
                 val s = sale.toDoubleOrNull()
 
                 if (name.isNotBlank() && p != null && p >= 0 && s != null && s >= 0) {
-                    ProductStorage.updateProduct(
+                    val saved = ProductStorage.updateProduct(
                         context = context,
                         product = product.copy(
                             name = name.trim(),
@@ -344,7 +349,11 @@ fun EditProductDialog(
                             salePrice = s
                         )
                     )
-                    onSaved()
+                    if (saved) {
+                        onSaved()
+                    } else {
+                        Toast.makeText(context, "পণ্যটি আর পাওয়া যাচ্ছে না।", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }) {
                 Text("Save")
@@ -404,14 +413,18 @@ fun StockDialog(
                         error = "Stock Out করা যাবে না। বর্তমান স্টক: " + latest.stockQuantity
                     else -> {
                         val newStock = if (add) latest.stockQuantity + q else latest.stockQuantity - q
-                        ProductStorage.updateStock(context, latest.code, newStock)
-                        ActivityLogStorage.add(
-                            context,
-                            if (add) "Manual Stock In" else "Manual Stock Out",
-                            latest.name + " (" + latest.code + ") x" + q +
-                                " • " + latest.stockQuantity + " → " + newStock
-                        )
-                        onSaved()
+                        val saved = ProductStorage.updateStock(context, latest.code, newStock)
+                        if (saved) {
+                            ActivityLogStorage.add(
+                                context,
+                                if (add) "Manual Stock In" else "Manual Stock Out",
+                                latest.name + " (" + latest.code + ") x" + q +
+                                    " • " + latest.stockQuantity + " → " + newStock
+                            )
+                            onSaved()
+                        } else {
+                            error = "পণ্যটি আর পাওয়া যাচ্ছে না।"
+                        }
                     }
                 }
             }) { Text("Save") }
