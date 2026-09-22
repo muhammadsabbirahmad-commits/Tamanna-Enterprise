@@ -299,6 +299,7 @@ private fun NewSaleScreen(
                     val customerText = customer.trim() + if (mobile.isNotBlank()) " • " + mobile.trim() else ""
                     val dueNote = "বিক্রয়: " + latestCart.joinToString(", ") { it.product.name + " x" + it.quantity }
                     val originalStocks = latestCart.associate { it.product.code to it.product.stockQuantity }
+                    var saleDueId = 0L
 
                     try {
                         SalesTransactionStorage.addTransaction(
@@ -318,9 +319,12 @@ private fun NewSaleScreen(
                         )
 
                         if (due > 0.0) {
-                            CustomerDueStorage.addSaleDue(
+                            saleDueId = CustomerDueStorage.addSaleDue(
                                 context, customer.trim(), mobile.trim(), due, dueNote
                             )
+                            if (saleDueId <= 0L) {
+                                throw IllegalStateException("ক্রেতার বাকি সংরক্ষণ করা যায়নি")
+                            }
                         }
 
                         latestCart.forEachIndexed { index, item ->
@@ -365,10 +369,8 @@ private fun NewSaleScreen(
                         }
                         SalesStorage.removeByTransaction(context, transactionId)
                         SalesTransactionStorage.removeTransaction(context, transactionId)
-                        if (due > 0.0) {
-                            CustomerDueStorage.removeSaleDue(
-                                context, customer.trim(), mobile.trim(), due, dueNote
-                            )
+                        if (saleDueId > 0L) {
+                            CustomerDueStorage.removeSaleDueById(context, saleDueId)
                         }
                         message = "বিক্রয় সংরক্ষণ ব্যর্থ হয়েছে। কোনো পরিবর্তন রাখা হয়নি।"
                         return@Button
