@@ -157,13 +157,13 @@ private fun AddPurchaseScreen(
                             }
                         }
 
-                        val logSaved = ActivityLogStorage.add(
+                        val activityLogId = ActivityLogStorage.addAndGetId(
                             context,
                             "পণ্য ক্রয় ও Stock In",
                             latestProduct.name + " (" + latestProduct.code + ") x" + qty +
                                 " • নতুন স্টক: " + updatedProduct.stockQuantity
                         )
-                        if (!logSaved) {
+                        if (activityLogId <= 0L) {
                             if (supplierDueId > 0L) {
                                 SupplierDueStorage.removeById(context, supplierDueId)
                             }
