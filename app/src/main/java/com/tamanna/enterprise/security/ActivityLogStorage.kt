@@ -21,16 +21,15 @@ object ActivityLogStorage {
     private const val KEY_LOGS = "logs"
     private const val MAX_LOGS = 500
 
-    fun add(context: Context, action: String, details: String) {
+    fun add(context: Context, action: String, details: String): Boolean {
         val user = SecurityStorage.getCurrentUser(context)?.username ?: "system"
         val list = get(context).toMutableList()
-        list.add(
-            ActivityLogEntry(
-                System.currentTimeMillis(),
-                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
-                user, action, details
-            )
+        val entry = ActivityLogEntry(
+            System.currentTimeMillis(),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
+            user, action, details
         )
+        list.add(entry)
         val array = JSONArray()
         list.takeLast(MAX_LOGS).forEach {
             array.put(JSONObject().apply {
@@ -40,6 +39,12 @@ object ActivityLogStorage {
         }
         BusinessStorage.prefs(context, PREFS).edit()
             .putString(KEY_LOGS, array.toString()).apply()
+
+        return get(context).any {
+            it.id == entry.id &&
+                it.action == entry.action &&
+                it.details == entry.details
+        }
     }
 
     fun get(context: Context): List<ActivityLogEntry> {
