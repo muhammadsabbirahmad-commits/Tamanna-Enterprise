@@ -35,6 +35,7 @@ import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.security.ActivityLogStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,6 +59,10 @@ class NewSaleActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canWrite(this)) {
+            finish()
+            return
+        }
         scannedCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()
         if (scannedCode.isNotBlank()) scanNonce = 1
 
@@ -268,6 +273,10 @@ private fun NewSaleScreen(
 
             Button(
                 onClick = {
+                    if (!SecurityStorage.canWrite(context)) {
+                        message = "বিক্রয় ও Stock Out করার অনুমতি শুধু অ্যাডমিনের আছে।"
+                        return@Button
+                    }
                     if (cart.isEmpty()) {
                         message = "কমপক্ষে একটি পণ্য কার্টে যোগ করুন।"
                         return@Button
