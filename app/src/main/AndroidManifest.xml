@@ -7,8 +7,8 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_tamanna_enterprise"
-        android:roundIcon="@drawable/ic_tamanna_enterprise"
+        android:icon="@mipmap/ic_tamanna_enterprise"
+        android:roundIcon="@mipmap/ic_tamanna_enterprise"
         android:label="Tamanna Enterprise"
         android:supportsRtl="true"
         android:theme="@style/Theme.TamannaEnterprise">
