@@ -150,12 +150,18 @@ private fun AddPurchaseScreen(
                             )
                         }
 
-                        ActivityLogStorage.add(
+                        val logSaved = ActivityLogStorage.add(
                             context,
                             "পণ্য ক্রয় ও Stock In",
                             latestProduct.name + " (" + latestProduct.code + ") x" + qty +
                                 " • নতুন স্টক: " + updatedProduct.stockQuantity
                         )
+                        if (!logSaved) {
+                            PurchaseStorage.removeById(context, purchaseId)
+                            ProductStorage.updateStock(context, latestProduct.code, latestProduct.stockQuantity)
+                            message = "ক্রয়ের Activity Log সংরক্ষণ করা যায়নি। ক্রয় ও স্টক rollback করা হয়েছে।"
+                            return@Button
+                        }
                         onSaved()
                     }
                 }
