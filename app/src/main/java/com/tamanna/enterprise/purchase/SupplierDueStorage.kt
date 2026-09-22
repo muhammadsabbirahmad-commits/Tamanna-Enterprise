@@ -81,7 +81,12 @@ object SupplierDueStorage {
 
     private fun add(context: Context, entry: SupplierDueEntry) {
         val entries = getEntries(context).toMutableList()
-        entries.add(entry)
+        val usedIds = entries.asSequence().map { it.id }.toHashSet()
+        var uniqueId = entry.id
+        while (usedIds.contains(uniqueId)) {
+            uniqueId++
+        }
+        entries.add(entry.copy(id = uniqueId))
         val array = JSONArray()
         entries.forEach {
             array.put(JSONObject().apply {
