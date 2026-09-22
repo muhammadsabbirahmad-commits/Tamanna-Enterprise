@@ -84,7 +84,18 @@ private fun SupplierDueScreen() {
                             if (paymentId <= 0L) {
                                 message = "পরিশোধ সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন."
                             } else {
-                                payment = ""; note = ""; message = "পরিশোধ সংরক্ষণ হয়েছে।"; refresh++
+                                val logId = ActivityLogStorage.addAndGetId(
+                                    context,
+                                    "সরবরাহকারীকে পরিশোধ",
+                                    selected + " • ৳ " + String.format("%.2f", amount) +
+                                        if (note.isBlank()) "" else " • " + note.trim()
+                                )
+                                if (logId <= 0L) {
+                                    SupplierDueStorage.removePaymentById(context, paymentId)
+                                    message = "পরিশোধের Activity Log সংরক্ষণ করা যায়নি। পরিশোধ rollback করা হয়েছে।"
+                                } else {
+                                    payment = ""; note = ""; message = "পরিশোধ সংরক্ষণ হয়েছে।"; refresh++
+                                }
                             }
                         }
                     }
