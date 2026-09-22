@@ -218,7 +218,16 @@ fun ProductScreen(
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (canWrite) {
-                        Button(onClick = { selectedProduct = null; deleteProduct = product }) { Text("Delete") }
+                        Button(onClick = {
+                            val latest = ProductStorage.getProducts(context).firstOrNull {
+                                it.code.equals(product.code, ignoreCase = true)
+                            }
+                            if (latest != null) {
+                                selectedProduct = null
+                                deleteError = ""
+                                deleteProduct = latest
+                            }
+                        }) { Text("Delete") }
                     }
                     Button(onClick = { selectedProduct = null }) { Text("বন্ধ") }
                 }
@@ -238,19 +247,29 @@ fun ProductScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = {
+                Button(
+                enabled = product.stockQuantity == 0,
+                onClick = {
                     val admin = SecurityStorage.getUsers(context).firstOrNull { it.role == SecurityStorage.ROLE_ADMIN }
-                    if (admin != null && admin.passwordHash == SecurityStorage.hashPassword(deletePin)) {
-                        ProductStorage.deleteProduct(context, product.code)
-                        ActivityLogStorage.add(context, "পণ্য মুছে ফেলা", product.name + " (" + product.code + ")")
-                        deletePin = ""
-                        deleteError = ""
-                        deleteProduct = null
-                        onProductsChanged()
-                    } else {
-                        deleteError = "ভুল Admin PIN।"
+                    val latest = ProductStorage.getProducts(context).firstOrNull {
+                        it.code.equals(product.code, ignoreCase = true)
                     }
-                }) {
+                    when {
+                        latest == null -> deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
+                        latest.stockQuantity != 0 -> deleteError = "পণ্যটির বর্তমান স্টক 0 নয়। আগে Stock Out করুন।"
+                        admin == null || admin.passwordHash != SecurityStorage.hashPassword(deletePin) ->
+                            deleteError = "ভুল Admin PIN।"
+                        else -> {
+                            ProductStorage.deleteProduct(context, latest.code)
+                            ActivityLogStorage.add(context, "পণ্য মুছে ফেলা", latest.name + " (" + latest.code + ")")
+                            deletePin = ""
+                            deleteError = ""
+                            deleteProduct = null
+                            onProductsChanged()
+                        }
+                    }
+                }
+            ) {
                     Text("Delete")
                 }
             },
