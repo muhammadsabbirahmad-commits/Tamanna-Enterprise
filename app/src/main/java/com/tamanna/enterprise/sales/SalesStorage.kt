@@ -45,7 +45,13 @@ object SalesStorage {
 
     fun addSale(context: Context, sale: Sale) {
         val sales = getSales(context).toMutableList()
-        sales.add(sale)
+        val usedIds = sales.asSequence().map { it.id }.toHashSet()
+        var uniqueId = sale.id
+        while (usedIds.contains(uniqueId)) {
+            uniqueId++
+        }
+        val normalizedSale = sale.copy(id = uniqueId)
+        sales.add(normalizedSale)
         val array = JSONArray()
         sales.forEach {
             array.put(JSONObject().apply {
