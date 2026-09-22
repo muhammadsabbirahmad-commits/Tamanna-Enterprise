@@ -353,7 +353,7 @@ private fun NewSaleScreen(
                                 throw IllegalStateException("বিক্রয় রেকর্ড সংরক্ষণ করা যায়নি: " + item.product.code)
                             }
                         }
-                        ActivityLogStorage.add(
+                        val logSaved = ActivityLogStorage.add(
                             context,
                             "পণ্য বিক্রয় ও Stock Out",
                             latestCart.joinToString(" • ") {
@@ -363,6 +363,9 @@ private fun NewSaleScreen(
                                     it.product.code + "=" + (it.product.stockQuantity - it.quantity)
                                 }
                         )
+                        if (!logSaved) {
+                            throw IllegalStateException("বিক্রয়ের Activity Log সংরক্ষণ করা যায়নি")
+                        }
                     } catch (e: Exception) {
                         latestCart.forEach { item ->
                             ProductStorage.updateStock(
