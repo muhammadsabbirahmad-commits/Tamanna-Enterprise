@@ -143,6 +143,14 @@ object CustomerDueStorage {
     private fun now(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
 
+    fun removePaymentById(context: Context, id: Long): Boolean {
+        if (id <= 0L) return false
+        val entries = getEntries(context)
+        if (entries.none { it.id == id && it.type == "PAYMENT" }) return false
+        saveEntries(context, entries.filterNot { it.id == id && it.type == "PAYMENT" })
+        return getEntries(context).none { it.id == id && it.type == "PAYMENT" }
+    }
+
     fun removeSaleDueById(context: Context, id: Long): Boolean {
         if (id <= 0L) return false
         val entries = getEntries(context)
