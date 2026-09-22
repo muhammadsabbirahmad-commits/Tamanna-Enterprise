@@ -19,6 +19,7 @@ import java.util.Locale
 import java.text.SimpleDateFormat
 import java.util.Date
 
+// Step 6 Phase 1 build-safe investment UI
 fun todayPartner()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())
 
 class PartnerActivity: ComponentActivity() {
