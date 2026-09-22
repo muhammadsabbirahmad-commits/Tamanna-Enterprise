@@ -179,7 +179,11 @@ private fun AddPurchaseScreen(
                             purchasePrice = price,
                             stockQuantity = latestProduct.stockQuantity + qty
                         )
-                        ProductStorage.updateProduct(context, updatedProduct)
+                        val stockUpdated = ProductStorage.updateProduct(context, updatedProduct)
+                        if (!stockUpdated) {
+                            message = "পণ্যটি আর পাওয়া যাচ্ছে না। আবার চেষ্টা করুন।"
+                            return@Button
+                        }
 
                         val purchaseId = System.currentTimeMillis()
                         val purchaseDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
