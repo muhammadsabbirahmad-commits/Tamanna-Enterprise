@@ -43,7 +43,7 @@ object SalesStorage {
         }.sortedByDescending { it.id }
     }
 
-    fun addSale(context: Context, sale: Sale) {
+    fun addSale(context: Context, sale: Sale): Boolean {
         val sales = getSales(context).toMutableList()
         val usedIds = sales.asSequence().map { it.id }.toHashSet()
         var uniqueId = sale.id
@@ -68,7 +68,15 @@ object SalesStorage {
         }
         BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_SALES, array.toString()).apply()
+
+        return getSales(context).any {
+            it.id == normalizedSale.id &&
+                it.transactionId == normalizedSale.transactionId &&
+                it.productCode.equals(normalizedSale.productCode, true) &&
+                it.quantity == normalizedSale.quantity
+        }
     }
+
     fun removeByTransaction(context: Context, transactionId: String) {
         saveSales(context, getSales(context).filterNot { it.transactionId == transactionId })
     }
@@ -91,5 +99,4 @@ object SalesStorage {
         BusinessStorage.prefs(context, PREFS)
             .edit().putString(KEY_SALES, array.toString()).apply()
     }
-
 }
