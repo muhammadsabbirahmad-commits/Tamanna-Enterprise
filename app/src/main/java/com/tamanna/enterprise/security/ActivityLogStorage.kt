@@ -21,7 +21,10 @@ object ActivityLogStorage {
     private const val KEY_LOGS = "logs"
     private const val MAX_LOGS = 500
 
-    fun add(context: Context, action: String, details: String): Boolean {
+    fun add(context: Context, action: String, details: String): Boolean =
+        addAndGetId(context, action, details) > 0L
+
+    fun addAndGetId(context: Context, action: String, details: String): Long {
         val user = SecurityStorage.getCurrentUser(context)?.username ?: "system"
         val list = get(context).toMutableList()
         val entry = ActivityLogEntry(
@@ -40,11 +43,26 @@ object ActivityLogStorage {
         BusinessStorage.prefs(context, PREFS).edit()
             .putString(KEY_LOGS, array.toString()).apply()
 
-        return get(context).any {
-            it.id == entry.id &&
-                it.action == entry.action &&
-                it.details == entry.details
+        return if (get(context).any {
+            it.id == entry.id && it.action == entry.action && it.details == entry.details
+        }) entry.id else 0L
+    }
+
+    fun removeById(context: Context, id: Long): Boolean {
+        if (id <= 0L) return false
+        val logs = get(context)
+        if (logs.none { it.id == id }) return false
+        val remaining = logs.filterNot { it.id == id }
+        val array = JSONArray()
+        remaining.takeLast(MAX_LOGS).forEach {
+            array.put(JSONObject().apply {
+                put("id", it.id); put("date", it.date); put("username", it.username)
+                put("action", it.action); put("details", it.details)
+            })
         }
+        BusinessStorage.prefs(context, PREFS).edit()
+            .putString(KEY_LOGS, array.toString()).apply()
+        return get(context).none { it.id == id }
     }
 
     fun get(context: Context): List<ActivityLogEntry> {
