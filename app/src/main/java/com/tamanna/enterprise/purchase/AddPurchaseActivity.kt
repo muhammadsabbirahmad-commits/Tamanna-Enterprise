@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.security.ActivityLogStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,6 +38,10 @@ class AddPurchaseActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canWrite(this)) {
+            finish()
+            return
+        }
 
         val initialProductCode = intent.getStringExtra(EXTRA_PRODUCT_CODE).orEmpty()
         val initialQuantity = intent.getIntExtra(EXTRA_QUANTITY, 0)
@@ -95,6 +100,10 @@ private fun AddPurchaseScreen(
 
         Button(
             onClick = {
+                if (!SecurityStorage.canWrite(context)) {
+                    message = "পণ্য ক্রয় ও Stock In করার অনুমতি শুধু অ্যাডমিনের আছে।"
+                    return@Button
+                }
                 val qty = quantity.toIntOrNull()
                 val price = purchasePrice.toDoubleOrNull()
                 val paidAmount = paid.toDoubleOrNull() ?: 0.0
