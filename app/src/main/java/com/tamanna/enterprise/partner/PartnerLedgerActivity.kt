@@ -44,18 +44,18 @@ class PartnerLedgerActivity:ComponentActivity(){
 private fun day(v:String)=v.substringBefore(" ")
 private fun inRange(v:String,from:String,to:String)=day(v) in from..to
 
-private data class ProfitResult(val revenue:Double,val cost:Double,val returns:Double){
+private data class ProfitResult(val revenue:Double,val cost:Double,val returns:Double,val returnCost:Double){
  val profit get()=revenue-cost
 }
 
 private fun calculateProfit(context:ComponentActivity,from:String,to:String):ProfitResult{
  val valid=from.length==10&&to.length==10&&from<=to
- if(!valid)return ProfitResult(0.0,0.0,0.0)
+ if(!valid)return ProfitResult(0.0,0.0,0.0,0.0)
  val sales=SalesStorage.getSales(context)
  val txs=SalesTransactionStorage.getTransactions(context).associateBy{it.transactionId}
- val returns=SaleReturnStorage.getReturns(context)
+ val returns=SaleReturnStorage.getReturns(context).filter{inRange(it.date,from,to)}
  val returnLines=SaleReturnStorage.getLines(context)
- var revenue=0.0;var cost=0.0;var returnAmount=0.0
+ var revenue=0.0;var cost=0.0;var returnAmount=0.0;var returnCost=0.0
  val groups=sales.filter{inRange(it.date,from,to)}.groupBy{it.transactionId}
  groups.forEach{(txId,lines)->
   val tx=txs[txId]
@@ -63,10 +63,19 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
   revenue+=baseRevenue
   cost+=lines.sumOf{it.quantity*it.purchasePrice}
  }
- returns.filter{inRange(it.date,from,to)}.forEach{r->returnAmount+=r.amount}
- returnLines.filter{inRange(returns.firstOrNull{x->x.returnId==it.returnId}?.date.orEmpty(),from,to)}.forEach{line->cost-=line.quantity*(sales.firstOrNull{x->x.productCode==line.productCode&&x.transactionId==line.transactionId}?.purchasePrice?:0.0)}
+ returns.forEach{r->returnAmount+=r.amount}
+ returnLines.filter{line->returns.any{it.returnId==line.returnId}}.forEach{line->
+  val unitCost=sales.firstOrNull{x->x.productCode==line.productCode&&x.transactionId==line.transactionId}?.purchasePrice?:0.0
+  if(unitCost>0.0){
+   val soldQty=sales.filter{x->x.productCode==line.productCode&&x.transactionId==line.transactionId}.sumOf{it.quantity}
+   val returnedQty=returnLines.filter{x->x.returnId==line.returnId&&x.productCode==line.productCode}.sumOf{it.quantity}
+   val cappedQty=minOf(returnedQty,soldQty)
+   if(line.quantity>0&&returnedQty>0) returnCost+=cappedQty*unitCost
+  }
+ }
  revenue-=returnAmount
- return ProfitResult(revenue,max(0.0,cost),returnAmount)
+ cost=maxOf(0.0,cost-returnCost)
+ return ProfitResult(revenue,cost,returnAmount,returnCost)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,7 +115,7 @@ private fun calculateProfit(context:ComponentActivity,from:String,to:String):Pro
    Text("বিনিয়োগ লেনদেন: "+investments.size)
    Text("লাভের অংশ: "+"%.2f".format(Locale.US,partner.percentage)+"%")
    Text("নেট বিক্রয় (রিটার্ন বাদ): ৳ "+"%.2f".format(Locale.US,result.revenue))
-   Text("পণ্য ক্রয়মূল্য: ৳ "+"%.2f".format(Locale.US,result.cost))
+   Text("পণ্য ক্রয়মূল্য: ৳ "+"%.2f".format(Locale.US,result.cost))\n   Text("রিটার্নে ফেরত আসা পণ্যের ক্রয়মূল্য: ৳ "+"%.2f".format(Locale.US,result.returnCost))
    Text("প্রতিষ্ঠানের খরচ: ৳ "+"%.2f".format(Locale.US,expenseAmount))
    Text("ড্যামেজ ক্ষতি: ৳ "+"%.2f".format(Locale.US,damageAmount))
    Text("নিট লাভ: ৳ "+"%.2f".format(Locale.US,netProfit))
