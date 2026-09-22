@@ -45,7 +45,7 @@ object ProductStorage {
 
         if (next < FIRST_PRODUCT_NUMBER) {
             val maxExisting = getProducts(context).mapNotNull { product ->
-                Regex("^P-(\d+)$", RegexOption.IGNORE_CASE)
+                Regex("^P-(\\d+)$", RegexOption.IGNORE_CASE)
                     .matchEntire(product.code.trim())
                     ?.groupValues?.getOrNull(1)
                     ?.toIntOrNull()
