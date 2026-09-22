@@ -141,8 +141,9 @@ private fun AddPurchaseScreen(
                             return@Button
                         }
 
+                        var supplierDueId = 0L
                         if (dueAmount > 0 && supplier.trim().isNotBlank()) {
-                            SupplierDueStorage.addPurchaseDue(
+                            supplierDueId = SupplierDueStorage.addPurchaseDue(
                                 context,
                                 supplier.trim(),
                                 dueAmount,
@@ -157,6 +158,9 @@ private fun AddPurchaseScreen(
                                 " • নতুন স্টক: " + updatedProduct.stockQuantity
                         )
                         if (!logSaved) {
+                            if (supplierDueId > 0L) {
+                                SupplierDueStorage.removeById(context, supplierDueId)
+                            }
                             PurchaseStorage.removeById(context, savedPurchaseId)
                             ProductStorage.updateStock(context, latestProduct.code, latestProduct.stockQuantity)
                             message = "ক্রয়ের Activity Log সংরক্ষণ করা যায়নি। ক্রয় ও স্টক rollback করা হয়েছে।"
