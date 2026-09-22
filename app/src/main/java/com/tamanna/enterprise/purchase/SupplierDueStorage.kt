@@ -52,7 +52,7 @@ object SupplierDueStorage {
         list.add(Supplier(System.currentTimeMillis(),n,m,address.trim()))
         val a=JSONArray()
         list.forEach { a.put(JSONObject().apply { put("id",it.id);put("name",it.name);put("mobile",it.mobile);put("address",it.address) }) }
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(SUPPLIERS_KEY,a.toString()).apply()
+        BusinessStorage.prefs(context, PREFS).edit().putString(SUPPLIERS_KEY, a.toString()).apply()
         return true
     }
 
