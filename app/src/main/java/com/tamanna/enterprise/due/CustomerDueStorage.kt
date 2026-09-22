@@ -56,20 +56,26 @@ object CustomerDueStorage {
         if (cleanName.isBlank()) return false
         val customers = getCustomers(context).toMutableList()
         if (customers.any { it.name.equals(cleanName, true) && it.mobile == cleanMobile }) return false
-        customers.add(Customer(System.currentTimeMillis(), cleanName, cleanMobile))
+        customers.add(Customer(nextUniqueCustomerId(customers), cleanName, cleanMobile))
         saveCustomers(context, customers)
         return true
     }
 
-    fun addSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String) {
-        if (customer.isBlank() || amount <= 0) return
-        add(context, DueEntry(System.currentTimeMillis(), now(), customer.trim(), mobile.trim(), "SALE", amount, note))
+    fun addSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String): Long {
+        if (customer.isBlank() || amount <= 0) return 0L
+        val entries = getEntries(context).toMutableList()
+        val id = nextUniqueEntryId(entries)
+        entries.add(DueEntry(id, now(), customer.trim(), mobile.trim(), "SALE", amount, note))
+        saveEntries(context, entries)
         ensureCustomer(context, customer, mobile)
+        return id
     }
 
     fun addPayment(context: Context, customer: String, mobile: String, amount: Double, note: String) {
         if (customer.isBlank() || amount <= 0) return
-        add(context, DueEntry(System.currentTimeMillis(), now(), customer.trim(), mobile.trim(), "PAYMENT", amount, note))
+        val entries = getEntries(context).toMutableList()
+        entries.add(DueEntry(nextUniqueEntryId(entries), now(), customer.trim(), mobile.trim(), "PAYMENT", amount, note))
+        saveEntries(context, entries)
         ensureCustomer(context, customer, mobile)
     }
 
@@ -97,10 +103,18 @@ object CustomerDueStorage {
         addCustomer(context, cleanName, cleanMobile)
     }
 
-    private fun add(context: Context, entry: DueEntry) {
-        val list = getEntries(context).toMutableList()
-        list.add(entry)
-        saveEntries(context, list)
+    private fun nextUniqueEntryId(entries: List<DueEntry>): Long {
+        val usedIds = entries.asSequence().map { it.id }.toHashSet()
+        var id = System.currentTimeMillis()
+        while (usedIds.contains(id)) id++
+        return id
+    }
+
+    private fun nextUniqueCustomerId(customers: List<Customer>): Long {
+        val usedIds = customers.asSequence().map { it.id }.toHashSet()
+        var id = System.currentTimeMillis()
+        while (usedIds.contains(id)) id++
+        return id
     }
 
     private fun saveCustomers(context: Context, customers: List<Customer>) {
@@ -129,14 +143,11 @@ object CustomerDueStorage {
     private fun now(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
 
-    fun removeSaleDue(context: Context, customer: String, mobile: String, amount: Double, note: String) {
-        val entries = getEntries(context).filterNot {
-            it.type == "SALE" &&
-                it.customer.trim().equals(customer.trim(), true) &&
-                it.mobile == mobile.trim() &&
-                kotlin.math.abs(it.amount - amount) < 0.000001 &&
-                it.note == note
-        }
-        saveEntries(context, entries)
+    fun removeSaleDueById(context: Context, id: Long): Boolean {
+        if (id <= 0L) return false
+        val entries = getEntries(context)
+        if (entries.none { it.id == id && it.type == "SALE" }) return false
+        saveEntries(context, entries.filterNot { it.id == id && it.type == "SALE" })
+        return true
     }
 }
