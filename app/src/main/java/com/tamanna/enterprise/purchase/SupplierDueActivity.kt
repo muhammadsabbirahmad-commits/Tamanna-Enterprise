@@ -80,8 +80,12 @@ private fun SupplierDueScreen() {
                         amount == null || amount <= 0 -> message = "সঠিক পরিশোধের পরিমাণ দিন।"
                         amount > selectedBalance -> message = "পরিশোধ বর্তমান বাকি থেকে বেশি হতে পারবে না।"
                         else -> {
-                            SupplierDueStorage.addPayment(context, selected, amount, note.trim())
-                            payment = ""; note = ""; message = "পরিশোধ সংরক্ষণ হয়েছে।"; refresh++
+                            val paymentId = SupplierDueStorage.addPayment(context, selected, amount, note.trim())
+                            if (paymentId <= 0L) {
+                                message = "পরিশোধ সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন."
+                            } else {
+                                payment = ""; note = ""; message = "পরিশোধ সংরক্ষণ হয়েছে।"; refresh++
+                            }
                         }
                     }
                 }, modifier = Modifier.fillMaxWidth()) { Text("সরবরাহকারীকে পরিশোধ করুন") }
