@@ -15,9 +15,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
-import java.util.Locale
+import java.util.Locale\nimport java.text.SimpleDateFormat\nimport java.util.Date
 
-class PartnerActivity: ComponentActivity() {
+fun todayPartner()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())\n\nclass PartnerActivity: ComponentActivity() {
  override fun onCreate(b: Bundle?) { super.onCreate(b); if (!SecurityStorage.canManage(this)) { finish(); return }; setContent { PartnerScreen(this) } }
 }
 
@@ -25,7 +25,7 @@ class PartnerActivity: ComponentActivity() {
  var partners by remember { mutableStateOf(PartnerStorage.getPartners(a)) }
  var name by remember { mutableStateOf("") }; var investment by remember { mutableStateOf("") }; var percentage by remember { mutableStateOf("") }
  var username by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var message by remember { mutableStateOf("") }
- var selected by remember { mutableStateOf<Partner?>(null) }; var deletePin by remember { mutableStateOf("") }; var editPassword by remember { mutableStateOf("") }
+ var selected by remember { mutableStateOf<Partner?>(null) }; var addInvestmentAmount by remember { mutableStateOf("") }; var addInvestmentDate by remember { mutableStateOf(todayPartner()) }; var addInvestmentNote by remember { mutableStateOf("") }; var deletePin by remember { mutableStateOf("") }; var editPassword by remember { mutableStateOf("") }
  val totalInvestment=partners.sumOf{it.investment}; val totalPercentage=partners.sumOf{it.percentage}
 
  MaterialTheme { Surface(Modifier.fillMaxSize()) { Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -45,7 +45,7 @@ class PartnerActivity: ComponentActivity() {
     totalPercentage+pct>100.000001 -> message="সব Partner-এর লাভের শতাংশ মিলিয়ে ১০০%-এর বেশি হতে পারবে না।"
     username.isBlank()||password.length<4 -> message="Partner Username দিন এবং Password কমপক্ষে ৪ অক্ষরের করুন।"
     !PartnerStorage.addPartner(a,name,inv,pct,username,password) -> message="Partner যোগ করা যায়নি। Username আগে থেকেই থাকতে পারে।"
-    else -> { partners=PartnerStorage.getPartners(a); name=""; investment=""; percentage=""; username=""; password=""; message="Partner সফলভাবে যোগ হয়েছে।" }
+    else -> { val created=PartnerStorage.getPartners(a).lastOrNull(); if(created!=null && inv!=null && inv>0){ PartnerInvestmentStorage.addInvestment(a,PartnerInvestment(created.id,created.id,created.name,inv,todayPartner(),"INV-${created.id}-${created.id}", "প্রাথমিক বিনিয়োগ")) }; partners=PartnerStorage.getPartners(a); name=""; investment=""; percentage=""; username=""; password=""; message="Partner সফলভাবে যোগ হয়েছে।" }
    }
   },Modifier.fillMaxWidth()){Text("Partner যোগ করুন")}
   Spacer(Modifier.height(8.dp))
@@ -72,7 +72,7 @@ class PartnerActivity: ComponentActivity() {
    OutlinedTextField(eu,{eu=it},label={Text("Username")},singleLine=true)
    OutlinedTextField(editPassword,{editPassword=it},label={Text("নতুন Password (ফাঁকা রাখলে অপরিবর্তিত)")},singleLine=true,visualTransformation=PasswordVisualTransformation())
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Partner Login সক্রিয়");Switch(active,{active=it})}
-   OutlinedTextField(deletePin,{deletePin=it},label={Text("Delete করতে Admin PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation())
+   OutlinedTextField(addInvestmentAmount,{addInvestmentAmount=it},label={Text("নতুন বিনিয়োগ যোগ (টাকা)")},singleLine=true)\n   OutlinedTextField(addInvestmentDate,{addInvestmentDate=it},label={Text("বিনিয়োগের তারিখ (YYYY-MM-DD)")},singleLine=true)\n   OutlinedTextField(addInvestmentNote,{addInvestmentNote=it},label={Text("বিনিয়োগের বিবরণ")},singleLine=true)\n   OutlinedTextField(deletePin,{deletePin=it},label={Text("Delete করতে Admin PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation())
   }},
   confirmButton={Button({
    val inv=ei.toDoubleOrNull(); val pct=ep.toDoubleOrNull(); val others=partners.filter{it.id!=p.id}.sumOf{it.percentage}
@@ -81,7 +81,7 @@ class PartnerActivity: ComponentActivity() {
    if(PartnerStorage.updatePartner(a,p.id,en,inv,pct,eu,editPassword.ifBlank{null},active)){partners=PartnerStorage.getPartners(a);message="Partner তথ্য আপডেট হয়েছে।";editPassword="";deletePin="";selected=null}else message="আপডেট ব্যর্থ হয়েছে।"
   }){Text("সংরক্ষণ")}},
   dismissButton={Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
-   Button({a.startActivity(Intent(a,PartnerLedgerActivity::class.java).putExtra("partner_id",p.id));selected=null}){Text("লেজার")}
+   Button({ val amount=addInvestmentAmount.toDoubleOrNull(); if(amount==null||amount<=0||addInvestmentDate.length!=10){message="নতুন বিনিয়োগের টাকা ও সঠিক তারিখ দিন।"} else { val tx="INV-${p.id}-${System.currentTimeMillis()}"; if(PartnerInvestmentStorage.addInvestment(a,PartnerInvestment(System.currentTimeMillis(),p.id,p.name,amount,addInvestmentDate,tx,addInvestmentNote)) && PartnerStorage.addInvestment(a,p.id,amount)){partners=PartnerStorage.getPartners(a);message="নতুন বিনিয়োগ সংরক্ষণ হয়েছে।";addInvestmentAmount="";addInvestmentNote=""} else message="বিনিয়োগ সংরক্ষণ ব্যর্থ হয়েছে।" }}){Text("বিনিয়োগ যোগ")}\n   Button({a.startActivity(Intent(a,PartnerLedgerActivity::class.java).putExtra("partner_id",p.id));selected=null}){Text("লেজার")}
    Button({if(deletePin.isNotBlank()&&SecurityStorage.getUsers(a).firstOrNull{it.role==SecurityStorage.ROLE_ADMIN}?.passwordHash==SecurityStorage.hashPassword(deletePin)){PartnerStorage.deletePartner(a,p.id);ActivityLogStorage.add(a,"পার্টনার মুছে ফেলা",p.name);partners=PartnerStorage.getPartners(a);selected=null;deletePin=""}else message="ভুল Admin PIN।"}){Text("মুছে ফেলুন")}
   }} )
  }
