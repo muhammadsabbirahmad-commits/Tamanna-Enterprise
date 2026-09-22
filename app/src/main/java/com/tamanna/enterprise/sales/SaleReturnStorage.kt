@@ -77,20 +77,24 @@ object SaleReturnStorage {
     fun getDueReduction(context: Context, transactionId: String): Double =
         getReturns(context).filter { it.transactionId == transactionId }.sumOf { it.dueReduction }
 
-    fun addReturn(context: Context, item: SaleReturn, lines: List<SaleReturnLine>) {
+    fun addReturn(context: Context, item: SaleReturn, lines: List<SaleReturnLine>): Boolean {
         val returns = getReturns(context).toMutableList()
         returns.removeAll { it.returnId == item.returnId }
         returns.add(item)
         val oldLines = getLines(context).filterNot { it.returnId == item.returnId }
         save(context, returns, oldLines + lines)
+        return getReturns(context).any { it.returnId == item.returnId } &&
+            getLines(context).count { it.returnId == item.returnId } == lines.size
     }
 
-    fun removeReturn(context: Context, returnId: String) {
+    fun removeReturn(context: Context, returnId: String): Boolean {
         save(
             context,
             getReturns(context).filterNot { it.returnId == returnId },
             getLines(context).filterNot { it.returnId == returnId }
         )
+        return getReturns(context).none { it.returnId == returnId } &&
+            getLines(context).none { it.returnId == returnId }
     }
 
     private fun save(context: Context, returns: List<SaleReturn>, lines: List<SaleReturnLine>) {
