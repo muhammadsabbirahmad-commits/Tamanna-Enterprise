@@ -139,6 +139,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                             }
                             val itemStocks = currentProducts.values.associate { it.code to it.stockQuantity }
                             var paymentId = 0L
+                            var activityLogId = 0L
                             try {
                                 lines.groupBy { it.productCode.lowercase(Locale.getDefault()) }.forEach { (_, groupedLines) ->
                                     val product = currentProducts[groupedLines.first().productCode.lowercase(Locale.getDefault())]
@@ -160,12 +161,13 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                     )
                                     if (paymentId <= 0L) error("রিটার্নের বাকি সমন্বয় সংরক্ষণ করা যায়নি")
                                 }
-                                val logSaved = ActivityLogStorage.add(
+                                activityLogId = ActivityLogStorage.addAndGetId(
                                     context, "বিক্রয় রিটার্ন", "$" + "{returnId} • " + "$" + "{transactionId} • ৳" + money(returnAmount)
                                 )
-                                if (!logSaved) error("রিটার্নের Activity Log সংরক্ষণ করা যায়নি")
+                                if (activityLogId <= 0L) error("রিটার্নের Activity Log সংরক্ষণ করা যায়নি")
                                 onDone()
                             } catch (e: Exception) {
+                                if (activityLogId > 0L) ActivityLogStorage.removeById(context, activityLogId)
                                 if (paymentId > 0L) CustomerDueStorage.removePaymentById(context, paymentId)
                                 itemStocks.forEach { (code, stock) -> ProductStorage.updateStock(context, code, stock) }
                                 SaleReturnStorage.removeReturn(context, returnId)
