@@ -43,15 +43,23 @@ object PurchaseStorage {
         }.sortedByDescending { it.id }
     }
 
-    fun addPurchase(context: Context, purchase: Purchase) {
+    fun addPurchase(context: Context, purchase: Purchase): Boolean {
         val purchases = getPurchases(context).toMutableList()
         val usedIds = purchases.asSequence().map { it.id }.toHashSet()
         var uniqueId = purchase.id
         while (usedIds.contains(uniqueId)) {
             uniqueId++
         }
-        purchases.add(purchase.copy(id = uniqueId))
+        val normalizedPurchase = purchase.copy(id = uniqueId)
+        purchases.add(normalizedPurchase)
         savePurchases(context, purchases)
+
+        return getPurchases(context).any {
+            it.id == normalizedPurchase.id &&
+                it.productCode.equals(normalizedPurchase.productCode, true) &&
+                it.quantity == normalizedPurchase.quantity &&
+                it.purchasePrice == normalizedPurchase.purchasePrice
+        }
     }
 
     private fun savePurchases(context: Context, purchases: List<Purchase>) {
