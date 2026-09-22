@@ -135,7 +135,6 @@ fun ProductScreen(
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                                     Text(item.name, style = MaterialTheme.typography.titleMedium)
                                     Text("কোড: " + item.code, style = MaterialTheme.typography.bodySmall)
-                                    Text("স্টক: ${item.stockQuantity} • বিক্রি: ${salesByCode[item.code.lowercase()] ?: 0}")
                                 }
                             }
                         }
