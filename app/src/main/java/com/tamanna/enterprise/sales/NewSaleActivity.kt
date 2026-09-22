@@ -335,7 +335,7 @@ private fun NewSaleScreen(
                             if (!stockUpdated) {
                                 throw IllegalStateException("স্টক আপডেট করা যায়নি: " + item.product.code)
                             }
-                            SalesStorage.addSale(
+                            val saleSaved = SalesStorage.addSale(
                                 context,
                                 Sale(
                                     id = System.currentTimeMillis() + index,
@@ -349,6 +349,9 @@ private fun NewSaleScreen(
                                     customer = customerText
                                 )
                             )
+                            if (!saleSaved) {
+                                throw IllegalStateException("বিক্রয় রেকর্ড সংরক্ষণ করা যায়নি: " + item.product.code)
+                            }
                         }
                         ActivityLogStorage.add(
                             context,
