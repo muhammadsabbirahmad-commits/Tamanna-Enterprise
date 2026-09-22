@@ -88,6 +88,7 @@ object ProductStorage {
     }
 
     fun updateProduct(context: Context, product: Product): Boolean {
+        if (product.name.trim().isBlank() || product.purchasePrice < 0.0 || product.salePrice < 0.0 || product.stockQuantity < 0) return false
         val products = getProducts(context)
         var found = false
         val updated = products.map {
@@ -102,6 +103,7 @@ object ProductStorage {
     }
 
     fun updateStock(context: Context, code: String, newStock: Int): Boolean {
+        if (newStock < 0) return false
         val products = getProducts(context)
         var found = false
         val updated = products.map {
