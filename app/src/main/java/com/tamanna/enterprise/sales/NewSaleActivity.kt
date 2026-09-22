@@ -324,10 +324,13 @@ private fun NewSaleScreen(
                         }
 
                         latestCart.forEachIndexed { index, item ->
-                            ProductStorage.updateStock(
+                            val stockUpdated = ProductStorage.updateStock(
                                 context, item.product.code,
                                 item.product.stockQuantity - item.quantity
                             )
+                            if (!stockUpdated) {
+                                throw IllegalStateException("স্টক আপডেট করা যায়নি: " + item.product.code)
+                            }
                             SalesStorage.addSale(
                                 context,
                                 Sale(
