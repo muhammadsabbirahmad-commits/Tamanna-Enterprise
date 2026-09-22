@@ -59,20 +59,30 @@ object ProductStorage {
 
     fun addProduct(context: Context, product: Product): Boolean {
         val normalizedCode = product.code.trim().uppercase()
-        val codeNumber = Regex("^P-(\\d{6})$").matchEntire(normalizedCode)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val codeNumber = Regex("^P-(\\d{6})$")
+            .matchEntire(normalizedCode)
+            ?.groupValues?.getOrNull(1)
+            ?.toIntOrNull()
             ?: return false
         if (codeNumber < FIRST_PRODUCT_NUMBER) return false
+
         val products = getProducts(context).toMutableList()
         if (products.any { it.code.equals(normalizedCode, ignoreCase = true) }) return false
-        val nextNumber = codeNumber
-        if (nextNumber != null) {
-            val prefs = BusinessStorage.prefs(context, PREFS)
-            val currentNext = prefs.getInt(KEY_NEXT_CODE, FIRST_PRODUCT_NUMBER)
-            if (nextNumber >= currentNext) {
-                prefs.edit().putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, nextNumber + 1)).apply()
-            }
+
+        val prefs = BusinessStorage.prefs(context, PREFS)
+        val currentNext = prefs.getInt(KEY_NEXT_CODE, FIRST_PRODUCT_NUMBER)
+        if (codeNumber >= currentNext) {
+            prefs.edit()
+                .putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, codeNumber + 1))
+                .apply()
         }
-        products.add(product.copy(code = normalizedCode, createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()))
+
+        products.add(
+            product.copy(
+                code = normalizedCode,
+                createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()
+            )
+        )
         saveProducts(context, products)
         return true
     }
