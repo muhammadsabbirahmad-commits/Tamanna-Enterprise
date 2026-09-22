@@ -45,7 +45,12 @@ object PurchaseStorage {
 
     fun addPurchase(context: Context, purchase: Purchase) {
         val purchases = getPurchases(context).toMutableList()
-        purchases.add(purchase)
+        val usedIds = purchases.asSequence().map { it.id }.toHashSet()
+        var uniqueId = purchase.id
+        while (usedIds.contains(uniqueId)) {
+            uniqueId++
+        }
+        purchases.add(purchase.copy(id = uniqueId))
         savePurchases(context, purchases)
     }
 
