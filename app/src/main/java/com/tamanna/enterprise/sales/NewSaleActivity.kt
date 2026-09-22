@@ -357,7 +357,7 @@ private fun NewSaleScreen(
                                 }
                         )
                     } catch (e: Exception) {
-                        cart.forEach { item ->
+                        latestCart.forEach { item ->
                             ProductStorage.updateStock(
                                 context, item.product.code,
                                 originalStocks[item.product.code] ?: item.product.stockQuantity
