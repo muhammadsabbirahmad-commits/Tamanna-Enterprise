@@ -71,12 +71,14 @@ object CustomerDueStorage {
         return id
     }
 
-    fun addPayment(context: Context, customer: String, mobile: String, amount: Double, note: String) {
-        if (customer.isBlank() || amount <= 0) return
+    fun addPayment(context: Context, customer: String, mobile: String, amount: Double, note: String): Long {
+        if (customer.isBlank() || amount <= 0) return 0L
         val entries = getEntries(context).toMutableList()
-        entries.add(DueEntry(nextUniqueEntryId(entries), now(), customer.trim(), mobile.trim(), "PAYMENT", amount, note))
+        val id = nextUniqueEntryId(entries)
+        entries.add(DueEntry(id, now(), customer.trim(), mobile.trim(), "PAYMENT", amount, note))
         saveEntries(context, entries)
         ensureCustomer(context, customer, mobile)
+        return if (getEntries(context).any { it.id == id && it.type == "PAYMENT" }) id else 0L
     }
 
     fun getBalance(context: Context, customer: String, mobile: String = ""): Double =
