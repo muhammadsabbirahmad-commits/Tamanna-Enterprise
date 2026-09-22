@@ -67,6 +67,17 @@ object PartnerStorage {
         savePartners(context,list); return true
     }
 
+    fun addInvestment(context: Context, partnerId: Long, amount: Double): Boolean {
+        if (amount <= 0) return false
+        val list = getPartners(context).toMutableList()
+        val index = list.indexOfFirst { it.id == partnerId }
+        if (index < 0) return false
+        val partner = list[index]
+        list[index] = partner.copy(investment = partner.investment + amount)
+        savePartners(context, list)
+        return true
+    }
+
     fun deletePartner(context: Context,id:Long){if(getCurrentPartnerId(context)==id)logout(context);savePartners(context,getPartners(context).filterNot{it.id==id})}
     fun totalInvestment(context: Context)=getPartners(context).sumOf{it.investment}
     fun totalPercentage(context: Context)=getPartners(context).sumOf{it.percentage}
