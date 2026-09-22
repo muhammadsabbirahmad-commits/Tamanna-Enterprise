@@ -278,11 +278,20 @@ fun ProductScreen(
                         else -> {
                             val deleted = ProductStorage.deleteProduct(context, latest.code)
                             if (deleted) {
-                                ActivityLogStorage.add(context, "পণ্য মুছে ফেলা", latest.name + " (" + latest.code + ")")
-                                deletePin = ""
-                                deleteError = ""
-                                deleteProduct = null
-                                onProductsChanged()
+                                val logId = ActivityLogStorage.addAndGetId(
+                                    context,
+                                    "পণ্য মুছে ফেলা",
+                                    latest.name + " (" + latest.code + ")"
+                                )
+                                if (logId <= 0L) {
+                                    ProductStorage.addProduct(context, latest)
+                                    deleteError = "পণ্যের Activity Log সংরক্ষণ করা যায়নি। Delete rollback করা হয়েছে।"
+                                } else {
+                                    deletePin = ""
+                                    deleteError = ""
+                                    deleteProduct = null
+                                    onProductsChanged()
+                                }
                             } else {
                                 deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
                             }
@@ -423,13 +432,18 @@ fun StockDialog(
                         val newStock = if (add) latest.stockQuantity + q else latest.stockQuantity - q
                         val saved = ProductStorage.updateStock(context, latest.code, newStock)
                         if (saved) {
-                            ActivityLogStorage.add(
+                            val logId = ActivityLogStorage.addAndGetId(
                                 context,
                                 if (add) "Manual Stock In" else "Manual Stock Out",
                                 latest.name + " (" + latest.code + ") x" + q +
                                     " • " + latest.stockQuantity + " → " + newStock
                             )
-                            onSaved()
+                            if (logId <= 0L) {
+                                ProductStorage.updateStock(context, latest.code, latest.stockQuantity)
+                                error = "Stock-এর Activity Log সংরক্ষণ করা যায়নি। Stock rollback করা হয়েছে।"
+                            } else {
+                                onSaved()
+                            }
                         } else {
                             error = "পণ্যটি আর পাওয়া যাচ্ছে না।"
                         }
