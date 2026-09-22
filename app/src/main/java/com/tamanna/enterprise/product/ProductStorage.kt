@@ -83,8 +83,7 @@ object ProductStorage {
                 createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()
             )
         )
-        saveProducts(context, products)
-        return true
+        return saveProducts(context, products)
     }
 
     fun updateProduct(context: Context, product: Product): Boolean {
@@ -98,8 +97,7 @@ object ProductStorage {
             } else it
         }
         if (!found) return false
-        saveProducts(context, updated)
-        return true
+        return saveProducts(context, updated)
     }
 
     fun updateStock(context: Context, code: String, newStock: Int): Boolean {
@@ -113,19 +111,17 @@ object ProductStorage {
             } else it
         }
         if (!found) return false
-        saveProducts(context, updated)
-        return true
+        return saveProducts(context, updated)
     }
 
     fun deleteProduct(context: Context, code: String): Boolean {
         val products = getProducts(context)
         val updated = products.filterNot { it.code.equals(code, ignoreCase = true) }
         if (updated.size == products.size) return false
-        saveProducts(context, updated)
-        return true
+        return saveProducts(context, updated)
     }
 
-    private fun saveProducts(context: Context, products: List<Product>) {
+    private fun saveProducts(context: Context, products: List<Product>): Boolean {
         val array = JSONArray()
         products.forEach {
             array.put(JSONObject().apply {
@@ -137,7 +133,11 @@ object ProductStorage {
                 put("createdAt", it.createdAt)
             })
         }
-        BusinessStorage.prefs(context, PREFS)
-            .edit().putString(KEY_PRODUCTS, array.toString()).apply()
+        val prefs = BusinessStorage.prefs(context, PREFS)
+        prefs.edit().putString(KEY_PRODUCTS, array.toString()).apply()
+        return runCatching {
+            val saved = prefs.getString(KEY_PRODUCTS, "[]") ?: "[]"
+            saved == array.toString()
+        }.getOrDefault(false)
     }
 }
