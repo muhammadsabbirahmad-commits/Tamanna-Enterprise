@@ -31,7 +31,7 @@ class AddPurchaseActivity : ComponentActivity() {
     companion object {
         const val EXTRA_PRODUCT_CODE = "add_purchase_product_code"
         const val EXTRA_QUANTITY = "add_purchase_quantity"
-        const val EXTRA_PURCHASE_PRICE = "add_purchase_price"
+        const val EXTRA_PURCHASE_PRICE = "add_purchase_purchase_price"
         const val EXTRA_MEMO_VERIFIED_DATA = "add_purchase_memo_verified"
     }
 
@@ -149,6 +149,12 @@ private fun AddPurchaseScreen(
                                 dueAmount,
                                 "ক্রয়: " + latestProduct.name + " x" + qty + if (memoNumber.isBlank()) "" else " • মেমো " + memoNumber.trim()
                             )
+                            if (supplierDueId <= 0L) {
+                                PurchaseStorage.removeById(context, savedPurchaseId)
+                                ProductStorage.updateStock(context, latestProduct.code, latestProduct.stockQuantity)
+                                message = "সরবরাহকারীর বাকি রেকর্ড সংরক্ষণ করা যায়নি। ক্রয় ও স্টক rollback করা হয়েছে।"
+                                return@Button
+                            }
                         }
 
                         val logSaved = ActivityLogStorage.add(
