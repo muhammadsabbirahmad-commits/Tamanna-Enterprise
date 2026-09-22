@@ -56,10 +56,11 @@ object SupplierDueStorage {
         return true
     }
 
-    fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String) {
-        if (supplier.isBlank() || amount <= 0) return
-        add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PURCHASE", amount, note))
+    fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String): Long {
+        if (supplier.isBlank() || amount <= 0) return 0L
+        val id = add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PURCHASE", amount, note))
         ensureSupplier(context, supplier)
+        return id
     }
 
     fun addPayment(context: Context, supplier: String, amount: Double, note: String) {
@@ -79,14 +80,31 @@ object SupplierDueStorage {
     fun getBalances(context: Context): List<Pair<String, Double>> =
         getSuppliers(context).map { it.name to getBalance(context,it.name) }.sortedByDescending { it.second }
 
-    private fun add(context: Context, entry: SupplierDueEntry) {
+    fun removeById(context: Context, id: Long): Boolean {
+        if (id <= 0L) return false
+        val entries = getEntries(context)
+        if (entries.none { it.id == id }) return false
+        val remaining = entries.filterNot { it.id == id }
+        val array = JSONArray()
+        remaining.forEach {
+            array.put(JSONObject().apply {
+                put("id", it.id); put("date", it.date); put("supplier", it.supplier)
+                put("type", it.type); put("amount", it.amount); put("note", it.note)
+            })
+        }
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
+        return getEntries(context).none { it.id == id }
+    }
+
+    private fun add(context: Context, entry: SupplierDueEntry): Long {
         val entries = getEntries(context).toMutableList()
         val usedIds = entries.asSequence().map { it.id }.toHashSet()
         var uniqueId = entry.id
         while (usedIds.contains(uniqueId)) {
             uniqueId++
         }
-        entries.add(entry.copy(id = uniqueId))
+        val normalizedEntry = entry.copy(id = uniqueId)
+        entries.add(normalizedEntry)
         val array = JSONArray()
         entries.forEach {
             array.put(JSONObject().apply {
@@ -95,6 +113,7 @@ object SupplierDueStorage {
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
+        return getEntries(context).any { it.id == normalizedEntry.id }
     }
 
     private fun now(): String =
