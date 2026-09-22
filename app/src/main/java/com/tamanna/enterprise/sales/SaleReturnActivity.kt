@@ -138,20 +138,35 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 }
                             }
                             val itemStocks = currentProducts.values.associate { it.code to it.stockQuantity }
+                            var paymentId = 0L
                             try {
                                 lines.groupBy { it.productCode.lowercase(Locale.getDefault()) }.forEach { (_, groupedLines) ->
                                     val product = currentProducts[groupedLines.first().productCode.lowercase(Locale.getDefault())]
                                         ?: error("পণ্য পাওয়া যায়নি: " + groupedLines.first().productCode)
                                     val totalQty = groupedLines.sumOf { it.quantity }
-                                    ProductStorage.updateStock(context, product.code, product.stockQuantity + totalQty)
+                                    val stockUpdated = ProductStorage.updateStock(context, product.code, product.stockQuantity + totalQty)
+                                    if (!stockUpdated) error("স্টক আপডেট করা যায়নি: " + product.code)
                                 }
-                                SaleReturnStorage.addReturn(context, SaleReturn(returnId, transactionId, now, returnAmount, dueReduction, refundAmount, refundMethod), lines)
+                                val returnSaved = SaleReturnStorage.addReturn(
+                                    context,
+                                    SaleReturn(returnId, transactionId, now, returnAmount, dueReduction, refundAmount, refundMethod),
+                                    lines
+                                )
+                                if (!returnSaved) error("রিটার্ন রেকর্ড সংরক্ষণ করা যায়নি")
                                 if (dueReduction > 0.0 && tx.customer.isNotBlank()) {
-                                    CustomerDueStorage.addPayment(context, tx.customer, tx.mobile, dueReduction, "বিক্রয় রিটার্ন: $returnId ($transactionId)")
+                                    paymentId = CustomerDueStorage.addPayment(
+                                        context, tx.customer, tx.mobile, dueReduction,
+                                        "বিক্রয় রিটার্ন: $returnId ($transactionId)"
+                                    )
+                                    if (paymentId <= 0L) error("রিটার্নের বাকি সমন্বয় সংরক্ষণ করা যায়নি")
                                 }
-                                ActivityLogStorage.add(context, "বিক্রয় রিটার্ন", "$returnId • $transactionId • ৳${money(returnAmount)}")
+                                val logSaved = ActivityLogStorage.add(
+                                    context, "বিক্রয় রিটার্ন", "$" + "{returnId} • " + "$" + "{transactionId} • ৳" + money(returnAmount)
+                                )
+                                if (!logSaved) error("রিটার্নের Activity Log সংরক্ষণ করা যায়নি")
                                 onDone()
                             } catch (e: Exception) {
+                                if (paymentId > 0L) CustomerDueStorage.removePaymentById(context, paymentId)
                                 itemStocks.forEach { (code, stock) -> ProductStorage.updateStock(context, code, stock) }
                                 SaleReturnStorage.removeReturn(context, returnId)
                                 message = "রিটার্ন সংরক্ষণ ব্যর্থ হয়েছে। কোনো পরিবর্তন রাখা হয়নি."
