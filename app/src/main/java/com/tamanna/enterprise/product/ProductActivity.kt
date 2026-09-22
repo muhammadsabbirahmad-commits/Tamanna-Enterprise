@@ -94,13 +94,20 @@ fun ProductScreen(
     var deleteError by remember { mutableStateOf("") }
     val context = LocalContext.current
     var showSortDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     val salesByCode = remember(products) { SalesStorage.getSales(context).groupingBy { it.productCode.lowercase() }.fold(0) { total, sale -> total + sale.quantity } }
-    val sortedProducts = remember(products, sortMode, salesByCode) {
+    val filteredProducts = remember(products, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) products else products.filter {
+            it.name.contains(query, ignoreCase = true) || it.code.contains(query, ignoreCase = true)
+        }
+    }
+    val sortedProducts = remember(filteredProducts, sortMode, salesByCode) {
         when (sortMode) {
-            ProductSort.NEWEST -> products.sortedByDescending { it.createdAt }
-            ProductSort.OLDEST -> products.sortedBy { it.createdAt }
-            ProductSort.STOCK_OUT -> products.sortedWith(compareBy<Product> { it.stockQuantity }.thenByDescending { it.createdAt })
-            ProductSort.MOST_SOLD -> products.sortedWith(compareByDescending<Product> { salesByCode[it.code.lowercase()] ?: 0 }.thenByDescending { it.createdAt })
+            ProductSort.NEWEST -> filteredProducts.sortedByDescending { it.createdAt }
+            ProductSort.OLDEST -> filteredProducts.sortedBy { it.createdAt }
+            ProductSort.STOCK_OUT -> filteredProducts.sortedWith(compareBy<Product> { it.stockQuantity }.thenByDescending { it.createdAt })
+            ProductSort.MOST_SOLD -> filteredProducts.sortedWith(compareByDescending<Product> { salesByCode[it.code.lowercase()] ?: 0 }.thenByDescending { it.createdAt })
         }
     }
 
@@ -120,11 +127,20 @@ fun ProductScreen(
                     Text(if (canWrite) "নতুন পণ্য যোগ করুন" else "নতুন পণ্য যোগ করুন (অ্যাডমিন অনুমতি প্রয়োজন)")
                 }
 
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("পণ্যের নাম বা কোড দিয়ে খুঁজুন") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Button(onClick = { showSortDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("সাজানো: ${sortMode.label}") }
                 Text("পণ্যের তালিকা", style = MaterialTheme.typography.titleLarge)
 
                 if (products.isEmpty()) {
                     Text("এখনও কোনো পণ্য যোগ করা হয়নি।")
+                } else if (sortedProducts.isEmpty()) {
+                    Text("আপনার খোঁজের সাথে মিলে কোনো পণ্য পাওয়া যায়নি।")
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth(),
