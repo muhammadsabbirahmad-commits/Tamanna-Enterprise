@@ -337,6 +337,10 @@ fun EditProductDialog(
         },
         confirmButton = {
             Button(onClick = {
+                if (!SecurityStorage.canWrite(context)) {
+                    Toast.makeText(context, "পণ্য Edit করার অনুমতি শুধু অ্যাডমিনের আছে।", Toast.LENGTH_SHORT).show()
+                    return@Button
+                }
                 val p = purchase.toDoubleOrNull()
                 val s = sale.toDoubleOrNull()
 
@@ -400,6 +404,10 @@ fun StockDialog(
         },
         confirmButton = {
             Button(onClick = {
+                if (!SecurityStorage.canWrite(context)) {
+                    error = "Stock পরিবর্তনের অনুমতি শুধু অ্যাডমিনের আছে।"
+                    return@Button
+                }
                 val q = quantity.toIntOrNull()
                 val latest = ProductStorage.getProducts(context).firstOrNull {
                     it.code.equals(product.code, ignoreCase = true)
