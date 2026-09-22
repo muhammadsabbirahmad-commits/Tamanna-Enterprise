@@ -121,7 +121,7 @@ private fun AddPurchaseScreen(
 
                         val purchaseId = System.currentTimeMillis()
                         val purchaseDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-                        val purchaseSaved = PurchaseStorage.addPurchase(
+                        val savedPurchaseId = PurchaseStorage.addPurchase(
                             context,
                             Purchase(
                                 id = purchaseId,
@@ -135,7 +135,7 @@ private fun AddPurchaseScreen(
                             )
                         )
 
-                        if (!purchaseSaved) {
+                        if (savedPurchaseId <= 0L) {
                             ProductStorage.updateStock(context, latestProduct.code, latestProduct.stockQuantity)
                             message = "ক্রয় রেকর্ড সংরক্ষণ করা যায়নি। স্টক আগের অবস্থায় ফিরিয়ে দেওয়া হয়েছে।"
                             return@Button
@@ -157,7 +157,7 @@ private fun AddPurchaseScreen(
                                 " • নতুন স্টক: " + updatedProduct.stockQuantity
                         )
                         if (!logSaved) {
-                            PurchaseStorage.removeById(context, purchaseId)
+                            PurchaseStorage.removeById(context, savedPurchaseId)
                             ProductStorage.updateStock(context, latestProduct.code, latestProduct.stockQuantity)
                             message = "ক্রয়ের Activity Log সংরক্ষণ করা যায়নি। ক্রয় ও স্টক rollback করা হয়েছে।"
                             return@Button
