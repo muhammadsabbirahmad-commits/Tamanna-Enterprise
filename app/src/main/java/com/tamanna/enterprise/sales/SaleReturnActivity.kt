@@ -30,6 +30,7 @@ import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,6 +40,10 @@ private data class ReturnRow(val sale: Sale, val returned: Int, val remaining: I
 class SaleReturnActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canWrite(this)) {
+            finish()
+            return
+        }
         val transactionId = intent.getStringExtra(EXTRA_TRANSACTION_ID).orEmpty()
         setContent { SaleReturnScreen(transactionId, { finish() }) }
     }
