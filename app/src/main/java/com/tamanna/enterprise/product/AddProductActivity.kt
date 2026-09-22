@@ -21,10 +21,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.security.SecurityStorage
 
 class AddProductActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canWrite(this)) {
+            Toast.makeText(this, "পণ্য যোগ করার অনুমতি শুধু অ্যাডমিনের আছে।", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         setContent { AddProductScreen() }
     }
 }
@@ -56,6 +62,10 @@ fun AddProductScreen() {
 
                 Button(
                     onClick = {
+                        if (!SecurityStorage.canWrite(context)) {
+                            Toast.makeText(context, "পণ্য যোগ করার অনুমতি শুধু অ্যাডমিনের আছে।", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
                         val purchase = purchasePrice.toDoubleOrNull()
                         val sale = salePrice.toDoubleOrNull()
                         val stock = stockQuantity.toIntOrNull()
