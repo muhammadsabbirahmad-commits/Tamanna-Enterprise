@@ -15,9 +15,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
-import java.util.Locale\nimport java.text.SimpleDateFormat\nimport java.util.Date
+import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
 
-fun todayPartner()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())\n\nclass PartnerActivity: ComponentActivity() {
+fun todayPartner()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())
+
+class PartnerActivity: ComponentActivity() {
  override fun onCreate(b: Bundle?) { super.onCreate(b); if (!SecurityStorage.canManage(this)) { finish(); return }; setContent { PartnerScreen(this) } }
 }
 
@@ -72,7 +76,10 @@ fun todayPartner()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Dat
    OutlinedTextField(eu,{eu=it},label={Text("Username")},singleLine=true)
    OutlinedTextField(editPassword,{editPassword=it},label={Text("নতুন Password (ফাঁকা রাখলে অপরিবর্তিত)")},singleLine=true,visualTransformation=PasswordVisualTransformation())
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Partner Login সক্রিয়");Switch(active,{active=it})}
-   OutlinedTextField(addInvestmentAmount,{addInvestmentAmount=it},label={Text("নতুন বিনিয়োগ যোগ (টাকা)")},singleLine=true)\n   OutlinedTextField(addInvestmentDate,{addInvestmentDate=it},label={Text("বিনিয়োগের তারিখ (YYYY-MM-DD)")},singleLine=true)\n   OutlinedTextField(addInvestmentNote,{addInvestmentNote=it},label={Text("বিনিয়োগের বিবরণ")},singleLine=true)\n   OutlinedTextField(deletePin,{deletePin=it},label={Text("Delete করতে Admin PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation())
+   OutlinedTextField(addInvestmentAmount,{addInvestmentAmount=it},label={Text("নতুন বিনিয়োগ যোগ (টাকা)")},singleLine=true)
+   OutlinedTextField(addInvestmentDate,{addInvestmentDate=it},label={Text("বিনিয়োগের তারিখ (YYYY-MM-DD)")},singleLine=true)
+   OutlinedTextField(addInvestmentNote,{addInvestmentNote=it},label={Text("বিনিয়োগের বিবরণ")},singleLine=true)
+   OutlinedTextField(deletePin,{deletePin=it},label={Text("Delete করতে Admin PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation())
   }},
   confirmButton={Button({
    val inv=ei.toDoubleOrNull(); val pct=ep.toDoubleOrNull(); val others=partners.filter{it.id!=p.id}.sumOf{it.percentage}
@@ -81,7 +88,8 @@ fun todayPartner()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Dat
    if(PartnerStorage.updatePartner(a,p.id,en,inv,pct,eu,editPassword.ifBlank{null},active)){partners=PartnerStorage.getPartners(a);message="Partner তথ্য আপডেট হয়েছে।";editPassword="";deletePin="";selected=null}else message="আপডেট ব্যর্থ হয়েছে।"
   }){Text("সংরক্ষণ")}},
   dismissButton={Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
-   Button({ val amount=addInvestmentAmount.toDoubleOrNull(); if(amount==null||amount<=0||addInvestmentDate.length!=10){message="নতুন বিনিয়োগের টাকা ও সঠিক তারিখ দিন।"} else { val tx="INV-${p.id}-${System.currentTimeMillis()}"; if(PartnerInvestmentStorage.addInvestment(a,PartnerInvestment(System.currentTimeMillis(),p.id,p.name,amount,addInvestmentDate,tx,addInvestmentNote)) && PartnerStorage.addInvestment(a,p.id,amount)){partners=PartnerStorage.getPartners(a);message="নতুন বিনিয়োগ সংরক্ষণ হয়েছে।";addInvestmentAmount="";addInvestmentNote=""} else message="বিনিয়োগ সংরক্ষণ ব্যর্থ হয়েছে।" }}){Text("বিনিয়োগ যোগ")}\n   Button({a.startActivity(Intent(a,PartnerLedgerActivity::class.java).putExtra("partner_id",p.id));selected=null}){Text("লেজার")}
+   Button({ val amount=addInvestmentAmount.toDoubleOrNull(); if(amount==null||amount<=0||addInvestmentDate.length!=10){message="নতুন বিনিয়োগের টাকা ও সঠিক তারিখ দিন।"} else { val tx="INV-${p.id}-${System.currentTimeMillis()}"; if(PartnerInvestmentStorage.addInvestment(a,PartnerInvestment(System.currentTimeMillis(),p.id,p.name,amount,addInvestmentDate,tx,addInvestmentNote)) && PartnerStorage.addInvestment(a,p.id,amount)){partners=PartnerStorage.getPartners(a);message="নতুন বিনিয়োগ সংরক্ষণ হয়েছে।";addInvestmentAmount="";addInvestmentNote=""} else message="বিনিয়োগ সংরক্ষণ ব্যর্থ হয়েছে।" }}){Text("বিনিয়োগ যোগ")}
+   Button({a.startActivity(Intent(a,PartnerLedgerActivity::class.java).putExtra("partner_id",p.id));selected=null}){Text("লেজার")}
    Button({if(deletePin.isNotBlank()&&SecurityStorage.getUsers(a).firstOrNull{it.role==SecurityStorage.ROLE_ADMIN}?.passwordHash==SecurityStorage.hashPassword(deletePin)){PartnerStorage.deletePartner(a,p.id);ActivityLogStorage.add(a,"পার্টনার মুছে ফেলা",p.name);partners=PartnerStorage.getPartners(a);selected=null;deletePin=""}else message="ভুল Admin PIN।"}){Text("মুছে ফেলুন")}
   }} )
  }
