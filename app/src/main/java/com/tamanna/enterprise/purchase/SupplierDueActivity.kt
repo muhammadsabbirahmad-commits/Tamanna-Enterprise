@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.settings.ThemeStorage
 import com.tamanna.enterprise.security.SecurityStorage
-import com.tamanna.enterprise.data.ActivityLogStorage
+import com.tamanna.enterprise.security.ActivityLogStorage
 
 @OptIn(ExperimentalMaterial3Api::class)
 class SupplierDueActivity : ComponentActivity() {
