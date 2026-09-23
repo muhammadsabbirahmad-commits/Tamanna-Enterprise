@@ -2,23 +2,11 @@ package com.tamanna.enterprise.security
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -28,149 +16,63 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 
 class LoginActivity : ComponentActivity() {
-
     private lateinit var auth: FirebaseAuth
-    private var adminLoginMode = true
-    private var googleOnSuccess: (() -> Unit)? = null
-    private var googleOnError: ((String) -> Unit)? = null
+    private var success: (() -> Unit)? = null
+    private var failure: ((String) -> Unit)? = null
 
-    private val googleSignInLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            try {
-                val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                    .getResult(ApiException::class.java)
-                val idToken = account.idToken
-                if (idToken.isNullOrBlank()) {
-                    googleOnError?.invoke("Google ID Token পাওয়া যায়নি। Firebase/Google সেটআপ পরীক্ষা করতে হবে।")
-                    clearCallbacks()
-                    return@registerForActivityResult
+    private val launcher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        try {
+            val account = GoogleSignIn.getSignedInAccountFromIntent(result.data).getResult(ApiException::class.java)
+            val token = account.idToken
+            if (token.isNullOrBlank()) { failure?.invoke("Google ID Token পাওয়া যায়নি।"); clear(); return@registerForActivityResult }
+            auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).addOnCompleteListener(this) { task ->
+                if (!task.isSuccessful) { failure?.invoke(task.exception?.localizedMessage ?: "Firebase Google লগইন ব্যর্থ হয়েছে।"); clear(); return@addOnCompleteListener }
+                AccessRequestManager.requestOrCheck { ok, message, record ->
+                    if (ok && record != null) {
+                        SecurityStorage.upsertGoogleUser(this, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
+                        SecurityStorage.findByGoogleEmail(this, record.email)?.let { SecurityStorage.login(this, it) }
+                        success?.invoke()
+                    } else { auth.signOut(); failure?.invoke(message) }
+                    clear()
                 }
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                auth.signInWithCredential(credential)
-                    .addOnCompleteListener(this) { task ->
-                        if (!task.isSuccessful) {
-                            googleOnError?.invoke(task.exception?.localizedMessage ?: "Firebase Google লগইন ব্যর্থ হয়েছে।")
-                            clearCallbacks()
-                            return@addOnCompleteListener
-                        }
-                        resolveCurrentGoogle()
-                    }
-            } catch (e: ApiException) {
-                val message = when (e.statusCode) {
-                    12501 -> "Google অ্যাকাউন্ট নির্বাচন বাতিল হয়েছে।"
-                    10 -> "Google লগইন কনফিগারেশন ভুল। Firebase/Google সেটআপ পরীক্ষা করতে হবে।"
-                    7 -> "Google সার্ভারে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ পরীক্ষা করুন।"
-                    else -> "Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"
-                }
-                googleOnError?.invoke(message)
-                clearCallbacks()
-            } catch (e: Exception) {
-                googleOnError?.invoke(e.localizedMessage ?: "Google লগইনে একটি সমস্যা হয়েছে।")
-                clearCallbacks()
             }
-        }
-
-    private fun resolveCurrentGoogle() {
-        val email = auth.currentUser?.email.orEmpty()
-        CloudAccessManager.resolveGoogleLogin(
-            context = this,
-            email = email,
-            adminLogin = adminLoginMode
-        ) { success, message, _ ->
-            if (success) {
-                googleOnSuccess?.invoke()
-                clearCallbacks()
-            } else {
-                googleOnError?.invoke(message)
-                clearCallbacks()
-            }
-        }
+        } catch (e: ApiException) { failure?.invoke("Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"); clear() }
+        catch (e: Exception) { failure?.invoke(e.localizedMessage ?: "Google লগইনে সমস্যা হয়েছে।"); clear() }
     }
 
-    private fun clearCallbacks() {
-        googleOnSuccess = null
-        googleOnError = null
-    }
+    private fun clear() { success = null; failure = null }
 
-    private fun startGoogleLogin() {
+    private fun startLogin() {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
-            .requestEmail()
-            .build()
-        GoogleSignIn.getClient(this, gso)
-            .signInIntent
-            .also { googleSignInLauncher.launch(it) }
+            .requestEmail().build()
+        launcher.launch(GoogleSignIn.getClient(this, gso).signInIntent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SecurityStorage.ensureInitialized(this)
         auth = FirebaseAuth.getInstance()
-        adminLoginMode = intent.getStringExtra("LOGIN_MODE") != "PARTNER"
-
         setContent {
-            var error by remember { mutableStateOf("") }
+            var message by remember { mutableStateOf("") }
             var loading by remember { mutableStateOf(false) }
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            if (adminLoginMode) "Admin Login" else "Partner Login",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            if (adminLoginMode)
-                                "সক্রিয় License-এর Business Owner হিসেবে Gmail Connect করুন। প্রথমবার এই Business-এর Owner membership তৈরি হবে।"
-                            else
-                                "Gmail Connect করুন। Admin অনুমোদনের পর Partner Login চালু হবে।",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        if (error.isNotBlank()) {
-                            Text(error, color = MaterialTheme.colorScheme.error)
-                            Spacer(Modifier.height(10.dp))
-                        }
-                        Button(
-                            onClick = {
-                                error = ""
-                                loading = true
-                                googleOnSuccess = {
-                                    loading = false
-                                    setResult(RESULT_OK)
-                                    finish()
-                                }
-                                googleOnError = {
-                                    loading = false
-                                    error = it
-                                }
-                                startGoogleLogin()
-                            },
-                            enabled = !loading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                if (loading) "Google সংযোগ হচ্ছে..."
-                                else if (adminLoginMode) "👑 Gmail Connect → Admin প্রবেশ"
-                                else "Gmail Connect"
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = { finish() },
-                            enabled = !loading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("ফিরে যান")
-                        }
-                    }
+            MaterialTheme { Surface(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+                    Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Gmail Login", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Gmail দিয়ে Login করুন। প্রথমবার Login করলে Admin-এর কাছে অনুমোদনের অনুরোধ যাবে। Admin অনুমোদন ও মেয়াদ নির্ধারণ না করা পর্যন্ত অ্যাপ ব্যবহার করা যাবে না।")
+                    Spacer(Modifier.height(12.dp))
+                    if (message.isNotBlank()) { Text(message, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
+                    Button(onClick = {
+                        message = ""; loading = true
+                        success = { loading = false; setResult(RESULT_OK); finish() }
+                        failure = { loading = false; message = it }
+                        startLogin()
+                    }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text(if (loading) "Gmail যাচাই হচ্ছে..." else "Gmail দিয়ে Login") }
                 }
-            }
+            } }
         }
     }
 }
