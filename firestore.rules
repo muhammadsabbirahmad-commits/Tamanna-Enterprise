@@ -31,9 +31,21 @@ service cloud.firestore {
 
     function enterpriseAdmin() {
       return signedIn()
-        && exists(/databases/$(database)/documents/appConfig/admin)
-        && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN";
+        && (
+          (
+            exists(/databases/$(database)/documents/appConfig/admin)
+            && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
+            && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN"
+          )
+          ||
+          (
+            exists(/databases/$(database)/documents/accessUsers/$(request.auth.uid))
+            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.uid == request.auth.uid
+            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.role == "ADMIN"
+            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.approved == true
+            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.blocked != true
+          )
+        );
     }
 
     function member(businessId) {
