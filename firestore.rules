@@ -29,6 +29,13 @@ service cloud.firestore {
         && currentAccess().data.role == "ADMIN";
     }
 
+    function enterpriseAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/appConfig/admin)
+        && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN";
+    }
+
     function member(businessId) {
       return signedIn()
         && exists(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid))
@@ -39,6 +46,30 @@ service cloud.firestore {
     function businessAdmin(businessId) {
       return member(businessId)
         && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.role == "OWNER";
+    }
+
+    match /accessRequests/{userId} {
+      allow get: if signedIn() && request.auth.uid == userId;
+      allow list: if enterpriseAdmin();
+
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status == "PENDING"
+        && request.resource.data.startAt == 0
+        && request.resource.data.expiresAt == 0
+        && request.resource.data.notificationsEnabled == false;
+
+      allow update: if enterpriseAdmin()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.status in ["PENDING", "ACTIVE", "BLOCKED", "REJECTED", "EXPIRED"]
+        && request.resource.data.startAt is int
+        && request.resource.data.expiresAt is int
+        && request.resource.data.notificationsEnabled is bool;
+
+      allow delete: if enterpriseAdmin();
     }
 
     match /accessUsers/{userId} {
@@ -117,8 +148,6 @@ service cloud.firestore {
       }
     }
 
-    // Legacy user-scoped data is retained temporarily for migration.
-    // Blocked/revoked accounts cannot read the legacy data.
     match /users/{userId}/data/{document} {
       allow read: if approvedUser() && (request.auth.uid == userId || admin());
       allow write: if admin();
