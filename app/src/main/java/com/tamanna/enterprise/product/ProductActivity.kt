@@ -258,55 +258,49 @@ fun ProductScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(product.name + " (" + product.code + ") স্থায়ীভাবে মুছে যাবে।")
-                    OutlinedTextField(deletePin, { deletePin = it }, label = { Text("Admin PIN") }, singleLine = true)
+                    
+                    // পিন সেট করা থাকলেই কেবল পিনের ঘরটি দেখাবে
+                    if (SecurityStorage.isAdminPinSet(context)) {
+                        OutlinedTextField(deletePin, { deletePin = it }, label = { Text("Delete PIN") }, singleLine = true)
+                    }
+                    
                     if (deleteError.isNotBlank()) Text(deleteError, color = MaterialTheme.colorScheme.error)
                 }
             },
             confirmButton = {
                 Button(
-                enabled = product.stockQuantity == 0,
-                onClick = {
-                    val admin = SecurityStorage.getUsers(context).firstOrNull { it.role == SecurityStorage.ROLE_ADMIN }
-                    val latest = ProductStorage.getProducts(context).firstOrNull {
-                        it.code.equals(product.code, ignoreCase = true)
-                    }
-                    when {
-                        latest == null -> deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
-                        latest.stockQuantity != 0 -> deleteError = "পণ্যটির বর্তমান স্টক 0 নয়। আগে Stock Out করুন।"
-                        admin == null || admin.passwordHash != SecurityStorage.hashPassword(deletePin) ->
-                            deleteError = "ভুল Admin PIN।"
-                        else -> {
-                            val deleted = ProductStorage.deleteProduct(context, latest.code)
-                            if (deleted) {
-                                val logId = ActivityLogStorage.addAndGetId(
-                                    context,
-                                    "পণ্য মুছে ফেলা",
-                                    latest.name + " (" + latest.code + ")"
-                                )
-                                if (logId <= 0L) {
-                                    ProductStorage.addProduct(context, latest)
-                                    deleteError = "পণ্যের Activity Log সংরক্ষণ করা যায়নি। Delete rollback করা হয়েছে।"
+                    enabled = product.stockQuantity == 0,
+                    onClick = {
+                        val latest = ProductStorage.getProducts(context).firstOrNull {
+                            it.code.equals(product.code, ignoreCase = true)
+                        }
+                        when {
+                            latest == null -> deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
+                            latest.stockQuantity != 0 -> deleteError = "পণ্যটির বর্তমান স্টক 0 নয়। আগে Stock Out করুন।"
+                            // নতুন ঐচ্ছিক পিন ভেরিফিকেশন সিস্টেম
+                            !SecurityStorage.verifyAdminPin(context, deletePin) -> deleteError = "ভুল Delete PIN।"
+                            else -> {
+                                val deleted = ProductStorage.deleteProduct(context, latest.code)
+                                if (deleted) {
+                                    val logId = ActivityLogStorage.addAndGetId(context, "পণ্য মুছে ফেলা", latest.name + " (" + latest.code + ")")
+                                    if (logId <= 0L) {
+                                        ProductStorage.addProduct(context, latest)
+                                        deleteError = "পণ্যের Activity Log সংরক্ষণ করা যায়নি। Delete rollback করা হয়েছে।"
+                                    } else {
+                                        deletePin = ""
+                                        deleteError = ""
+                                        deleteProduct = null
+                                        onProductsChanged()
+                                    }
                                 } else {
-                                    deletePin = ""
-                                    deleteError = ""
-                                    deleteProduct = null
-                                    onProductsChanged()
+                                    deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
                                 }
-                            } else {
-                                deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
                             }
                         }
                     }
-                }
-            ) {
-                    Text("Delete")
-                }
+                ) { Text("Delete") }
             },
-            dismissButton = {
-                Button(onClick = { deleteProduct = null }) {
-                    Text("Cancel")
-                }
-            }
+            dismissButton = { Button(onClick = { deleteProduct = null }) { Text("Cancel") } }
         )
     }
 }
@@ -422,7 +416,7 @@ fun StockDialog(
                     it.code.equals(product.code, ignoreCase = true)
                 }
                 when {
-                    latest == null -> error = "পণ্যটি আর পাওয়া যাচ্ছে না।"
+                    latest == null -> error = "পণ্যটি আর পাওয়া যাচ্ছে কক্ষ না।"
                     q == null || q <= 0 -> error = "সঠিক পরিমাণ দিন।"
                     add && latest.stockQuantity > Int.MAX_VALUE - q ->
                         error = "স্টক সীমা অতিক্রম করছে।"
