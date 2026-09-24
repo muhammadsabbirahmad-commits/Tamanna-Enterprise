@@ -5,10 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.Manifest
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -32,10 +32,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.dashboard.TamannaTheme
+import com.tamanna.enterprise.security.SecurityStorage
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -62,7 +64,6 @@ class SettingsActivity : ComponentActivity() {
                 com.tamanna.enterprise.notifications.NotificationScheduler.scheduleDaily(this)
             }
         }
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,15 +96,16 @@ private fun SettingsScreen(
     onEnableNotifications: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val currentUser = com.tamanna.enterprise.security.SecurityStorage.getCurrentUser(context)
+    val currentUser = SecurityStorage.getCurrentUser(context)
     var shopName by remember { mutableStateOf(initialShopName) }
-    var googleLoading by remember { mutableStateOf(false) }
-    var googleError by remember { mutableStateOf("") }
     var selectedTheme by remember { mutableStateOf(ThemeStorage.getTheme(context)) }
+    
+    // PIN states
     var currentPin by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var pinMessage by remember { mutableStateOf("") }
+    val isPinSet = remember(pinMessage) { SecurityStorage.isAdminPinSet(context) }
 
     TamannaTheme(selectedTheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -119,45 +121,39 @@ private fun SettingsScreen(
                 Text("দোকানের তথ্য", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = shopName,
-                    onValueChange = { shopName = it },
-                    label = { Text("দোকানের নাম") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // নামের পাশে নতুন সেভ বাটন যুক্ত করা হলো
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = shopName,
+                        onValueChange = { shopName = it },
+                        label = { Text("দোকানের নাম") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            SettingsStorage.saveShopName(context, shopName)
+                            Toast.makeText(context, "নাম আপডেট হয়েছে!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(top = 6.dp)
+                    ) {
+                        Text("সেভ করুন")
+                    }
+                }
 
                 Spacer(Modifier.height(20.dp))
-
-                Text("লগইন নিরাপত্তা", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "অ্যাপের ব্যবসায়িক ডাটা দেখতে ও ব্যবহার করতে অনুমোদিত Admin/Partner লগইন বাধ্যতামূলক। এই নিরাপত্তা বন্ধ করার অপশন রাখা হয়নি।",
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                Spacer(Modifier.height(24.dp))
 
                 Text("অ্যাকাউন্ট ও লগইন", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "এখান থেকেই Admin বা Partner Login করবেন। Login Screen আর অ্যাপ চালুর সময় দেখানো হবে না।",
+                    "এখান থেকেই Partner Login করবেন। Login Screen আর অ্যাপ চালুর সময় দেখানো হবে না।",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(10.dp))
-
-                Button(
-                    onClick = {
-                        context.startActivity(
-                            Intent(context, com.tamanna.enterprise.security.LoginActivity::class.java)
-                                .putExtra("LOGIN_MODE", "ADMIN")
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("👑 Admin Login")
-                }
-
-                Spacer(Modifier.height(8.dp))
 
                 Button(
                     onClick = {
@@ -185,25 +181,15 @@ private fun SettingsScreen(
 
                 Text("অ্যাপের থিম", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(10.dp))
-                Text("পছন্দের রঙ নির্বাচন করুন", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(
-                        "green" to "সবুজ",
-                        "blue" to "নীল",
-                        "purple" to "বেগুনি",
-                        "dark" to "ডার্ক"
-                    ).forEach { (key, label) ->
+                    listOf("green" to "সবুজ", "blue" to "নীল", "purple" to "বেগুনি", "dark" to "ডার্ক").forEach { (key, label) ->
                         FilterChip(
                             selected = selectedTheme == key,
-                            onClick = {
-                                selectedTheme = key
-                                ThemeStorage.saveTheme(context, key)
-                            },
+                            onClick = { selectedTheme = key; ThemeStorage.saveTheme(context, key) },
                             label = { Text(label) }
                         )
                     }
@@ -213,80 +199,66 @@ private fun SettingsScreen(
 
                 Text("পার্টনার ও ব্যবহারকারী ব্যবস্থাপনা", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Partner Gmail-এর অনুমোদনের অনুরোধ দেখা, Approve/Reject করা এবং access নিয়ন্ত্রণ করুন।",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick = {
-                        context.startActivity(
-                            android.content.Intent(
-                                context,
-                                com.tamanna.enterprise.security.UserManagementActivity::class.java
-                            )
-                        )
-                    },
+                    onClick = { context.startActivity(Intent(context, com.tamanna.enterprise.security.UserManagementActivity::class.java)) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("👥 Partner Management / ব্যবহারকারী ব্যবস্থাপনা")
+                    Text("👥 Partner Management")
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                if (currentUser?.role == com.tamanna.enterprise.security.SecurityStorage.ROLE_ADMIN) {
-                    Text("অ্যাডমিন নিরাপত্তা", style = MaterialTheme.typography.titleLarge)
+                if (currentUser?.role == SecurityStorage.ROLE_ADMIN) {
+                    Text("ডিলিট নিরাপত্তা (ঐচ্ছিক)", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(currentPin, { currentPin = it.filter(Char::isDigit) }, label = { Text("বর্তমান Admin PIN") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit) }, label = { Text("নতুন Admin PIN (কমপক্ষে ৪ সংখ্যা)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "পণ্য বা পার্টনার ডিলিট করার জন্য একটি পিন সেট করতে পারেন। পিন না চাইলে ফাঁকা রেখে সেভ করুন।",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    if (isPinSet) {
+                        OutlinedTextField(currentPin, { currentPin = it.filter(Char::isDigit) }, label = { Text("বর্তমান PIN") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit) }, label = { Text(if (isPinSet) "নতুন PIN (বন্ধ করতে ফাঁকা রাখুন)" else "নতুন PIN সেট করুন") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(6.dp))
                     OutlinedTextField(confirmPin, { confirmPin = it.filter(Char::isDigit) }, label = { Text("নতুন PIN আবার দিন") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
+
                     Button(onClick = {
                         pinMessage = when {
-                            newPin.length < 4 -> "নতুন PIN কমপক্ষে ৪ সংখ্যার হতে হবে।"
-                            newPin != confirmPin -> "নতুন PIN দুবার একই নয়।"
-                            com.tamanna.enterprise.security.SecurityStorage.changeAdminPin(context, currentPin, newPin) -> {
+                            newPin.isNotBlank() && newPin.length < 4 -> "নতুন PIN কমপক্ষে ৪ সংখ্যার হতে হবে।"
+                            newPin.isNotBlank() && newPin != confirmPin -> "নতুন PIN দুবার একই নয়।"
+                            SecurityStorage.changeAdminPin(context, currentPin, newPin) -> {
+                                val msg = if (newPin.isBlank()) "PIN সফলভাবে বন্ধ করা হয়েছে।" else "PIN সফলভাবে সেট হয়েছে।"
                                 currentPin = ""; newPin = ""; confirmPin = ""
-                                "Admin PIN সফলভাবে পরিবর্তন হয়েছে।"
+                                msg
                             }
-                            else -> "বর্তমান Admin PIN সঠিক নয়।"
+                            else -> "বর্তমান PIN সঠিক নয়।"
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Admin PIN পরিবর্তন করুন") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text(if (newPin.isBlank() && isPinSet) "PIN বন্ধ করুন" else "PIN সেভ করুন") }
+
                     if (pinMessage.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
                         Text(pinMessage, color = if (pinMessage.contains("সফল")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                     }
+                    
                     Spacer(Modifier.height(16.dp))
                     Button(
-                        onClick = {
-                            context.startActivity(android.content.Intent(context, com.tamanna.enterprise.security.ActivityLogActivity::class.java))
-                        },
+                        onClick = { context.startActivity(Intent(context, com.tamanna.enterprise.security.ActivityLogActivity::class.java)) },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("অ্যাক্টিভিটি লগ") }
-
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(onClick = onCancel, modifier = Modifier.weight(1f)) {
-                        Text("বাতিল")
-                    }
-                    Button(onClick = { onSave(shopName) }, modifier = Modifier.weight(1f)) {
-                        Text("সংরক্ষণ")
-                    }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("বাতিল") }
+                    Button(onClick = { onSave(shopName) }, modifier = Modifier.weight(1f)) { Text("সব সেভ করে বের হোন") }
                 }
 
                 Spacer(Modifier.height(28.dp))
-                Text(
-                    "সংরক্ষণ করলে দোকানের নাম ড্যাশবোর্ডে দেখাবে।",
-                    style = MaterialTheme.typography.bodyMedium
-                )
             }
         }
     }
