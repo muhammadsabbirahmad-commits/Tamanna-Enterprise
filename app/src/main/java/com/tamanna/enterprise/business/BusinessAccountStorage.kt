@@ -25,6 +25,9 @@ object BusinessAccountStorage {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun get(context: Context): BusinessAccount {
+        // ডেটা না থাকলে যেন ক্র্যাশ না করে তাই আগে থেকেই নিশ্চিত করা হচ্ছে
+        ensureInitialized(context)
+        
         val p = prefs(context)
         return BusinessAccount(
             businessId = p.getString(KEY_ID, LEGACY_BUSINESS_ID)
