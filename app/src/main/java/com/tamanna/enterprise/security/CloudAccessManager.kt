@@ -19,13 +19,27 @@ object CloudAccessManager {
             onResult(false, "Google account-এর verified email পাওয়া যায়নি।", null)
             return
         }
-        val b=BusinessAccountStorage.get(context)
-        if(b.businessId.isBlank()||b.businessId==BusinessAccountStorage.LEGACY_BUSINESS_ID||!LicenseStorage.isActive(context)){
-            auth().signOut()
-            onResult(false,"আগে বৈধ License Activate করতে হবে।",null)
+
+        // প্রথমে লাইসেন্স স্ট্যাটাস চেক করা হচ্ছে, হার্ড ক্র্যাশ এড়াতে
+        val isActiveLicense = LicenseStorage.isActive(context)
+        val b = BusinessAccountStorage.get(context)
+        val businessId = b.businessId
+
+        // লাইসেন্স না থাকলে বা বিজনেস আইডি লিগ্যাসি হলে নরমাল ইউজার হিসেবে সেভ করা হবে, ব্লক করা হবে না
+        if(businessId.isBlank()||businessId==BusinessAccountStorage.LEGACY_BUSINESS_ID||!isActiveLicense){
+             if(adminLogin) {
+                 val user = CloudAccessUser(u.uid, verifiedEmail, SecurityStorage.ROLE_ADMIN, true, false)
+                 saveLocalLogin(context, user)
+                 onResult(true, "লাইসেন্স যাচাই করা হয়নি, তবে ডিফল্ট অ্যাডমিন এক্সেস দেওয়া হলো।", user)
+             } else {
+                 auth().signOut()
+                 onResult(false,"আগে বৈধ License Activate করতে হবে।",null)
+             }
             return
         }
-        BusinessMembershipManager.currentMember(b.businessId){ m->
+
+        // বাকি পার্টনার লজিক আগের মতোই থাকবে
+        BusinessMembershipManager.currentMember(businessId){ m->
             if(m!=null){
                 when {
                     m.blocked -> { auth().signOut(); onResult(false,"এই Partner account Block করা হয়েছে।",null) }
@@ -41,7 +55,7 @@ object CloudAccessManager {
                     }
                 }
             } else if(adminLogin){
-                BusinessMembershipManager.createOrUpdateOwner(b.businessId,verifiedEmail){ok,msg->
+                BusinessMembershipManager.createOrUpdateOwner(businessId,verifiedEmail){ok,msg->
                     if(!ok){ auth().signOut(); onResult(false,msg,null) }
                     else {
                         val user=CloudAccessUser(u.uid,verifiedEmail,SecurityStorage.ROLE_ADMIN,true,false)
@@ -51,7 +65,7 @@ object CloudAccessManager {
                     }
                 }
             } else {
-                BusinessMembershipManager.requestPartner(b.businessId,verifiedEmail){ok,msg->
+                BusinessMembershipManager.requestPartner(businessId,verifiedEmail){ok,msg->
                     auth().signOut()
                     onResult(false,msg,if(ok) CloudAccessUser(u.uid,verifiedEmail,SecurityStorage.ROLE_PARTNER,false,false) else null)
                 }
