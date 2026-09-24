@@ -55,7 +55,8 @@ object ProductStorage {
             next = maxOf(FIRST_PRODUCT_NUMBER, maxExisting + 1)
         }
 
-        prefs.edit().putInt(KEY_NEXT_CODE, next + 1).apply()
+        // এখানে অটোমেটিক সিরিয়াল বাড়িয়ে রাখার কোডটি মুছে দেওয়া হয়েছে। 
+        // এখন এটি শুধুমাত্র কোড দেখাবে কিন্তু সেভ না করা পর্যন্ত সিরিয়াল পরিবর্তন করবে না।
         return "P-" + next.toString().padStart(6, '0')
     }
 
@@ -73,6 +74,8 @@ object ProductStorage {
 
         val prefs = BusinessStorage.prefs(context, PREFS)
         val currentNext = prefs.getInt(KEY_NEXT_CODE, FIRST_PRODUCT_NUMBER)
+        
+        // পণ্য সফলভাবে সেভ হওয়ার পরই কেবল সিরিয়াল এক ধাপ বাড়ানো হবে
         if (codeNumber >= currentNext) {
             prefs.edit()
                 .putInt(KEY_NEXT_CODE, maxOf(FIRST_PRODUCT_NUMBER, codeNumber + 1))
