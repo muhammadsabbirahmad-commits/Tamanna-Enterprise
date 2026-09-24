@@ -1,5 +1,6 @@
 package com.tamanna.enterprise.security
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,6 +15,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.tamanna.enterprise.dashboard.DashboardActivity
 
 class LoginActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
@@ -67,7 +69,15 @@ class LoginActivity : ComponentActivity() {
                     if (message.isNotBlank()) { Text(message, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
                     Button(onClick = {
                         message = ""; loading = true
-                        success = { loading = false; setResult(RESULT_OK); finish() }
+                        success = { 
+                            loading = false
+                            setResult(RESULT_OK)
+                            // ড্যাশবোর্ডে যাওয়ার নির্দেশ দেওয়া হলো
+                            val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
+                            finish() 
+                        }
                         failure = { loading = false; message = it }
                         startLogin()
                     }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text(if (loading) "Gmail যাচাই হচ্ছে..." else "Gmail দিয়ে Login") }
