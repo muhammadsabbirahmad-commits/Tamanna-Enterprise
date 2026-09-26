@@ -1,29 +1,24 @@
 package com.tamanna.enterprise.sync
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.security.SecurityStorage
 
-/**
- * Syncs the app's business/settings SharedPreferences to the signed-in
- * Firebase user. Security-sensitive local login data is deliberately excluded.
- *
- * Cloud path:
- * businesses/{businessId}/data/{namespace}
- */
 object CloudSyncManager {
     private const val BUSINESSES = "businesses"
     private const val DATA = "data"
-    private const val MIGRATION_MARKER = "_legacy_cloud_migration"
-    private const val MIGRATION_RUNNING = "running"
-    private const val MIGRATION_COMPLETED = "completed"
-    private const val MIGRATION_STALE_MS = 10 * 60 * 1000L
+    private const val PREF_SYNC = "tamanna_sync_prefs"
+    private const val KEY_LAST_LOCAL_HASH = "last_local_hash"
 
     private val namespaces = listOf(
         "tamanna_enterprise_products",
@@ -54,284 +49,171 @@ object CloudSyncManager {
     }
 
     private fun approvedMember(context: Context, onResult: (Boolean, Boolean) -> Unit) {
-        if (!validBusinessId(context)) {
-            onResult(false, false)
-            return
-        }
-
+        if (!validBusinessId(context)) { onResult(false, false); return }
         val uid = auth().currentUser?.uid
-        if (uid.isNullOrBlank()) {
-            onResult(false, false)
-            return
-        }
+        if (uid.isNullOrBlank()) { onResult(false, false); return }
 
         val businessId = BusinessAccountStorage.get(context).businessId
         db().collection(BUSINESSES).document(businessId)
             .collection("members").document(uid).get()
             .addOnSuccessListener { snapshot ->
-                val approved = snapshot.exists() &&
-                    snapshot.getBoolean("approved") == true &&
-                    snapshot.getBoolean("blocked") != true
+                val approved = snapshot.exists() && snapshot.getBoolean("approved") == true && snapshot.getBoolean("blocked") != true
                 val owner = approved && snapshot.getString("role") == "OWNER"
                 onResult(approved, owner)
-            }
-            .addOnFailureListener {
-                onResult(false, false)
-            }
+            }.addOnFailureListener { onResult(false, false) }
     }
 
-    fun pullThenSync(context: Context, onComplete: (Boolean) -> Unit = {}) {
-        val appContext = context.applicationContext
-        approvedMember(appContext) { approved, _ ->
-            if (!approved) {
-                onComplete(false)
-                return@approvedMember
-            }
-
-            val refs = namespaces.map { namespace ->
-                businessDataCollection(appContext).document(namespace).get()
-            }
-
-            Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(refs)
-                .addOnSuccessListener { snapshots ->
-                    var foundRemoteData = false
-
-                    snapshots.forEachIndexed { index, snapshot ->
-                        if (!snapshot.exists()) return@forEachIndexed
-                        val values = snapshot.get("values") as? Map<*, *> ?: return@forEachIndexed
-                        foundRemoteData = true
-
-                        val namespace = namespaces[index]
-                        val editor = BusinessStorage
-                            .prefs(appContext, namespace)
-                            .edit()
-                            .clear()
-
-                        values.forEach { (key, value) ->
-                            if (key !is String || value == null) return@forEach
-                            when (value) {
-                                is String -> editor.putString(key, value)
-                                is Boolean -> editor.putBoolean(key, value)
-                                is Long -> editor.putLong(key, value)
-                                is Double -> editor.putString(key, value.toString())
-                                is Number -> editor.putString(key, value.toString())
-                                is List<*> -> editor.putStringSet(
-                                    key,
-                                    value.filterIsInstance<String>().toSet()
-                                )
-                            }
-                        }
-                        editor.apply()
-                    }
-                    onComplete(foundRemoteData)
-                }
-                .addOnFailureListener {
-                    onComplete(false)
-                }
+    // ডেটার ইউনিক ফিঙ্গারপ্রিন্ট (Hash)
+    private fun calculateLocalHash(context: Context): String {
+        val sb = java.lang.StringBuilder()
+        namespaces.forEach { ns ->
+            val prefs = BusinessStorage.prefs(context, ns).all
+            prefs.keys.sorted().forEach { key -> sb.append(key).append("=").append(prefs[key].toString()).append(";") }
         }
-    }
-
-    fun migrateLegacyCloudData(context: Context, onComplete: (Boolean, String) -> Unit = { _, _ -> }) {
-        val appContext = context.applicationContext
-        approvedMember(appContext) { approved, owner ->
-            if (!approved || !owner || !SecurityStorage.canWrite(appContext)) {
-                onComplete(false, "শুধু অনুমোদিত Business Owner পুরোনো Cloud Data Migration করতে পারবেন।")
-                return@approvedMember
-            }
-
-            val uid = auth().currentUser?.uid
-            if (uid.isNullOrBlank()) {
-                onComplete(false, "Google Account সংযুক্ত নেই।")
-                return@approvedMember
-            }
-
-            val legacyCollection = db().collection("users").document(uid).collection(DATA)
-            val targetCollection = businessDataCollection(appContext)
-            val markerRef = targetCollection.document(MIGRATION_MARKER)
-
-            markerRef.get()
-                .addOnSuccessListener { marker ->
-                    val markerStatus = marker.getString("status")
-                    val markerStartedAt = marker.getLong("startedAt") ?: 0L
-                    if (markerStatus == MIGRATION_COMPLETED ||
-                        marker.getBoolean("completed") == true
-                    ) {
-                        onComplete(true, "পুরোনো Cloud Data Migration আগে থেকেই সম্পন্ন হয়েছে।")
-                        return@addOnSuccessListener
-                    }
-
-                    if (markerStatus == MIGRATION_RUNNING &&
-                        markerStartedAt > 0L &&
-                        System.currentTimeMillis() - markerStartedAt < MIGRATION_STALE_MS
-                    ) {
-                        onComplete(false, "একটি Cloud Migration ইতিমধ্যে চলছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।")
-                        return@addOnSuccessListener
-                    }
-
-                    markerRef.set(
-                        mapOf(
-                            "status" to MIGRATION_RUNNING,
-                            "completed" to false,
-                            "startedAt" to System.currentTimeMillis(),
-                            "startedBy" to uid
-                        ),
-                        SetOptions.merge()
-                    ).addOnSuccessListener {
-                        readAndMigrateLegacy(
-                            appContext,
-                            legacyCollection,
-                            targetCollection,
-                            markerRef,
-                            uid,
-                            onComplete
-                        )
-                    }.addOnFailureListener {
-                        onComplete(false, it.localizedMessage ?: "Migration শুরু করা যায়নি।")
-                    }
-                }
-                .addOnFailureListener {
-                    onComplete(false, it.localizedMessage ?: "Migration status যাচাই করা যায়নি।")
-                }
-        }
-    }
-
-    private fun readAndMigrateLegacy(
-        context: Context,
-        legacyCollection: com.google.firebase.firestore.CollectionReference,
-        targetCollection: com.google.firebase.firestore.CollectionReference,
-        markerRef: com.google.firebase.firestore.DocumentReference,
-        uid: String,
-        onComplete: (Boolean, String) -> Unit
-    ) {
-        legacyCollection.get()
-            .addOnSuccessListener { legacySnapshots ->
-                if (legacySnapshots.isEmpty) {
-                    clearMigrationMarker(markerRef)
-                    onComplete(false, "পুরোনো Cloud Data পাওয়া যায়নি।")
-                    return@addOnSuccessListener
-                }
-
-                val targetRefs = namespaces.map { namespace ->
-                    targetCollection.document(namespace).get()
-                }
-
-                Tasks.whenAllSuccess<com.google.firebase.firestore.DocumentSnapshot>(targetRefs)
-                    .addOnSuccessListener { targetSnapshots ->
-                        val existingTargets = targetSnapshots.mapIndexedNotNull { index, snapshot ->
-                            if (snapshot.exists()) namespaces[index] else null
-                        }.toSet()
-
-                        val batch = db().batch()
-                        val migratedNamespaces = mutableListOf<String>()
-
-                        legacySnapshots.documents.forEach { legacy ->
-                            if (!legacy.exists()) return@forEach
-                            val namespace = legacy.id
-                            if (!namespaces.contains(namespace)) return@forEach
-                            if (existingTargets.contains(namespace)) return@forEach
-
-                            val values = legacy.get("values")
-                            if (values is Map<*, *>) {
-                                val payload = mutableMapOf<String, Any?>("values" to values)
-                                legacy.get("updatedAt")?.let { payload["updatedAt"] = it }
-
-                                // This namespace was confirmed absent in the target before this write.
-                                batch.set(
-                                    targetCollection.document(namespace),
-                                    payload,
-                                    SetOptions.merge()
-                                )
-                                migratedNamespaces.add(namespace)
-                            }
-                        }
-
-                        if (migratedNamespaces.isEmpty()) {
-                            clearMigrationMarker(markerRef)
-                            onComplete(
-                                false,
-                                "নতুন Business Cloud-এ একই Data আগে থেকেই আছে অথবা মাইগ্রেট করার মতো Data নেই। পুরোনো Data overwrite করা হয়নি।"
-                            )
-                            return@addOnSuccessListener
-                        }
-
-                        batch.set(
-                            markerRef,
-                            mapOf(
-                                "status" to MIGRATION_COMPLETED,
-                                "completed" to true,
-                                "migratedNamespaces" to migratedNamespaces,
-                                "migratedCount" to migratedNamespaces.size,
-                                "migratedAt" to FieldValue.serverTimestamp(),
-                                "startedBy" to uid
-                            ),
-                            SetOptions.merge()
-                        )
-
-                        batch.commit()
-                            .addOnSuccessListener {
-                                onComplete(
-                                    true,
-                                    "পুরোনো Cloud Data নিরাপদভাবে নতুন Business Data-তে মাইগ্রেট হয়েছে। বিদ্যমান Data overwrite করা হয়নি।"
-                                )
-                            }
-                            .addOnFailureListener {
-                                // Do not mark the migration as completed if the batch failed.
-                                clearMigrationMarker(markerRef)
-                                onComplete(false, it.localizedMessage ?: "Cloud Migration ব্যর্থ হয়েছে।")
-                            }
-                    }
-                    .addOnFailureListener {
-                        clearMigrationMarker(markerRef)
-                        onComplete(false, it.localizedMessage ?: "নতুন Business Cloud Data যাচাই করা যায়নি।")
-                    }
-            }
-            .addOnFailureListener {
-                clearMigrationMarker(markerRef)
-                onComplete(false, it.localizedMessage ?: "পুরোনো Cloud Data পড়া যায়নি।")
-            }
-    }
-
-    private fun clearMigrationMarker(markerRef: com.google.firebase.firestore.DocumentReference) {
-        markerRef.delete()
-    }
-
-    // Cloud backup is intentionally exposed only through the explicit manual-backup API.
-    // Keeping the underlying sync function private prevents accidental automatic callers.
-    fun manualBackup(context: Context, onComplete: () -> Unit = {}) {
-        val appContext = context.applicationContext
-        approvedMember(appContext) { approved, owner ->
-            if (!approved || !owner || !SecurityStorage.canWrite(appContext)) {
-                onComplete()
-                return@approvedMember
-            }
-
-            val batch = db().batch()
-
-            namespaces.forEach { namespace ->
-                val values = toFirestoreMap(
-                    BusinessStorage.prefs(appContext, namespace).all
-                )
-                val ref = businessDataCollection(appContext).document(namespace)
-                batch.set(
-                    ref,
-                    mapOf(
-                        "values" to values,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    ),
-                    SetOptions.merge()
-                )
-            }
-
-            batch.commit()
-                .addOnCompleteListener { onComplete() }
-        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        return digest.digest(sb.toString().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 
     private fun toFirestoreMap(source: Map<String, *>): Map<String, Any?> =
-        source.mapValues { (_, value) ->
-            when (value) {
-                is Set<*> -> value.filterIsInstance<String>()
-                else -> value
+        source.mapValues { (_, value) -> if (value is Set<*>) value.filterIsInstance<String>() else value }
+
+    // --- Smart Sync (Hash-based) ---
+    fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String) -> Unit) {
+        val appContext = context.applicationContext
+        approvedMember(appContext) { approved, _ ->
+            if (!approved || !SecurityStorage.canWrite(appContext)) {
+                if (!isAuto) onComplete("সিঙ্ক করার অনুমতি নেই।")
+                return@approvedMember
+            }
+
+            val currentLocalHash = calculateLocalHash(appContext)
+            val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+            val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+
+            val metaRef = businessDataCollection(appContext).document("_sync_meta")
+
+            metaRef.get().addOnSuccessListener { doc ->
+                val cloudHash = doc.getString("dataHash") ?: ""
+
+                when {
+                    // ১. ক্লাউডে নতুন ডেটা আছে, যা আমাদের মোবাইলের শেষ সিঙ্কের সাথে মিলছে না (IN/Download)
+                    cloudHash.isNotBlank() && cloudHash != lastSyncedHash && cloudHash != currentLocalHash -> {
+                        pullAllFromCloud(appContext, cloudHash) { success ->
+                            if (!isAuto) onComplete(if (success) "ক্লাউড থেকে নতুন ডেটা রিস্টোর হয়েছে। ☁️⬇️" else "রিস্টোর ব্যর্থ হয়েছে।")
+                        }
+                    }
+                    // ২. আমাদের মোবাইলে নতুন কাজ হয়েছে, যা ক্লাউডে নেই (OUT/Upload)
+                    currentLocalHash != lastSyncedHash -> {
+                        pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
+                            if (!isAuto) onComplete(if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।")
+                        }
+                    }
+                    // ৩. সবকিছু একদম ঠিক আছে
+                    else -> {
+                        if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅")
+                    }
+                }
+            }.addOnFailureListener {
+                // মেটা ফাইল না থাকলে (প্রথমবারের সিঙ্ক)
+                pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
+                    if (!isAuto) onComplete(if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।")
+                }
             }
         }
+    }
+
+    private fun pushAllToCloud(context: Context, currentHash: String, metaRef: DocumentReference, onComplete: (Boolean) -> Unit) {
+        val batch = db().batch()
+        namespaces.forEach { namespace ->
+            val values = toFirestoreMap(BusinessStorage.prefs(context, namespace).all)
+            batch.set(businessDataCollection(context).document(namespace), mapOf("values" to values), SetOptions.merge())
+        }
+        batch.set(metaRef, mapOf("dataHash" to currentHash, "updatedBy" to auth().currentUser?.uid), SetOptions.merge())
+
+        batch.commit().addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).edit().putString(KEY_LAST_LOCAL_HASH, currentHash).apply()
+                onComplete(true)
+            } else onComplete(false)
+        }
+    }
+
+    private fun pullAllFromCloud(context: Context, newCloudHash: String, onComplete: (Boolean) -> Unit) {
+        val refs = namespaces.map { businessDataCollection(context).document(it).get() }
+        Tasks.whenAllSuccess<DocumentSnapshot>(refs).addOnSuccessListener { snapshots ->
+            snapshots.forEachIndexed { index, snapshot ->
+                val editor = BusinessStorage.prefs(context, namespaces[index]).edit().clear()
+                if (snapshot.exists()) {
+                    val values = snapshot.get("values") as? Map<*, *>
+                    values?.forEach { (key, value) ->
+                        if (key !is String || value == null) return@forEach
+                        when (value) {
+                            is String -> editor.putString(key, value)
+                            is Boolean -> editor.putBoolean(key, value)
+                            is Long -> editor.putLong(key, value)
+                            is Double -> editor.putString(key, value.toString())
+                            is Number -> editor.putString(key, value.toString())
+                            is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                        }
+                    }
+                }
+                editor.apply()
+            }
+            context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).edit().putString(KEY_LAST_LOCAL_HASH, newCloudHash).apply()
+            onComplete(true)
+        }.addOnFailureListener { onComplete(false) }
+    }
+
+    // --- সম্পূর্ণ নতুন ও রিয়েল-টাইম অটো-সিঙ্ক লজিক ---
+    private val handler = Handler(Looper.getMainLooper())
+    private var isAutoSyncing = false
+    private lateinit var syncContext: Context
+    private var cloudListener: ListenerRegistration? = null
+
+    private val localCheckRunnable = object : Runnable {
+        override fun run() {
+            if (isAutoSyncing) {
+                val appContext = syncContext.applicationContext
+                val currentHash = calculateLocalHash(appContext)
+                val lastHash = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getString(KEY_LAST_LOCAL_HASH, "")
+                
+                // ১৫ সেকেন্ড পর পর শুধু চেক করবে লোকাল মোবাইলে নতুন কাজ হয়েছে কি না (OUT)
+                if (currentHash != lastHash) {
+                    smartSync(appContext, isAuto = true) {}
+                }
+                handler.postDelayed(this, 15000)
+            }
+        }
+    }
+
+    fun startAutoSync(context: Context) {
+        if (isAutoSyncing || !validBusinessId(context)) return
+        syncContext = context.applicationContext
+        isAutoSyncing = true
+
+        // ১. রিয়েল-টাইম ক্লাউড চেকার (IN) - কেউ ক্লাউডে সেভ করা মাত্রই ইনস্ট্যান্ট ডাউনলোড হবে
+        val metaRef = businessDataCollection(syncContext).document("_sync_meta")
+        cloudListener = metaRef.addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+            
+            val cloudHash = snapshot.getString("dataHash") ?: ""
+            val lastHash = syncContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getString(KEY_LAST_LOCAL_HASH, "")
+            
+            if (cloudHash.isNotBlank() && cloudHash != lastHash) {
+                smartSync(syncContext, isAuto = true) {}
+            }
+        }
+
+        // ২. ১৫ সেকেন্ড টাইমার (OUT) - লোকাল কাজগুলো আপলোড করার জন্য
+        handler.post(localCheckRunnable)
+    }
+
+    fun stopAutoSync() {
+        isAutoSyncing = false
+        handler.removeCallbacks(localCheckRunnable)
+        cloudListener?.remove()
+        cloudListener = null
+    }
+
+    fun isAutoSyncEnabled(): Boolean = isAutoSyncing
 }
