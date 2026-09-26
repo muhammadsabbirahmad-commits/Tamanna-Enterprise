@@ -22,7 +22,6 @@ import com.tamanna.enterprise.security.ActivityLogStorage
 class SupplierDueActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!SecurityStorage.canWrite(this)) { finish(); return }
         setContent { TamannaTheme(ThemeStorage.getTheme(this)) { SupplierDueScreen() } }
     }
 }
@@ -42,6 +41,8 @@ private fun SupplierDueScreen() {
     var mobile by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
 
+    val canWrite = remember { SecurityStorage.canWrite(context) }
+
     val suppliers = remember(refresh) { SupplierDueStorage.getSuppliers(context) }
     val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
     val entries = remember(refresh) { SupplierDueStorage.getEntries(context) }
@@ -54,16 +55,15 @@ private fun SupplierDueScreen() {
             Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // বাটন এবং টেক্সট সুন্দরভাবে সাজানো হলো
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("মোট বাকি: ৳ %.2f".format(total), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Button(onClick = { name = ""; mobile = ""; address = ""; message = ""; showAdd = true }) {
-                    Text("＋ যোগ করুন")
+                
+                if (canWrite) {
+                    Button(onClick = { name = ""; mobile = ""; address = ""; message = ""; showAdd = true }) { Text("＋ যোগ করুন") }
                 }
             }
             
-            OutlinedTextField(query, { query = it }, label = { Text("সরবরাহকারী খুঁজুন") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(query, { query = it }, label = { Text("সরবরাহকারী খুঁজুন") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 
             LazyColumn(Modifier.height(150.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(filtered, key = { it.id }) { supplier ->
@@ -77,38 +77,30 @@ private fun SupplierDueScreen() {
             }
 
             if (selected.isNotBlank()) {
-                Text("নির্বাচিত: $selected")
-                Text("বর্তমান বাকি: ৳ %.2f".format(selectedBalance))
-                OutlinedTextField(payment, { payment = it.filter { c -> c.isDigit() || c == '.' } },
-                    label = { Text("পরিশোধের পরিমাণ") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(note, { note = it }, label = { Text("নোট (ঐচ্ছিক)") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Button(onClick = {
-                    val amount = payment.toDoubleOrNull()
-                    when {
-                        amount == null || amount <= 0 -> message = "সঠিক পরিশোধের পরিমাণ দিন।"
-                        amount > selectedBalance -> message = "পরিশোধ বর্তমান বাকি থেকে বেশি হতে পারবে না।"
-                        else -> {
-                            val paymentId = SupplierDueStorage.addPayment(context, selected, amount, note.trim())
-                            if (paymentId <= 0L) {
-                                message = "পরিশোধ সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন."
-                            } else {
-                                val logId = ActivityLogStorage.addAndGetId(
-                                    context,
-                                    "সরবরাহকারীকে পরিশোধ",
-                                    selected + " • ৳ " + String.format("%.2f", amount) +
-                                        if (note.isBlank()) "" else " • " + note.trim()
-                                )
-                                if (logId <= 0L) {
-                                    SupplierDueStorage.removePaymentById(context, paymentId)
-                                    message = "পরিশোধের Activity Log সংরক্ষণ করা যায়নি। পরিশোধ rollback করা হয়েছে।"
-                                } else {
-                                    payment = ""; note = ""; message = "পরিশোধ সংরক্ষণ হয়েছে।"; refresh++
+                Text("নির্বাচিত: $selected\nবর্তমান বাকি: ৳ %.2f".format(selectedBalance))
+                
+                if (canWrite) {
+                    OutlinedTextField(payment, { payment = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("পরিশোধের পরিমাণ") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(note, { note = it }, label = { Text("নোট (ঐচ্ছিক)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Button(onClick = {
+                        val amount = payment.toDoubleOrNull()
+                        when {
+                            amount == null || amount <= 0 -> message = "সঠিক পরিশোধের পরিমাণ দিন।"
+                            amount > selectedBalance -> message = "পরিশোধ বর্তমান বাকি থেকে বেশি হতে পারবে না।"
+                            else -> {
+                                val paymentId = SupplierDueStorage.addPayment(context, selected, amount, note.trim())
+                                if (paymentId <= 0L) { message = "পরিশোধ সংরক্ষণ করা যায়নি।" }
+                                else {
+                                    val logId = ActivityLogStorage.addAndGetId(context, "সরবরাহকারীকে পরিশোধ", selected + " • ৳ " + String.format("%.2f", amount) + if (note.isBlank()) "" else " • " + note.trim())
+                                    if (logId <= 0L) { SupplierDueStorage.removePaymentById(context, paymentId); message = "পরিশোধ rollback করা হয়েছে।" }
+                                    else { payment = ""; note = ""; message = "পরিশোধ সংরক্ষণ হয়েছে।"; refresh++ }
                                 }
                             }
                         }
-                    }
-                }, modifier = Modifier.fillMaxWidth()) { Text("সরবরাহকারীকে পরিশোধ করুন") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("পরিশোধ করুন") }
+                } else {
+                    Text("শুধুমাত্র অ্যাডমিন পরিশোধ করতে পারবেন।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             if (message.isNotBlank()) Text(message, color = if (message.contains("সফল") || message.contains("সংরক্ষণ")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
@@ -120,16 +112,14 @@ private fun SupplierDueScreen() {
                         Column(Modifier.padding(10.dp)) {
                             val label = if (entry.type == "PURCHASE") "ক্রয় বাকি" else "পরিশোধ"
                             Text(entry.supplier + " • " + label + " • ৳ %.2f".format(kotlin.math.abs(entry.amount)))
-                            Text(entry.date + if (entry.note.isBlank()) "" else " • " + entry.note,
-                                style = MaterialTheme.typography.bodySmall)
+                            Text(entry.date + if (entry.note.isBlank()) "" else " • " + entry.note, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
             }
         }
 
-        // সরবরাহকারী যোগ করার হারানো ডায়ালগটি যুক্ত করা হলো
-        if (showAdd) {
+        if (showAdd && canWrite) {
             AlertDialog(
                 onDismissRequest = { showAdd = false },
                 title = { Text("নতুন সরবরাহকারী যোগ") },
@@ -143,23 +133,14 @@ private fun SupplierDueScreen() {
                 },
                 confirmButton = {
                     Button(onClick = {
-                        if (name.trim().isBlank()) {
-                            message = "সরবরাহকারীর নাম দেওয়া আবশ্যক।"
-                        } else {
+                        if (name.trim().isBlank()) { message = "নাম দেওয়া আবশ্যক।" }
+                        else {
                             val ok = SupplierDueStorage.addSupplier(context, name, mobile, address)
-                            if (ok) {
-                                showAdd = false
-                                refresh++
-                                message = ""
-                            } else {
-                                message = "এই নামের সরবরাহকারী আগে থেকেই আছে।"
-                            }
+                            if (ok) { showAdd = false; refresh++; message = "" } else { message = "সরবরাহকারী আগে থেকেই আছে।" }
                         }
                     }) { Text("সংরক্ষণ") }
                 },
-                dismissButton = {
-                    TextButton(onClick = { showAdd = false; message = "" }) { Text("বাতিল") }
-                }
+                dismissButton = { TextButton(onClick = { showAdd = false; message = "" }) { Text("বাতিল") } }
             )
         }
     }
