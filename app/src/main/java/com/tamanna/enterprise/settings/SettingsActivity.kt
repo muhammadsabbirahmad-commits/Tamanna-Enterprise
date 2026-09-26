@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -35,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
+import com.tamanna.enterprise.MainActivity
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.security.SecurityStorage
@@ -121,7 +125,6 @@ private fun SettingsScreen(
                 Text("দোকানের তথ্য", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
 
-                // নামের পাশে নতুন সেভ বাটন যুক্ত করা হলো
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -149,22 +152,53 @@ private fun SettingsScreen(
 
                 Text("অ্যাকাউন্ট ও লগইন", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "এখান থেকেই Partner Login করবেন। Login Screen আর অ্যাপ চালুর সময় দেখানো হবে না।",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(10.dp))
 
-                Button(
-                    onClick = {
-                        context.startActivity(
-                            Intent(context, com.tamanna.enterprise.security.LoginActivity::class.java)
-                                .putExtra("LOGIN_MODE", "PARTNER")
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("👤 Partner Login")
+                if (currentUser != null) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            val displayEmail = currentUser.googleEmail.ifBlank { currentUser.username }
+                            Text("সংযুক্ত জিমেইল: $displayEmail", style = MaterialTheme.typography.bodyLarge)
+                            Spacer(Modifier.height(4.dp))
+                            Text("অ্যাকাউন্টের ধরন: ${SecurityStorage.roleLabel(currentUser.role)}", style = MaterialTheme.typography.bodyMedium)
+                            
+                            Spacer(Modifier.height(16.dp))
+                            
+                            Button(
+                                onClick = {
+                                    // ম্যানুয়াল লগআউট লজিক
+                                    FirebaseAuth.getInstance().signOut()
+                                    SecurityStorage.logout(context)
+                                    
+                                    val intent = Intent(context, MainActivity::class.java)
+                                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                    context.startActivity(intent)
+                                    (context as? ComponentActivity)?.finish()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("লগ আউট (Logout)")
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "এখান থেকেই Partner Login করবেন। Login Screen আর অ্যাপ চালুর সময় দেখানো হবে না।",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(10.dp))
+
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(context, com.tamanna.enterprise.security.LoginActivity::class.java)
+                                    .putExtra("LOGIN_MODE", "PARTNER")
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("👤 Partner Login")
+                    }
                 }
 
                 Spacer(Modifier.height(20.dp))
