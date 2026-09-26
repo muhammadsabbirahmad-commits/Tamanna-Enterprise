@@ -5,20 +5,31 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.settings.ThemeStorage
@@ -35,83 +46,85 @@ class CloudBackupActivity : ComponentActivity() {
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
-    @androidx.compose.runtime.Composable
+    @Composable
     private fun CloudBackupScreen() {
         val email = FirebaseAuth.getInstance().currentUser?.email
-        var message by androidx.compose.runtime.remember { mutableStateOf("") }
-        var busy by androidx.compose.runtime.remember { mutableStateOf(false) }
+        var message by remember { mutableStateOf("স্ট্যাটাস: রেডি") }
+        var busy by remember { mutableStateOf(false) }
+        var autoSyncEnabled by remember { mutableStateOf(CloudSyncManager.isAutoSyncEnabled()) }
 
         Scaffold(
-            topBar = { TopAppBar(title = { Text("Google ব্যাকআপ ও সিঙ্ক") }) }
+            topBar = { TopAppBar(title = { Text("ক্লাউড সিঙ্ক ও ব্যাকআপ") }) }
         ) { padding ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("সংযুক্ত Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleMedium)
-                Text(email ?: "কোনো Google অ্যাকাউন্ট সংযুক্ত নেই।")
+                Text(email ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(30.dp))
 
-                Text(
-                    "Google অ্যাকাউন্ট সংযুক্ত থাকলে পণ্য, বিক্রয়, ক্রয়, বাকি, পার্টনার, হিসাব, স্টক ও সেটিংসের ডেটা ক্লাউডে সিঙ্ক হবে।",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
+                // একটি মাত্র ম্যানুয়াল স্মার্ট সিঙ্ক বাটন (ইন এবং আউট একসাথে কাজ করবে)
                 Button(
                     onClick = {
                         busy = true
-                        message = "ক্লাউডে ব্যাকআপ নেওয়া হচ্ছে..."
-                        CloudSyncManager.manualBackup(this@CloudBackupActivity) {
+                        message = "ডেটা মেলানো হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."
+                        CloudSyncManager.smartSync(this@CloudBackupActivity, isAuto = false) { resultMsg ->
                             busy = false
-                            message = "ব্যাকআপ সফলভাবে সম্পন্ন হয়েছে।"
+                            message = resultMsg
                         }
                     },
                     enabled = !busy && email != null,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.size(140.dp),
+                    shape = CircleShape
                 ) {
-                    Text("এখনই ব্যাকআপ নিন")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("☁️ 🔄", fontSize = 48.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Sync Now")
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        busy = true
-                        message = "পুরোনো Cloud Data Migration যাচাই করা হচ্ছে..."
-                        CloudSyncManager.migrateLegacyCloudData(this@CloudBackupActivity) { success, result ->
-                            busy = false
-                            message = result
+                Spacer(Modifier.height(24.dp))
+                
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+
+                Spacer(Modifier.height(30.dp))
+
+                // অটো-সিঙ্ক সুইচ
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("অটো-সিঙ্ক (Auto Sync)", style = MaterialTheme.typography.titleMedium)
+                            Text("স্বয়ংক্রিয়ভাবে ডেটা ক্লাউডে ইন/আউট হবে।", style = MaterialTheme.typography.bodySmall)
                         }
-                    },
-                    enabled = !busy && email != null,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("পুরোনো Cloud Data Migration")
-                }
-
-                Button(
-                    onClick = {
-                        busy = true
-                        message = "ক্লাউড থেকে ডেটা ফিরিয়ে আনা হচ্ছে..."
-                        CloudSyncManager.pullThenSync(this@CloudBackupActivity) { found ->
-                            busy = false
-                            message = if (found) {
-                                "ক্লাউড ডেটা সফলভাবে ফিরিয়ে আনা হয়েছে।"
-                            } else {
-                                "ক্লাউডে আগের ডেটা পাওয়া যায়নি বা সংযোগ ব্যর্থ হয়েছে।"
+                        Switch(
+                            checked = autoSyncEnabled,
+                            onCheckedChange = { isChecked ->
+                                autoSyncEnabled = isChecked
+                                if (isChecked) {
+                                    CloudSyncManager.startAutoSync(this@CloudBackupActivity)
+                                    message = "অটো-সিঙ্ক চালু করা হয়েছে। ✅"
+                                } else {
+                                    CloudSyncManager.stopAutoSync()
+                                    message = "অটো-সিঙ্ক বন্ধ করা হয়েছে। ❌"
+                                }
                             }
-                        }
-                    },
-                    enabled = !busy && email != null,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("ক্লাউড থেকে Restore করুন")
-                }
-
-                Text(
-                    "স্বয়ংক্রিয় ব্যাকআপ/সিঙ্ক বন্ধ। লগইন করলেই কোনো পুরোনো ক্লাউড ডেটা আসবে না। আপনি নিজে ব্যাকআপ বা Restore চাপলেই কাজ হবে।",
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                if (message.isNotBlank()) {
-                    Text(message, color = MaterialTheme.colorScheme.primary)
+                        )
+                    }
                 }
             }
         }
