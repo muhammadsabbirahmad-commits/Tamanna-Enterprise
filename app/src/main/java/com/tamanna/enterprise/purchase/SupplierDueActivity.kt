@@ -3,11 +3,13 @@ package com.tamanna.enterprise.purchase
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -34,7 +36,7 @@ private fun SupplierDueScreen() {
     var payment by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    var refresh by remember { mutableStateOf(0) }
+    var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var mobile by remember { mutableStateOf("") }
@@ -43,7 +45,6 @@ private fun SupplierDueScreen() {
     val suppliers = remember(refresh) { SupplierDueStorage.getSuppliers(context) }
     val balances = remember(refresh) { SupplierDueStorage.getBalances(context) }
     val entries = remember(refresh) { SupplierDueStorage.getEntries(context) }
-    @Suppress("UNUSED_EXPRESSION")
     val filtered = suppliers.filter { it.name.contains(query.trim(), true) }
     val total = balances.sumOf { it.second }
     val selectedBalance = if (selected.isBlank()) 0.0 else SupplierDueStorage.getBalance(context, selected)
@@ -53,13 +54,20 @@ private fun SupplierDueScreen() {
             Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("মোট পরিশোধযোগ্য: ৳ %.2f".format(total), style = MaterialTheme.typography.titleLarge); Button(onClick={name="";mobile="";address="";message="";showAdd=true}){Text("＋ সরবরাহকারী যোগ")} }
+            // বাটন এবং টেক্সট সুন্দরভাবে সাজানো হলো
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("মোট বাকি: ৳ %.2f".format(total), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Button(onClick = { name = ""; mobile = ""; address = ""; message = ""; showAdd = true }) {
+                    Text("＋ যোগ করুন")
+                }
+            }
+            
             OutlinedTextField(query, { query = it }, label = { Text("সরবরাহকারী খুঁজুন") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true)
 
             LazyColumn(Modifier.height(150.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(filtered, key = { it.id }) { supplier ->
-                    Card(onClick = { selected = supplier.name }, modifier = Modifier.fillMaxWidth()) {
+                    Card(modifier = Modifier.fillMaxWidth().clickable { selected = supplier.name; message = "" }) {
                         Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(supplier.name)
                             Text("৳ %.2f".format(SupplierDueStorage.getBalance(context, supplier.name)))
@@ -103,7 +111,8 @@ private fun SupplierDueScreen() {
                 }, modifier = Modifier.fillMaxWidth()) { Text("সরবরাহকারীকে পরিশোধ করুন") }
             }
 
-            if (message.isNotBlank()) Text(message)
+            if (message.isNotBlank()) Text(message, color = if (message.contains("সফল") || message.contains("সংরক্ষণ")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            
             Text("লেনদেনের ইতিহাস", style = MaterialTheme.typography.titleMedium)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(entries.take(30), key = { it.id }) { entry ->
@@ -117,6 +126,41 @@ private fun SupplierDueScreen() {
                     }
                 }
             }
+        }
+
+        // সরবরাহকারী যোগ করার হারানো ডায়ালগটি যুক্ত করা হলো
+        if (showAdd) {
+            AlertDialog(
+                onDismissRequest = { showAdd = false },
+                title = { Text("নতুন সরবরাহকারী যোগ") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = name, onValueChange = { name = it; message = "" }, label = { Text("নাম *") }, singleLine = true)
+                        OutlinedTextField(value = mobile, onValueChange = { mobile = it.filter(Char::isDigit) }, label = { Text("মোবাইল নম্বর") }, singleLine = true)
+                        OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("ঠিকানা") }, singleLine = true)
+                        if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (name.trim().isBlank()) {
+                            message = "সরবরাহকারীর নাম দেওয়া আবশ্যক।"
+                        } else {
+                            val ok = SupplierDueStorage.addSupplier(context, name, mobile, address)
+                            if (ok) {
+                                showAdd = false
+                                refresh++
+                                message = ""
+                            } else {
+                                message = "এই নামের সরবরাহকারী আগে থেকেই আছে।"
+                            }
+                        }
+                    }) { Text("সংরক্ষণ") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAdd = false; message = "" }) { Text("বাতিল") }
+                }
+            )
         }
     }
 }
