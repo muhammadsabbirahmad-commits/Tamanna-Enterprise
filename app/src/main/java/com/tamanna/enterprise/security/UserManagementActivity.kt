@@ -37,7 +37,6 @@ fun UserManagementScreen() {
     val context = LocalContext.current
     var newEmail by remember { mutableStateOf("") }
     var members by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
-    var invites by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     
     val businessId = remember { BusinessAccountStorage.get(context).businessId }
@@ -47,12 +46,7 @@ fun UserManagementScreen() {
         loading = true
         CloudAccessManager.listBusinessMembers(context) { list, _ ->
             members = list
-            db.collection("businesses").document(businessId).collection("invites").get()
-                .addOnSuccessListener { snap -> 
-                    invites = snap.documents.map { it.id }
-                    loading = false 
-                }
-                .addOnFailureListener { loading = false }
+            loading = false
         }
     }
 
@@ -95,16 +89,27 @@ fun UserManagementScreen() {
                             onClick = {
                                 val emailToSave = newEmail.trim().lowercase()
                                 if (emailToSave.isNotBlank() && emailToSave.contains("@")) {
+                                    // ফায়ারবেস রুলস মেনে সরাসরি members কালেকশনে সেভ করা হচ্ছে
+                                    val memberId = "partner_" + emailToSave.replace(".", "_").replace("@", "_")
+                                    val memberData = mapOf(
+                                        "uid" to memberId,
+                                        "email" to emailToSave,
+                                        "role" to "PARTNER",
+                                        "approved" to true,
+                                        "blocked" to false,
+                                        "addedAt" to System.currentTimeMillis()
+                                    )
+                                    
                                     db.collection("businesses").document(businessId)
-                                        .collection("invites").document(emailToSave)
-                                        .set(mapOf("email" to emailToSave, "role" to "PARTNER", "addedAt" to System.currentTimeMillis()))
+                                        .collection("members").document(memberId)
+                                        .set(memberData)
                                         .addOnSuccessListener {
                                             Toast.makeText(context, "পার্টনার সফলভাবে অ্যাড করা হয়েছে!", Toast.LENGTH_SHORT).show()
                                             newEmail = ""
                                             loadData()
                                         }
                                         .addOnFailureListener { e ->
-                                            Toast.makeText(context, "সেভ করতে সমস্যা হয়েছে: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "ত্রুটি: ${e.message}", Toast.LENGTH_SHORT).show()
                                         }
                                 } else {
                                     Toast.makeText(context, "দয়া করে একটি সঠিক জিমেইল লিখুন", Toast.LENGTH_SHORT).show()
@@ -112,31 +117,6 @@ fun UserManagementScreen() {
                             }
                         ) {
                             Text("অ্যাড করুন")
-                        }
-                    }
-                }
-            }
-
-            if (invites.isNotEmpty()) {
-                Text("অপেক্ষারত পার্টনার (লগইন করেনি)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(invites) { email ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(email, style = MaterialTheme.typography.bodyMedium)
-                                IconButton(onClick = {
-                                    db.collection("businesses").document(businessId)
-                                        .collection("invites").document(email)
-                                        .delete()
-                                        .addOnSuccessListener { loadData() }
-                                }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-                                }
-                            }
                         }
                     }
                 }
