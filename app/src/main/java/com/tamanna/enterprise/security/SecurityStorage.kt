@@ -53,7 +53,6 @@ object SecurityStorage {
         }.getOrDefault(listOf(defaultAdmin()))
     }
 
-    // ডিফল্ট অ্যাডমিনের কোনো পাসওয়ার্ড নেই (ফাঁকা)
     private fun defaultAdmin() =
         AppUser("default-admin", "admin", "", ROLE_ADMIN, true, "")
 
@@ -146,35 +145,38 @@ object SecurityStorage {
 
     // --- নতুন পিন (PIN) সিস্টেম লজিক ---
     
-    // চেক করবে ইউজারের কোনো পিন সেট করা আছে কি না
     fun isAdminPinSet(context: Context): Boolean {
         val admin = getUsers(context).firstOrNull { it.role == ROLE_ADMIN }
         return admin != null && admin.passwordHash.isNotEmpty()
     }
 
-    // ডিলিট করার সময় পিন সঠিক কি না তা যাচাই করবে
     fun verifyAdminPin(context: Context, pin: String): Boolean {
         val admin = getUsers(context).firstOrNull { it.role == ROLE_ADMIN } ?: return false
-        if (admin.passwordHash.isEmpty()) return true // পিন সেট না থাকলে অটোমেটিক True
+        if (admin.passwordHash.isEmpty()) return true
         return admin.passwordHash == hashPassword(pin)
     }
 
-    // নতুন পিন সেট বা বন্ধ করার লজিক
     fun changeAdminPin(context: Context, currentPin: String, newPin: String): Boolean {
         val users = getUsers(context).toMutableList()
         val adminIndex = users.indexOfFirst { it.role == ROLE_ADMIN }
         if (adminIndex < 0) return false
         val admin = users[adminIndex]
 
-        // যদি আগে থেকে পিন থাকে, তবে বর্তমান পিনটি মেলাতে হবে
         if (admin.passwordHash.isNotEmpty() && admin.passwordHash != hashPassword(currentPin)) {
             return false
         }
 
-        // নতুন পিন ফাঁকা দিলে পিন সিস্টেম বন্ধ হয়ে যাবে (Empty Hash)
         val newHash = if (newPin.isNotBlank()) hashPassword(newPin) else ""
         users[adminIndex] = admin.copy(passwordHash = newHash)
         saveUsers(context, users)
         return true
+    }
+
+    // --- এই ফাংশনটি আগের আপডেটে বাদ পড়েছিল ---
+    fun roleLabel(role: String): String = when (role) {
+        ROLE_ADMIN -> "অ্যাডমিন"
+        ROLE_PARTNER -> "পার্টনার"
+        ROLE_VIEWER -> "ভিউয়ার"
+        else -> role
     }
 }
