@@ -1,248 +1,126 @@
 package com.tamanna.enterprise.security
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.google.firebase.firestore.FirebaseFirestore
+import com.tamanna.enterprise.business.BusinessAccountStorage
+import com.tamanna.enterprise.dashboard.TamannaTheme
+import com.tamanna.enterprise.settings.ThemeStorage
 
+@OptIn(ExperimentalMaterial3Api::class)
 class UserManagementActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!SecurityStorage.canWrite(this)) { finish(); return }
+        setContent { TamannaTheme(ThemeStorage.getTheme(this)) { UserManagementScreen() } }
+    }
+}
 
-        val current = SecurityStorage.getCurrentUser(this)
-        if (current?.role != SecurityStorage.ROLE_ADMIN) {
-            finish()
-            return
-        }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UserManagementScreen() {
+    val context = LocalContext.current
+    var newEmail by remember { mutableStateOf("") }
+    var members by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
+    var invites by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    
+    val businessId = remember { BusinessAccountStorage.get(context).businessId }
+    val db = remember { FirebaseFirestore.getInstance() }
 
-        CloudAccessManager.validateCurrentSession(this) { valid ->
-            runOnUiThread {
-                if (!valid) finish()
-            }
-        }
-
-        setContent {
-            var users by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
-            var loading by remember { mutableStateOf(true) }
-            var message by remember { mutableStateOf("") }
-            var refresh by remember { mutableStateOf(0) }
-            var pendingAction by remember { mutableStateOf<Pair<String, CloudAccessUser>?>(null) }
-
-            LaunchedEffect(refresh) {
-                loading = true
-                CloudAccessManager.listBusinessMembers(this@UserManagementActivity) { result, error ->
-                    users = result
-                    message = error.orEmpty()
-                    loading = false
-                }
-            }
-
-            val pending = users.filter { !it.approved && !it.blocked && it.role == SecurityStorage.ROLE_PARTNER }
-            val approvedAdmins = users.filter { it.approved && it.role == SecurityStorage.ROLE_ADMIN }
-            val activePartners = users.filter { it.approved && !it.blocked && it.role == SecurityStorage.ROLE_PARTNER }
-            val blockedPartners = users.filter { it.blocked && it.role == SecurityStorage.ROLE_PARTNER }
-
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("ইউজার ম্যানেজমেন্ট", style = MaterialTheme.typography.headlineSmall)
-                                Spacer(Modifier.height(4.dp))
-                                Text("Partner access এখান থেকেই নিয়ন্ত্রণ করুন।", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Button(
-                                onClick = { refresh++ },
-                                enabled = !loading
-                            ) {
-                                Text("Refresh")
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Active: ${activePartners.size}  •  Pending: ${pending.size}  •  Blocked: ${blockedPartners.size}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        if (loading) {
-                            Text("তালিকা লোড হচ্ছে...")
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                item { Text("অনুমোদিত Admin", style = MaterialTheme.typography.titleMedium) }
-                                if (approvedAdmins.isEmpty()) {
-                                    item { Text("কোনো Admin নেই।", style = MaterialTheme.typography.bodySmall) }
-                                } else {
-                                    items(approvedAdmins, key = { "admin-" + it.uid }) { user ->
-                                        UserRow(user, "🟢 Active", emptyList(), {})
-                                    }
-                                }
-
-                                item {
-                                    Spacer(Modifier.height(6.dp))
-                                    Text("Active Partner", style = MaterialTheme.typography.titleMedium)
-                                }
-                                if (activePartners.isEmpty()) {
-                                    item { Text("কোনো Active Partner নেই।", style = MaterialTheme.typography.bodySmall) }
-                                } else {
-                                    items(activePartners, key = { "active-" + it.uid }) { user ->
-                                        UserRow(
-                                            user = user,
-                                            statusLabel = "🟢 Active",
-                                            actions = listOf("Block", "Remove"),
-                                            onAction = { action -> pendingAction = action to user }
-                                        )
-                                    }
-                                }
-
-                                item {
-                                    Spacer(Modifier.height(6.dp))
-                                    Text("Blocked Partner", style = MaterialTheme.typography.titleMedium)
-                                }
-                                if (blockedPartners.isEmpty()) {
-                                    item { Text("কোনো Blocked Partner নেই।", style = MaterialTheme.typography.bodySmall) }
-                                } else {
-                                    items(blockedPartners, key = { "blocked-" + it.uid }) { user ->
-                                        UserRow(
-                                            user = user,
-                                            statusLabel = "🔴 Blocked",
-                                            actions = listOf("Unblock", "Remove"),
-                                            onAction = { action -> pendingAction = action to user }
-                                        )
-                                    }
-                                }
-
-                                item {
-                                    Spacer(Modifier.height(6.dp))
-                                    Text("Pending Partner", style = MaterialTheme.typography.titleMedium)
-                                }
-                                if (pending.isEmpty()) {
-                                    item { Text("অনুমোদনের অপেক্ষায় কেউ নেই।", style = MaterialTheme.typography.bodySmall) }
-                                } else {
-                                    items(pending, key = { "pending-" + it.uid }) { user ->
-                                        UserRow(
-                                            user = user,
-                                            statusLabel = "🟡 Pending",
-                                            actions = listOf("Approve", "Reject"),
-                                            onAction = { action -> pendingAction = action to user }
-                                        )
-                                    }
-                                }
-
-                                if (message.isNotBlank()) {
-                                    item {
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(message, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    val action = pendingAction
-                    if (action != null) {
-                        val (type, user) = action
-                        androidx.compose.material3.AlertDialog(
-                            onDismissRequest = { pendingAction = null },
-                            title = { Text(type) },
-                            text = {
-                                Text(
-                                    when (type) {
-                                        "Block" -> "এই Partner-এর প্রবেশ সাময়িকভাবে বন্ধ করবেন?"
-                                        "Unblock" -> "এই Partner-এর প্রবেশ আবার চালু করবেন?"
-                                        "Remove" -> "এই Partner-কে তালিকা থেকে সম্পূর্ণভাবে Remove করবেন?"
-                                        "Approve" -> "এই Partner-এর আবেদন অনুমোদন করবেন?"
-                                        else -> "এই Partner-এর আবেদন প্রত্যাখ্যান করবেন?"
-                                    }
-                                )
-                            },
-                            confirmButton = {
-                                Button(onClick = {
-                                    pendingAction = null
-                                    when (type) {
-                                        "Block" -> CloudAccessManager.blockPartner(this@UserManagementActivity, user.uid) { ok, msg ->
-                                            message = msg
-                                            if (ok) refresh++
-                                        }
-                                        "Unblock" -> CloudAccessManager.unblockPartner(this@UserManagementActivity, user.uid) { ok, msg ->
-                                            message = msg
-                                            if (ok) refresh++
-                                        }
-                                        "Remove" -> CloudAccessManager.removePartner(this@UserManagementActivity, user.uid) { ok, msg ->
-                                            message = msg
-                                            if (ok) refresh++
-                                        }
-                                        "Approve" -> CloudAccessManager.approvePartner(this@UserManagementActivity, user.uid) { ok, msg ->
-                                            message = msg
-                                            if (ok) refresh++
-                                        }
-                                        "Reject" -> CloudAccessManager.removePartner(this@UserManagementActivity, user.uid) { ok, msg ->
-                                            message = msg
-                                            if (ok) refresh++
-                                        }
-                                    }
-                                }) { Text("হ্যাঁ") }
-                            },
-                            dismissButton = {
-                                Button(onClick = { pendingAction = null }) { Text("না") }
-                            }
-                        )
-                    }
-                }
-            }
+    fun loadData() {
+        loading = true
+        CloudAccessManager.listBusinessMembers(context) { list, _ ->
+            members = list
+            db.collection("businesses").document(businessId).collection("invites").get()
+                .addOnSuccessListener { snap -> invites = snap.documents.map { it.id }; loading = false }
+                .addOnFailureListener { loading = false }
         }
     }
 
-    @androidx.compose.runtime.Composable
-    private fun UserRow(
-        user: CloudAccessUser,
-        statusLabel: String,
-        actions: List<String>,
-        onAction: (String) -> Unit
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            tonalElevation = 2.dp,
-            shape = MaterialTheme.shapes.medium
-        ) {
-            Column(modifier = Modifier.padding(10.dp)) {
-                Text(user.email, style = MaterialTheme.typography.bodyMedium)
-                Text(statusLabel, style = MaterialTheme.typography.bodySmall)
-                if (actions.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        actions.forEach { action ->
-                            Button(onClick = { onAction(action) }) {
-                                Text(action)
+    LaunchedEffect(Unit) { loadData() }
+
+    Scaffold(topBar = { TopAppBar(title = { Text("পার্টনার ব্যবস্থাপনা") }) }) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("নতুন পার্টনার যোগ করুন (View-Only)", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text("কর্মচারীর সঠিক জিমেইল অ্যাড্রেসটি লিখে অ্যাড করুন।", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(12.dp))
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = newEmail, onValueChange = { newEmail = it.lowercase().trim() },
+                            label = { Text("পার্টনারের জিমেইল") }, singleLine = true, modifier = Modifier.weight(1f)
+                        )
+                        Button(onClick = {
+                            if (newEmail.isNotBlank() && newEmail.contains("@gmail.com")) {
+                                db.collection("businesses").document(businessId).collection("invites").document(newEmail)
+                                    .set(mapOf("email" to newEmail, "role" to "PARTNER", "addedAt" to System.currentTimeMillis()))
+                                    .addOnSuccessListener {
+                                        Toast.makeText(context, "পার্টনার অ্যাড করা হয়েছে!", Toast.LENGTH_SHORT).show()
+                                        newEmail = ""; loadData()
+                                    }
+                            } else { Toast.makeText(context, "সঠিক জিমেইল দিন", Toast.LENGTH_SHORT).show() }
+                        }) { Text("অ্যাড করুন") }
+                    }
+                }
+            }
+
+            if (invites.isNotEmpty()) {
+                Text("অপেক্ষারত পার্টনার (লগইন করেনি)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(invites) { email ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(email, style = MaterialTheme.typography.bodyMedium)
+                                IconButton(onClick = { db.collection("businesses").document(businessId).collection("invites").document(email).delete().addOnSuccessListener { loadData() } }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text("সংযুক্ত পার্টনার ও অ্যাডমিন", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            if (loading) { Text("লোড হচ্ছে...") } else {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(members) { user ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(user.email, style = MaterialTheme.typography.titleMedium)
+                                Text("রোল: ${if (user.role == SecurityStorage.ROLE_ADMIN) "অ্যাডমিন" else "পার্টনার (View-Only)"}", style = MaterialTheme.typography.bodySmall)
+                                
+                                val statusText = if (user.blocked) "Blocked ❌" else if (!user.approved) "Pending ⏳" else "Active ✅"
+                                val statusColor = if (user.blocked) MaterialTheme.colorScheme.error else if (!user.approved) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                                Text("স্ট্যাটাস: $statusText", color = statusColor, style = MaterialTheme.typography.labelMedium)
+
+                                if (user.role != SecurityStorage.ROLE_ADMIN) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (user.blocked) {
+                                            Button(onClick = { CloudAccessManager.unblockPartner(context, user.uid) { _, _ -> loadData() } }) { Text("Unblock") }
+                                        } else {
+                                            Button(onClick = { CloudAccessManager.blockPartner(context, user.uid) { _, _ -> loadData() } }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Block") }
+                                        }
+                                        Button(onClick = { CloudAccessManager.removePartner(context, user.uid) { _, _ -> loadData() } }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Remove") }
+                                    }
+                                }
                             }
                         }
                     }
