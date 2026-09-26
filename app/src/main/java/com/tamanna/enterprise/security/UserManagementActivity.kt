@@ -17,8 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.google.firebase.firestore.FirebaseFirestore
-import com.tamanna.enterprise.business.BusinessAccountStorage
+import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.settings.ThemeStorage
 
@@ -36,21 +35,13 @@ class UserManagementActivity : ComponentActivity() {
 fun UserManagementScreen() {
     val context = LocalContext.current
     var newEmail by remember { mutableStateOf("") }
-    var members by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
+    var refresh by remember { mutableIntStateOf(0) }
     
-    val businessId = remember { BusinessAccountStorage.get(context).businessId }
-    val db = remember { FirebaseFirestore.getInstance() }
-
-    fun loadData() {
-        loading = true
-        CloudAccessManager.listBusinessMembers(context) { list, _ ->
-            members = list
-            loading = false
-        }
+    // লোকাল স্টোরেজ থেকে পার্টনারদের জিমেইল লিস্ট লোড করা
+    val prefs = remember(refresh) { BusinessStorage.prefs(context, "tamanna_enterprise_partners") }
+    val partnerEmails = remember(refresh) {
+        prefs.all.keys.filter { it.startsWith("partner_") }.map { prefs.getString(it, "") ?: "" }.filter { it.isNotBlank() }
     }
-
-    LaunchedEffect(Unit) { loadData() }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("পার্টনার ব্যবস্থাপনা") }) }
@@ -89,28 +80,11 @@ fun UserManagementScreen() {
                             onClick = {
                                 val emailToSave = newEmail.trim().lowercase()
                                 if (emailToSave.isNotBlank() && emailToSave.contains("@")) {
-                                    // ফায়ারবেস রুলস মেনে সরাসরি members কালেকশনে সেভ করা হচ্ছে
-                                    val memberId = "partner_" + emailToSave.replace(".", "_").replace("@", "_")
-                                    val memberData = mapOf(
-                                        "uid" to memberId,
-                                        "email" to emailToSave,
-                                        "role" to "PARTNER",
-                                        "approved" to true,
-                                        "blocked" to false,
-                                        "addedAt" to System.currentTimeMillis()
-                                    )
-                                    
-                                    db.collection("businesses").document(businessId)
-                                        .collection("members").document(memberId)
-                                        .set(memberData)
-                                        .addOnSuccessListener {
-                                            Toast.makeText(context, "পার্টনার সফলভাবে অ্যাড করা হয়েছে!", Toast.LENGTH_SHORT).show()
-                                            newEmail = ""
-                                            loadData()
-                                        }
-                                        .addOnFailureListener { e ->
-                                            Toast.makeText(context, "ত্রুটি: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
+                                    val key = "partner_" + emailToSave.replace(".", "_").replace("@", "_")
+                                    prefs.edit().putString(key, emailToSave).apply()
+                                    Toast.makeText(context, "পার্টনার সফলভাবে অ্যাড করা হয়েছে!", Toast.LENGTH_SHORT).show()
+                                    newEmail = ""
+                                    refresh++
                                 } else {
                                     Toast.makeText(context, "দয়া করে একটি সঠিক জিমেইল লিখুন", Toast.LENGTH_SHORT).show()
                                 }
@@ -122,37 +96,30 @@ fun UserManagementScreen() {
                 }
             }
 
-            Text("সংযুক্ত পার্টনার ও অ্যাডমিন", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            if (loading) {
-                Text("লোড হচ্ছে...")
+            Text("সংযুক্ত পার্টনারগণ", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            
+            if (partnerEmails.isEmpty()) {
+                Text("কোনো পার্টনার যোগ করা হয়নি।", style = MaterialTheme.typography.bodyMedium)
             } else {
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(members) { user ->
+                    items(partnerEmails) { email ->
                         Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(user.email, style = MaterialTheme.typography.titleMedium)
-                                Text("রোল: ${if (user.role == SecurityStorage.ROLE_ADMIN) "অ্যাডমিন" else "পার্টনার (View-Only)"}", style = MaterialTheme.typography.bodySmall)
-                                
-                                val statusText = if (user.blocked) "Blocked ❌" else if (!user.approved) "Pending ⏳" else "Active ✅"
-                                val statusColor = if (user.blocked) MaterialTheme.colorScheme.error else if (!user.approved) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-                                Text("স্ট্যাটাস: $statusText", color = statusColor, style = MaterialTheme.typography.labelMedium)
-
-                                if (user.role != SecurityStorage.ROLE_ADMIN) {
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        if (user.blocked) {
-                                            Button(onClick = { CloudAccessManager.unblockPartner(context, user.uid) { _, _ -> loadData() } }) { Text("Unblock") }
-                                        } else {
-                                            Button(
-                                                onClick = { CloudAccessManager.blockPartner(context, user.uid) { _, _ -> loadData() } },
-                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                            ) { Text("Block") }
-                                        }
-                                        Button(
-                                            onClick = { CloudAccessManager.removePartner(context, user.uid) { _, _ -> loadData() } },
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                        ) { Text("Remove") }
-                                    }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(email, style = MaterialTheme.typography.titleMedium)
+                                    Text("রোল: পার্টনার (View-Only)", style = MaterialTheme.typography.bodySmall)
+                                    Text("স্ট্যাটাস: Active ✅", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                                }
+                                IconButton(onClick = {
+                                    val key = "partner_" + email.replace(".", "_").replace("@", "_")
+                                    prefs.edit().remove(key).apply()
+                                    refresh++
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
