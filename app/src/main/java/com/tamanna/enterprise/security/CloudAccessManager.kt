@@ -20,12 +20,10 @@ object CloudAccessManager {
             return
         }
 
-        // প্রথমে লাইসেন্স স্ট্যাটাস চেক করা হচ্ছে, হার্ড ক্র্যাশ এড়াতে
         val isActiveLicense = LicenseStorage.isActive(context)
         val b = BusinessAccountStorage.get(context)
         val businessId = b.businessId
 
-        // লাইসেন্স না থাকলে বা বিজনেস আইডি লিগ্যাসি হলে নরমাল ইউজার হিসেবে সেভ করা হবে, ব্লক করা হবে না
         if(businessId.isBlank()||businessId==BusinessAccountStorage.LEGACY_BUSINESS_ID||!isActiveLicense){
              if(adminLogin) {
                  val user = CloudAccessUser(u.uid, verifiedEmail, SecurityStorage.ROLE_ADMIN, true, false)
@@ -38,7 +36,6 @@ object CloudAccessManager {
             return
         }
 
-        // বাকি পার্টনার লজিক আগের মতোই থাকবে
         BusinessMembershipManager.currentMember(businessId){ m->
             if(m!=null){
                 when {
@@ -76,18 +73,34 @@ object CloudAccessManager {
     fun validateCurrentSession(context:Context,onResult:(Boolean)->Unit){
         val u=auth().currentUser ?: run{onResult(false);return}
         val b=BusinessAccountStorage.get(context)
+        
         if(b.businessId.isBlank()||b.businessId==BusinessAccountStorage.LEGACY_BUSINESS_ID||!LicenseStorage.isActive(context)){
             SecurityStorage.logout(context); auth().signOut(); onResult(false); return
         }
+        
         BusinessMembershipManager.currentMember(b.businessId){m->
-            if(m==null||!m.approved||m.blocked){
+            // FIX: ইন্টারনেট না থাকলে বা এরর হলে m == null আসবে। 
+            // তখন ইউজারকে লগআউট না করে লোকাল ক্যাশ থেকে লগইন সেশন অ্যাক্টিভ রাখবে।
+            if(m == null){
+                if(SecurityStorage.isLoggedIn(context)){
+                    onResult(true) 
+                } else {
+                    SecurityStorage.logout(context); auth().signOut(); onResult(false)
+                }
+                return@currentMember
+            }
+            
+            // যদি সত্যিই অ্যাডমিন ব্লক বা রিজেক্ট করে থাকে, তবেই লগআউট করবে
+            if(!m.approved||m.blocked){
                 SecurityStorage.logout(context); auth().signOut(); onResult(false); return@currentMember
             }
+            
             val role=when(m.role){
                 "OWNER"->SecurityStorage.ROLE_ADMIN
                 "PARTNER"->SecurityStorage.ROLE_PARTNER
                 else->{SecurityStorage.logout(context);auth().signOut();onResult(false);return@currentMember}
             }
+            
             val cached=SecurityStorage.upsertGoogleUser(context,m.email.ifBlank{u.email.orEmpty()},role,true,u.uid)
             SecurityStorage.login(context,cached)
             onResult(true)
