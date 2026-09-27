@@ -35,7 +35,7 @@ object CloudSyncManager {
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
 
-    // অ্যাডমিন হলে নিজের ফোল্ডার, পার্টনার হলে অ্যাডমিনের ফোল্ডারের পাথ বের করবে
+    // অ্যাডমিন হলে নিজের ফোল্ডার, আর পার্টনার হলে appConfig/admin থেকে অ্যাডমিনের UID বের করে সেই ফোল্ডার টার্গেট করবে
     private fun getTargetSyncDoc(context: Context, onReady: (DocumentReference?, Boolean) -> Unit) {
         val currentUser = auth().currentUser
         if (currentUser == null) {
@@ -46,14 +46,14 @@ object CloudSyncManager {
         val isAdmin = SecurityStorage.canWrite(context)
         if (isAdmin) {
             val ref = db().collection("users").document(currentUser.uid).collection("data").document("cloud_backup_sync")
-            onReady(ref, true) // true মানে অ্যাডমিন রাইট করতে পারবে
+            onReady(ref, true) // true মানে অ্যাডমিন আপলোড (Push) করতে পারবে
         } else {
             db().collection("appConfig").document("admin").get()
                 .addOnSuccessListener { doc ->
                     val adminUid = doc.getString("uid")
                     if (!adminUid.isNullOrBlank()) {
                         val ref = db().collection("users").document(adminUid).collection("data").document("cloud_backup_sync")
-                        onReady(ref, false) // false মানে পার্টনার শুধু রিড করতে পারবে, রাইট নয়
+                        onReady(ref, false) // false মানে পার্টনার শুধুমাত্র রিড বা পুল (Pull) করবে, রাইট নয়
                     } else {
                         onReady(null, false)
                     }
@@ -95,8 +95,8 @@ object CloudSyncManager {
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    // ক্লাউডে নতুন ডেটা থাকলে যে কেউ (অ্যাডমিন বা পার্টনার) তা নামিয়ে নিতে পারবে (Pull)
-                    cloudHash.isNotBlank() && cloudHash != lastSyncedHash && cloudHash != currentLocalHash -> {
+                    // ক্লাউডে ব্যাকআপ থাকলে এবং লোকাল হ্যাশের সাথে না মিললে যে কেউ তা নামিয়ে নিতে পারবে (Pull)
+                    cloudHash.isNotBlank() && cloudHash != lastSyncedHash -> {
                         pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                             if (!isAuto) onComplete(if (success) "ক্লাউড থেকে নতুন ডেটা সিঙ্ক হয়েছে। ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।")
                         }
