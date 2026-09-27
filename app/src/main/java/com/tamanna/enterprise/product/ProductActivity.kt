@@ -259,7 +259,6 @@ fun ProductScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(product.name + " (" + product.code + ") স্থায়ীভাবে মুছে যাবে।")
                     
-                    // পিন সেট করা থাকলেই কেবল পিনের ঘরটি দেখাবে
                     if (SecurityStorage.isAdminPinSet(context)) {
                         OutlinedTextField(deletePin, { deletePin = it }, label = { Text("Delete PIN") }, singleLine = true)
                     }
@@ -269,15 +268,14 @@ fun ProductScreen(
             },
             confirmButton = {
                 Button(
-                    enabled = product.stockQuantity == 0,
+                    // যেকোনো সময় ডিলিট করার জন্য enabled শর্তটি মুছে দেওয়া হয়েছে
                     onClick = {
                         val latest = ProductStorage.getProducts(context).firstOrNull {
                             it.code.equals(product.code, ignoreCase = true)
                         }
                         when {
                             latest == null -> deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
-                            latest.stockQuantity != 0 -> deleteError = "পণ্যটির বর্তমান স্টক 0 নয়। আগে Stock Out করুন।"
-                            // নতুন ঐচ্ছিক পিন ভেরিফিকেশন সিস্টেম
+                            // স্টক ০ থাকার শর্তটিও মুছে দেওয়া হয়েছে, এখন স্টক থাকলেও ডিলিট হবে
                             !SecurityStorage.verifyAdminPin(context, deletePin) -> deleteError = "ভুল Delete PIN।"
                             else -> {
                                 val deleted = ProductStorage.deleteProduct(context, latest.code)
