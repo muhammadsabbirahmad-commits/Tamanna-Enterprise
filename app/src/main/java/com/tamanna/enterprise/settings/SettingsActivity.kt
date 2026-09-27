@@ -28,6 +28,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -110,6 +111,7 @@ private fun SettingsScreen(
     var confirmPin by remember { mutableStateOf("") }
     var pinMessage by remember { mutableStateOf("") }
     val isPinSet = remember(pinMessage) { SecurityStorage.isAdminPinSet(context) }
+    var isPinFreeEntry by remember { mutableStateOf(SecurityStorage.isPinFreeEntryEnabled(context)) }
 
     TamannaTheme(selectedTheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -165,7 +167,6 @@ private fun SettingsScreen(
                             
                             Button(
                                 onClick = {
-                                    // ম্যানুয়াল লগআউট লজিক
                                     FirebaseAuth.getInstance().signOut()
                                     SecurityStorage.logout(context)
                                     
@@ -245,8 +246,35 @@ private fun SettingsScreen(
                 if (currentUser?.role == SecurityStorage.ROLE_ADMIN) {
                     Text("ডিলিট নিরাপত্তা (ঐচ্ছিক)", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("PIN ছাড়া এন্ট্রি ও ডিলিট", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "টগলটি অন থাকলে PIN ছাড়া পণ্য ডিলিট করা যায়। টগলটি অফ থাকলে PIN দিতে হবে।",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Switch(
+                            checked = isPinFreeEntry,
+                            onCheckedChange = { checked ->
+                                if (!checked && !isPinSet) {
+                                    Toast.makeText(context, "আগে নিচে একটি PIN সেট করুন!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    isPinFreeEntry = checked
+                                    SecurityStorage.setPinFreeEntryEnabled(context, checked)
+                                }
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+
                     Text(
-                        "পণ্য বা পার্টনার ডিলিট করার জন্য একটি পিন সেট করতে পারেন। পিন না চাইলে ফাঁকা রেখে সেভ করুন।",
+                        "নতুন পিন সেট করতে বা পরিবর্তন করতে নিচের অপশন ব্যবহার করুন।",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(12.dp))
@@ -265,7 +293,11 @@ private fun SettingsScreen(
                             newPin.isNotBlank() && newPin.length < 4 -> "নতুন PIN কমপক্ষে ৪ সংখ্যার হতে হবে।"
                             newPin.isNotBlank() && newPin != confirmPin -> "নতুন PIN দুবার একই নয়।"
                             SecurityStorage.changeAdminPin(context, currentPin, newPin) -> {
-                                val msg = if (newPin.isBlank()) "PIN সফলভাবে বন্ধ করা হয়েছে।" else "PIN সফলভাবে সেট হয়েছে।"
+                                val msg = if (newPin.isBlank()) {
+                                    isPinFreeEntry = true 
+                                    SecurityStorage.setPinFreeEntryEnabled(context, true)
+                                    "PIN সফলভাবে বন্ধ করা হয়েছে।"
+                                } else "PIN সফলভাবে সেট হয়েছে।"
                                 currentPin = ""; newPin = ""; confirmPin = ""
                                 msg
                             }
