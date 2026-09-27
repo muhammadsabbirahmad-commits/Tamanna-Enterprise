@@ -43,6 +43,7 @@ import com.tamanna.enterprise.MainActivity
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.security.SecurityStorage
+import com.tamanna.enterprise.sync.CloudSyncManager // সিঙ্ক ম্যানেজার ইমপোর্ট করা হলো
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -90,6 +91,12 @@ class SettingsActivity : ComponentActivity() {
             )
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // অ্যাপ চালু থাকা অবস্থায় বা সেটিংস পেজে আসলে অটো-সিঙ্ক সক্রিয় রাখার জন্য
+        CloudSyncManager.startAutoSync(this)
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -112,6 +119,9 @@ private fun SettingsScreen(
     var pinMessage by remember { mutableStateOf("") }
     val isPinSet = remember(pinMessage) { SecurityStorage.isAdminPinSet(context) }
     var isPinFreeEntry by remember { mutableStateOf(SecurityStorage.isPinFreeEntryEnabled(context)) }
+
+    // Sync state for button loading
+    var isSyncing by remember { mutableStateOf(false) }
 
     TamannaTheme(selectedTheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -148,6 +158,38 @@ private fun SettingsScreen(
                     ) {
                         Text("সেভ করুন")
                     }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // --- ক্লাউড সিঙ্ক ও ব্যাকআপ সেকশন যোগ করা হলো ---
+                Text("ক্লাউড সিঙ্ক ও ব্যাকআপ", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text("অ্যাডমিন ও পার্টনারদের মধ্যে রিয়েল-টাইম ডাটা আদান-প্রদান করতে সিঙ্ক করুন।", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(10.dp))
+
+                Button(
+                    onClick = {
+                        if (!isSyncing) {
+                            isSyncing = true
+                            Toast.makeText(context, "সিঙ্ক চেক করা হচ্ছে...", Toast.LENGTH_SHORT).show()
+                            
+                            CloudSyncManager.smartSync(context, isAuto = false) { message, isDataSynced ->
+                                isSyncing = false
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                
+                                // যদি সফলভাবে নতুন ডেটা ক্লাউড থেকে নেমে আসে, তবে স্ক্রিন রিফ্রেশ করুন
+                                if (isDataSynced) {
+                                    val activity = context as? ComponentActivity
+                                    activity?.recreate()
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSyncing
+                ) {
+                    Text(if (isSyncing) "সিঙ্ক হচ্ছে..." else "🔄 Sync Now (ক্লাউড সিঙ্ক)")
                 }
 
                 Spacer(Modifier.height(20.dp))
