@@ -11,7 +11,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.security.SecurityStorage
 
 object CloudSyncManager {
     private const val PREF_SYNC = "tamanna_sync_prefs"
@@ -35,7 +34,7 @@ object CloudSyncManager {
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
 
-    // অ্যাডমিন হলে নিজের ফোল্ডার, আর পার্টনার হলে appConfig/admin থেকে অ্যাডমিনের UID বের করে সেই ফোল্ডার টার্গেট করবে
+    // সরাসরি ফায়ারবেস UID দিয়ে চেক করার ফুলপ্রুফ পদ্ধতি
     private fun getTargetSyncDoc(context: Context, onReady: (DocumentReference?, Boolean) -> Unit) {
         val currentUser = auth().currentUser
         if (currentUser == null) {
@@ -43,25 +42,28 @@ object CloudSyncManager {
             return
         }
 
-        val isAdmin = SecurityStorage.canWrite(context)
-        if (isAdmin) {
-            val ref = db().collection("users").document(currentUser.uid).collection("data").document("cloud_backup_sync")
-            onReady(ref, true) // true মানে অ্যাডমিন আপলোড (Push) করতে পারবে
-        } else {
-            db().collection("appConfig").document("admin").get()
-                .addOnSuccessListener { doc ->
-                    val adminUid = doc.getString("uid")
-                    if (!adminUid.isNullOrBlank()) {
-                        val ref = db().collection("users").document(adminUid).collection("data").document("cloud_backup_sync")
-                        onReady(ref, false) // false মানে পার্টনার শুধুমাত্র রিড বা পুল (Pull) করবে, রাইট নয়
-                    } else {
-                        onReady(null, false)
-                    }
-                }
-                .addOnFailureListener {
+        db().collection("appConfig").document("admin").get()
+            .addOnSuccessListener { doc ->
+                val adminUid = doc.getString("uid")
+                
+                if (adminUid.isNullOrBlank()) {
                     onReady(null, false)
+                    return@addOnSuccessListener
                 }
-        }
+
+                if (currentUser.uid == adminUid) {
+                    // অ্যাডমিন হলে নিজের ফোল্ডার
+                    val ref = db().collection("users").document(currentUser.uid).collection("data").document("cloud_backup_sync")
+                    onReady(ref, true)
+                } else {
+                    // পার্টনার হলে সরাসরি অ্যাডমিনের ফোল্ডার থেকে রিড বা পুল করবে
+                    val ref = db().collection("users").document(adminUid).collection("data").document("cloud_backup_sync")
+                    onReady(ref, false)
+                }
+            }
+            .addOnFailureListener {
+                onReady(null, false)
+            }
     }
 
     private fun calculateLocalHash(context: Context): String {
@@ -77,13 +79,13 @@ object CloudSyncManager {
     private fun toFirestoreMap(source: Map<String, *>): Map<String, Any?> =
         source.mapValues { (_, value) -> if (value is Set<*>) value.filterIsInstance<String>() else value }
 
-    // --- Smart Sync (Hash-based) ---
-    fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String) -> Unit) {
+    // --- Smart Sync (Hash-based) with UI Refresh Flag ---
+    fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String, Boolean) -> Unit) {
         val appContext = context.applicationContext
         
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
-                if (!isAuto) onComplete("অ্যাডমিন অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।")
+                if (!isAuto) onComplete("অ্যাডমিন অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।", false)
                 return@getTargetSyncDoc
             }
 
@@ -95,29 +97,38 @@ object CloudSyncManager {
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    // ক্লাউডে ব্যাকআপ থাকলে এবং লোকাল হ্যাশের সাথে না মিললে যে কেউ তা নামিয়ে নিতে পারবে (Pull)
+                    // ক্লাউডে নতুন ডেটা থাকলে পার্টনার তা নামিয়ে নেবে (Pull)
                     cloudHash.isNotBlank() && cloudHash != lastSyncedHash -> {
                         pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
-                            if (!isAuto) onComplete(if (success) "ক্লাউড থেকে নতুন ডেটা সিঙ্ক হয়েছে। ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।")
+                            if (!isAuto) {
+                                val msg = if (success) "ক্লাউড থেকে নতুন ডেটা সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                                onComplete(msg, success) // success = true মানে সফলভাবে ডেটা লোকালে এসেছে
+                            }
                         }
                     }
-                    // শুধুমাত্র অ্যাডমিন হলে নতুন ডেটা ক্লাউডে পাঠাতে পারবে (Push)
+                    // শুধুমাত্র অ্যাডমিন হলে ক্লাউডে পাঠাবে (Push)
                     canPush && currentLocalHash != lastSyncedHash -> {
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                            if (!isAuto) onComplete(if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।")
+                            if (!isAuto) {
+                                val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
+                                onComplete(msg, success)
+                            }
                         }
                     }
                     else -> {
-                        if (!isAuto) onComplete("সব ডেটা আপ-টু-데이트 আছে। ✅")
+                        if (!isAuto) onComplete("সব ডেটা আপ-টু-데이트 আছে। ✅", false)
                     }
                 }
             }.addOnFailureListener {
                 if (canPush) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                        if (!isAuto) onComplete(if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।")
+                        if (!isAuto) {
+                            val msg = if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                            onComplete(msg, success)
+                        }
                     }
                 } else {
-                    if (!isAuto) onComplete("ক্লাউডে এখনো কোনো ব্যাকআপ নেই।")
+                    if (!isAuto) onComplete("ক্লাউডে এখনো কোনো ব্যাকআপ নেই।", false)
                 }
             }
         }
@@ -175,7 +186,7 @@ object CloudSyncManager {
         override fun run() {
             if (isAutoSyncEnabled()) {
                 val appContext = syncContextGlobal?.applicationContext ?: return
-                smartSync(appContext, isAuto = true) {}
+                smartSync(appContext, isAuto = true) { _, _ -> }
                 handler.postDelayed(this, 15000)
             }
         }
@@ -200,7 +211,7 @@ object CloudSyncManager {
                     val lastHash = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getString(KEY_LAST_LOCAL_HASH, "")
                     
                     if (cloudHash.isNotBlank() && cloudHash != lastHash) {
-                        smartSync(appContext, isAuto = true) {}
+                        smartSync(appContext, isAuto = true) { _, _ -> }
                     }
                 }
             }
