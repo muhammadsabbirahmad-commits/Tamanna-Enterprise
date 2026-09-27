@@ -24,6 +24,9 @@ object SecurityStorage {
     private const val KEY_USERS = "users"
     private const val KEY_LOGIN_ENABLED = "login_enabled"
     private const val KEY_CURRENT_USER = "current_user"
+    
+    // টগল সুইচের লজিক
+    private const val KEY_PIN_FREE_ENTRY = "pin_free_entry"
 
     private const val MASTER_PASSWORD = "##Sabbir123ahmad@@"
 
@@ -143,8 +146,7 @@ object SecurityStorage {
     fun canWrite(context: Context): Boolean = getCurrentUser(context)?.role == ROLE_ADMIN
     fun canManage(context: Context): Boolean = getCurrentUser(context)?.role == ROLE_ADMIN
 
-    // --- নতুন পিন (PIN) সিস্টেম লজিক ---
-    
+    // PIN সিস্টেম লজিক
     fun isAdminPinSet(context: Context): Boolean {
         val admin = getUsers(context).firstOrNull { it.role == ROLE_ADMIN }
         return admin != null && admin.passwordHash.isNotEmpty()
@@ -172,7 +174,14 @@ object SecurityStorage {
         return true
     }
 
-    // --- এই ফাংশনটি আগের আপডেটে বাদ পড়েছিল ---
+    fun isPinFreeEntryEnabled(context: Context): Boolean {
+        return prefs(context).getBoolean(KEY_PIN_FREE_ENTRY, true) // ডিফল্ট ON রাখলাম সুবিধার জন্য
+    }
+
+    fun setPinFreeEntryEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PIN_FREE_ENTRY, enabled).apply()
+    }
+
     fun roleLabel(role: String): String = when (role) {
         ROLE_ADMIN -> "অ্যাডমিন"
         ROLE_PARTNER -> "পার্টনার"
