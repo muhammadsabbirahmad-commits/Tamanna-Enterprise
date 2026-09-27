@@ -252,6 +252,9 @@ fun ProductScreen(
     }
 
     deleteProduct?.let { product ->
+        val isPinFreeEntry = SecurityStorage.isPinFreeEntryEnabled(context)
+        val requiresPin = SecurityStorage.isAdminPinSet(context) && !isPinFreeEntry
+
         AlertDialog(
             onDismissRequest = { deleteProduct = null },
             title = { Text("পণ্য মুছে ফেলবেন?") },
@@ -259,7 +262,7 @@ fun ProductScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(product.name + " (" + product.code + ") স্থায়ীভাবে মুছে যাবে।")
                     
-                    if (SecurityStorage.isAdminPinSet(context)) {
+                    if (requiresPin) {
                         OutlinedTextField(deletePin, { deletePin = it }, label = { Text("Delete PIN") }, singleLine = true)
                     }
                     
@@ -268,15 +271,13 @@ fun ProductScreen(
             },
             confirmButton = {
                 Button(
-                    // যেকোনো সময় ডিলিট করার জন্য enabled শর্তটি মুছে দেওয়া হয়েছে
                     onClick = {
                         val latest = ProductStorage.getProducts(context).firstOrNull {
                             it.code.equals(product.code, ignoreCase = true)
                         }
                         when {
                             latest == null -> deleteError = "পণ্যটি আর পাওয়া যাচ্ছে না।"
-                            // স্টক ০ থাকার শর্তটিও মুছে দেওয়া হয়েছে, এখন স্টক থাকলেও ডিলিট হবে
-                            !SecurityStorage.verifyAdminPin(context, deletePin) -> deleteError = "ভুল Delete PIN।"
+                            requiresPin && !SecurityStorage.verifyAdminPin(context, deletePin) -> deleteError = "ভুল Delete PIN।"
                             else -> {
                                 val deleted = ProductStorage.deleteProduct(context, latest.code)
                                 if (deleted) {
@@ -298,7 +299,7 @@ fun ProductScreen(
                     }
                 ) { Text("Delete") }
             },
-            dismissButton = { Button(onClick = { deleteProduct = null }) { Text("Cancel") } }
+            dismissButton = { Button(onClick = { deleteProduct = null; deletePin = ""; deleteError = "" }) { Text("Cancel") } }
         )
     }
 }
