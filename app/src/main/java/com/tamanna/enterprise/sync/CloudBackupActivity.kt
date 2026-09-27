@@ -72,9 +72,16 @@ class CloudBackupActivity : ComponentActivity() {
                     onClick = {
                         busy = true
                         message = "ডেটা মেলানো হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."
-                        CloudSyncManager.smartSync(this@CloudBackupActivity, isAuto = false) { resultMsg ->
+                        
+                        // এখানে দুটি প্যারামিটার (resultMsg এবং isDataSynced) সঠিকভাবে রিসিভ করা হয়েছে
+                        CloudSyncManager.smartSync(this@CloudBackupActivity, isAuto = false) { resultMsg, isDataSynced ->
                             busy = false
                             message = resultMsg
+                            
+                            // যদি নতুন ডেটা সফলভাবে ক্লাউড থেকে আসে, তবে স্ক্রিন রিফ্রেশ হবে
+                            if (isDataSynced) {
+                                recreate()
+                            }
                         }
                     },
                     enabled = !busy && email != null,
