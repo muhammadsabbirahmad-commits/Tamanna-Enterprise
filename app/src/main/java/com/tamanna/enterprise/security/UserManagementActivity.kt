@@ -17,7 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.tamanna.enterprise.business.BusinessStorage
+import com.google.firebase.firestore.FirebaseFirestore
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.settings.ThemeStorage
 
@@ -35,22 +35,31 @@ class UserManagementActivity : ComponentActivity() {
 fun UserManagementScreen() {
     val context = LocalContext.current
     var newEmail by remember { mutableStateOf("") }
-    var refresh by remember { mutableIntStateOf(0) }
-    
-    // লোকাল স্টোরেজ থেকে পার্টনারদের জিমেইল লিস্ট লোড করা
-    val prefs = remember(refresh) { BusinessStorage.prefs(context, "tamanna_enterprise_partners") }
-    val partnerEmails = remember(refresh) {
-        prefs.all.keys.filter { it.startsWith("partner_") }.map { prefs.getString(it, "") ?: "" }.filter { it.isNotBlank() }
+    var members by remember { mutableStateOf<List<CloudAccessUser>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    val db = remember { FirebaseFirestore.getInstance() }
+
+    fun loadData() {
+        loading = true
+        db.collection("preApprovedPartners").get()
+            .addOnSuccessListener { snap ->
+                val list = snap.documents.mapNotNull { doc ->
+                    val email = doc.getString("email") ?: return@mapNotNull null
+                    CloudAccessUser(doc.id, email, "PARTNER", true, false)
+                }
+                members = list
+                loading = false
+            }
+            .addOnFailureListener { loading = false }
     }
+
+    LaunchedEffect(Unit) { loadData() }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("পার্টনার ব্যবস্থাপনা") }) }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Card(
@@ -80,29 +89,28 @@ fun UserManagementScreen() {
                             onClick = {
                                 val emailToSave = newEmail.trim().lowercase()
                                 if (emailToSave.isNotBlank() && emailToSave.contains("@")) {
-                                    val key = "partner_" + emailToSave.replace(".", "_").replace("@", "_")
-                                    prefs.edit().putString(key, emailToSave).apply()
-                                    Toast.makeText(context, "পার্টনার সফলভাবে অ্যাড করা হয়েছে!", Toast.LENGTH_SHORT).show()
-                                    newEmail = ""
-                                    refresh++
-                                } else {
-                                    Toast.makeText(context, "দয়া করে একটি সঠিক জিমেইল লিখুন", Toast.LENGTH_SHORT).show()
+                                    val partnerKey = "partner_" + emailToSave.replace(".", "_").replace("@", "_")
+                                    val data = mapOf("email" to emailToSave, "addedAt" to System.currentTimeMillis())
+                                    
+                                    db.collection("preApprovedPartners").document(partnerKey)
+                                        .set(data)
+                                        .addOnSuccessListener {
+                                            Toast.makeText(context, "পার্টনার সফলভাবে অ্যাড করা হয়েছে!", Toast.LENGTH_SHORT).show()
+                                            newEmail = ""
+                                            loadData()
+                                        }
+                                        .addOnFailureListener { Toast.makeText(context, "ত্রুটি হয়েছে!", Toast.LENGTH_SHORT).show() }
                                 }
                             }
-                        ) {
-                            Text("অ্যাড করুন")
-                        }
+                        ) { Text("অ্যাড করুন") }
                     }
                 }
             }
 
             Text("সংযুক্ত পার্টনারগণ", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            
-            if (partnerEmails.isEmpty()) {
-                Text("কোনো পার্টনার যোগ করা হয়নি।", style = MaterialTheme.typography.bodyMedium)
-            } else {
+            if (loading) { Text("লোড হচ্ছে...") } else {
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(partnerEmails) { email ->
+                    items(members) { user ->
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -110,17 +118,14 @@ fun UserManagementScreen() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(email, style = MaterialTheme.typography.titleMedium)
+                                    Text(user.email, style = MaterialTheme.typography.titleMedium)
                                     Text("রোল: পার্টনার (View-Only)", style = MaterialTheme.typography.bodySmall)
                                     Text("স্ট্যাটাস: Active ✅", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                                 }
                                 IconButton(onClick = {
-                                    val key = "partner_" + email.replace(".", "_").replace("@", "_")
-                                    prefs.edit().remove(key).apply()
-                                    refresh++
-                                }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-                                }
+                                    db.collection("preApprovedPartners").document(user.uid).delete()
+                                        .addOnSuccessListener { loadData() }
+                                }) { Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
