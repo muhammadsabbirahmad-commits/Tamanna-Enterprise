@@ -11,12 +11,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.business.BusinessAccountStorage
-import com.tamanna.enterprise.security.SecurityStorage
 
 object CloudSyncManager {
-    private const val BUSINESSES = "businesses"
-    private const val DATA = "data"
     private const val PREF_SYNC = "tamanna_sync_prefs"
     private const val KEY_LAST_LOCAL_HASH = "last_local_hash"
 
@@ -38,32 +34,12 @@ object CloudSyncManager {
     private fun auth() = FirebaseAuth.getInstance()
     private fun db() = FirebaseFirestore.getInstance()
 
-    private fun businessDataCollection(context: Context) =
-        db().collection(BUSINESSES)
-            .document(BusinessAccountStorage.get(context).businessId)
-            .collection(DATA)
-
-    private fun validBusinessId(context: Context): Boolean {
-        val businessId = BusinessAccountStorage.get(context).businessId.trim()
-        return businessId.isNotBlank() && businessId != BusinessStorage.LEGACY_BUSINESS_ID
+    // সরাসরি ইউজারের UID দিয়ে ক্লাউড ফোল্ডার তৈরি হবে (কোনো ঝামেলা ছাড়াই)
+    private fun userSyncDoc(context: Context): DocumentReference {
+        val uid = auth().currentUser?.uid ?: "default_admin"
+        return db().collection("users").document(uid).collection("data").document("cloud_backup_sync")
     }
 
-    private fun approvedMember(context: Context, onResult: (Boolean, Boolean) -> Unit) {
-        if (!validBusinessId(context)) { onResult(false, false); return }
-        val uid = auth().currentUser?.uid
-        if (uid.isNullOrBlank()) { onResult(false, false); return }
-
-        val businessId = BusinessAccountStorage.get(context).businessId
-        db().collection(BUSINESSES).document(businessId)
-            .collection("members").document(uid).get()
-            .addOnSuccessListener { snapshot ->
-                val approved = snapshot.exists() && snapshot.getBoolean("approved") == true && snapshot.getBoolean("blocked") != true
-                val owner = approved && snapshot.getString("role") == "OWNER"
-                onResult(approved, owner)
-            }.addOnFailureListener { onResult(false, false) }
-    }
-
-    // ডেটার ইউনিক ফিঙ্গারপ্রিন্ট (Hash)
     private fun calculateLocalHash(context: Context): String {
         val sb = java.lang.StringBuilder()
         namespaces.forEach { ns ->
@@ -80,44 +56,40 @@ object CloudSyncManager {
     // --- Smart Sync (Hash-based) ---
     fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String) -> Unit) {
         val appContext = context.applicationContext
-        approvedMember(appContext) { approved, _ ->
-            if (!approved || !SecurityStorage.canWrite(appContext)) {
-                if (!isAuto) onComplete("সিঙ্ক করার অনুমতি নেই।")
-                return@approvedMember
+        val currentUser = auth().currentUser
+        
+        if (currentUser == null) {
+            if (!isAuto) onComplete("কোনো অ্যাকাউন্ট লগইন করা নেই।")
+            return
+        }
+
+        val currentLocalHash = calculateLocalHash(appContext)
+        val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+        val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+
+        val metaRef = userSyncDoc(appContext)
+
+        metaRef.get().addOnSuccessListener { doc ->
+            val cloudHash = doc.getString("dataHash") ?: ""
+
+            when {
+                cloudHash.isNotBlank() && cloudHash != lastSyncedHash && cloudHash != currentLocalHash -> {
+                    pullAllFromCloud(appContext, cloudHash) { success ->
+                        if (!isAuto) onComplete(if (success) "ক্লাউড থেকে নতুন ডেটা রিস্টোর হয়েছে। ☁️⬇️" else "রিস্টোর ব্যর্থ হয়েছে।")
+                    }
+                }
+                currentLocalHash != lastSyncedHash -> {
+                    pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
+                        if (!isAuto) onComplete(if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।")
+                    }
+                }
+                else -> {
+                    if (!isAuto) onComplete("সব ডেটা আপ-টু-데이트 আছে। ✅")
+                }
             }
-
-            val currentLocalHash = calculateLocalHash(appContext)
-            val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-            val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
-
-            val metaRef = businessDataCollection(appContext).document("_sync_meta")
-
-            metaRef.get().addOnSuccessListener { doc ->
-                val cloudHash = doc.getString("dataHash") ?: ""
-
-                when {
-                    // ১. ক্লাউডে নতুন ডেটা আছে, যা আমাদের মোবাইলের শেষ সিঙ্কের সাথে মিলছে না (IN/Download)
-                    cloudHash.isNotBlank() && cloudHash != lastSyncedHash && cloudHash != currentLocalHash -> {
-                        pullAllFromCloud(appContext, cloudHash) { success ->
-                            if (!isAuto) onComplete(if (success) "ক্লাউড থেকে নতুন ডেটা রিস্টোর হয়েছে। ☁️⬇️" else "রিস্টোর ব্যর্থ হয়েছে।")
-                        }
-                    }
-                    // ২. আমাদের মোবাইলে নতুন কাজ হয়েছে, যা ক্লাউডে নেই (OUT/Upload)
-                    currentLocalHash != lastSyncedHash -> {
-                        pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                            if (!isAuto) onComplete(if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।")
-                        }
-                    }
-                    // ৩. সবকিছু একদম ঠিক আছে
-                    else -> {
-                        if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅")
-                    }
-                }
-            }.addOnFailureListener {
-                // মেটা ফাইল না থাকলে (প্রথমবারের সিঙ্ক)
-                pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                    if (!isAuto) onComplete(if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।")
-                }
+        }.addOnFailureListener {
+            pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
+                if (!isAuto) onComplete(if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।")
             }
         }
     }
@@ -126,7 +98,7 @@ object CloudSyncManager {
         val batch = db().batch()
         namespaces.forEach { namespace ->
             val values = toFirestoreMap(BusinessStorage.prefs(context, namespace).all)
-            batch.set(businessDataCollection(context).document(namespace), mapOf("values" to values), SetOptions.merge())
+            batch.set(userSyncDoc(context).collection("namespaces").document(namespace), mapOf("values" to values), SetOptions.merge())
         }
         batch.set(metaRef, mapOf("dataHash" to currentHash, "updatedBy" to auth().currentUser?.uid), SetOptions.merge())
 
@@ -139,7 +111,7 @@ object CloudSyncManager {
     }
 
     private fun pullAllFromCloud(context: Context, newCloudHash: String, onComplete: (Boolean) -> Unit) {
-        val refs = namespaces.map { businessDataCollection(context).document(it).get() }
+        val refs = namespaces.map { userSyncDoc(context).collection("namespaces").document(it).get() }
         Tasks.whenAllSuccess<DocumentSnapshot>(refs).addOnSuccessListener { snapshots ->
             snapshots.forEachIndexed { index, snapshot ->
                 val editor = BusinessStorage.prefs(context, namespaces[index]).edit().clear()
@@ -164,20 +136,19 @@ object CloudSyncManager {
         }.addOnFailureListener { onComplete(false) }
     }
 
-    // --- সম্পূর্ণ নতুন ও রিয়েল-টাইম অটো-সিঙ্ক লজিক ---
+    // --- পার্মানেন্ট অটো-সিঙ্ক লজিক ---
     private val handler = Handler(Looper.getMainLooper())
-    private var isAutoSyncing = false
-    private lateinit var syncContext: Context
+    private var isRunning = false
+    private var syncContextGlobal: Context? = null
     private var cloudListener: ListenerRegistration? = null
 
     private val localCheckRunnable = object : Runnable {
         override fun run() {
-            if (isAutoSyncing) {
-                val appContext = syncContext.applicationContext
+            if (isAutoSyncEnabled()) {
+                val appContext = syncContextGlobal?.applicationContext ?: return
                 val currentHash = calculateLocalHash(appContext)
                 val lastHash = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getString(KEY_LAST_LOCAL_HASH, "")
                 
-                // ১৫ সেকেন্ড পর পর শুধু চেক করবে লোকাল মোবাইলে নতুন কাজ হয়েছে কি না (OUT)
                 if (currentHash != lastHash) {
                     smartSync(appContext, isAuto = true) {}
                 }
@@ -187,33 +158,42 @@ object CloudSyncManager {
     }
 
     fun startAutoSync(context: Context) {
-        if (isAutoSyncing || !validBusinessId(context)) return
-        syncContext = context.applicationContext
-        isAutoSyncing = true
+        val appContext = context.applicationContext
+        syncContextGlobal = appContext
+        
+        appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+            .edit().putBoolean("auto_sync_active", true).apply()
 
-        // ১. রিয়েল-টাইম ক্লাউড চেকার (IN) - কেউ ক্লাউডে সেভ করা মাত্রই ইনস্ট্যান্ট ডাউনলোড হবে
-        val metaRef = businessDataCollection(syncContext).document("_sync_meta")
+        if (isRunning || auth().currentUser == null) return
+        isRunning = true
+
+        val metaRef = userSyncDoc(appContext)
         cloudListener = metaRef.addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
             
             val cloudHash = snapshot.getString("dataHash") ?: ""
-            val lastHash = syncContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getString(KEY_LAST_LOCAL_HASH, "")
+            val lastHash = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getString(KEY_LAST_LOCAL_HASH, "")
             
             if (cloudHash.isNotBlank() && cloudHash != lastHash) {
-                smartSync(syncContext, isAuto = true) {}
+                smartSync(appContext, isAuto = true) {}
             }
         }
 
-        // ২. ১৫ সেকেন্ড টাইমার (OUT) - লোকাল কাজগুলো আপলোড করার জন্য
         handler.post(localCheckRunnable)
     }
 
     fun stopAutoSync() {
-        isAutoSyncing = false
+        isRunning = false
+        syncContextGlobal?.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean("auto_sync_active", false)?.apply()
+
         handler.removeCallbacks(localCheckRunnable)
         cloudListener?.remove()
         cloudListener = null
     }
 
-    fun isAutoSyncEnabled(): Boolean = isAutoSyncing
+    fun isAutoSyncEnabled(): Boolean {
+        val ctx = syncContextGlobal ?: return false
+        return ctx.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE).getBoolean("auto_sync_active", false)
+    }
 }
