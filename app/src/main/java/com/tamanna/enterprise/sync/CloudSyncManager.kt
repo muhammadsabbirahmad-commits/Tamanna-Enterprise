@@ -63,14 +63,11 @@ object CloudSyncManager {
         }
 
         val db = FirebaseFirestore.getInstance()
-        // অ্যাডমিন চেক (ইমেইল বানান ঠিক করা হয়েছে)
         val isAdmin = currentUser?.role == SecurityStorage.ROLE_ADMIN || authUser.email == "sakhiravoice9@gmail.com"
 
         if (isAdmin) {
-            // ফিক্স: ফায়ারবেস রুলস অনুযায়ী সঠিক ব্যাকআপ পাথ
             val adminRef = db.collection("users").document(authUser.uid).collection("data").document("backup")
             
-            // ফিক্স: রুলসের সাথে মিলিয়ে appConfig/admin আপডেট করা হচ্ছে
             val adminData = mapOf(
                 "adminUid" to authUser.uid,
                 "uid" to authUser.uid, 
@@ -79,16 +76,14 @@ object CloudSyncManager {
             )
             db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
             
-            onResult(adminRef, true) // true মানে অ্যাডমিন ক্লাউডে ডেটা পাঠাতে পারবে
+            onResult(adminRef, true)
         } else {
-            // পার্টনারের জন্য অ্যাডমিনের UID বের করে রিড পাথ তৈরি করা
             db.collection("appConfig").document("admin").get()
                 .addOnSuccessListener { doc ->
                     val adminUid = doc.getString("adminUid")
                     if (!adminUid.isNullOrBlank()) {
-                        // পার্টনার শুধুমাত্র অ্যাডমিনের ডেটা রিড করবে
                         val partnerRef = db.collection("users").document(adminUid).collection("data").document("backup")
-                        onResult(partnerRef, false) // false মানে পার্টনার ক্লাউডে ডেটা পাঠাতে পারবে না (View Only)
+                        onResult(partnerRef, false)
                     } else {
                         onResult(null, false)
                     }
@@ -207,8 +202,10 @@ object CloudSyncManager {
                                         is String -> editor.putString(k, v)
                                         is Int -> editor.putInt(k, v)
                                         is Long -> editor.putLong(k, v)
+                                        is Double -> editor.putFloat(k, v.toFloat()) // ফিক্স: ফায়ারস্টোরের Double নাম্বার হ্যান্ডলিং
                                         is Float -> editor.putFloat(k, v)
                                         is Boolean -> editor.putBoolean(k, v)
+                                        is Number -> editor.putLong(k, v.toLong()) // ব্যাকআপ নাম্বার টাইপ
                                     }
                                 }
                             }
