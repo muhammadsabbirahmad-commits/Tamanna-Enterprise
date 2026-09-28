@@ -144,6 +144,48 @@ object BusinessMembershipManager {
         }
     }
 
+    fun ensurePreApprovedPartnerMembership(
+        businessId: String,
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val user = auth().currentUser
+        val uid = user?.uid.orEmpty()
+        val cleanEmail = email.trim().lowercase()
+        if (uid.isBlank() || businessId.isBlank() || cleanEmail.isBlank()) {
+            onResult(false, "Partner account তথ্য পাওয়া যায়নি।")
+            return
+        }
+
+        val partnerKey = "partner_" + cleanEmail.replace(".", "_").replace("@", "_")
+        val preApprovedRef = db().collection("preApprovedPartners").document(partnerKey)
+        preApprovedRef.get()
+            .addOnSuccessListener { preApproved ->
+                val approvedBusinessId = preApproved.getString("businessId").orEmpty().trim()
+                val approvedEmail = preApproved.getString("email").orEmpty().trim().lowercase()
+                if (!preApproved.exists() || approvedBusinessId != businessId || approvedEmail != cleanEmail) {
+                    onResult(false, "এই Gmail-এর Partner অনুমোদন এই Business-এর জন্য পাওয়া যায়নি।")
+                    return@addOnSuccessListener
+                }
+
+                db().collection(BUSINESSES).document(businessId).collection(MEMBERS).document(uid)
+                    .set(
+                        mapOf(
+                            "uid" to uid,
+                            "email" to cleanEmail,
+                            "role" to "PARTNER",
+                            "approved" to true,
+                            "blocked" to false,
+                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                        ),
+                        SetOptions.merge()
+                    )
+                    .addOnSuccessListener { onResult(true, "Approved Partner membership প্রস্তুত হয়েছে।") }
+                    .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner membership তৈরি করা যায়নি।") }
+            }
+            .addOnFailureListener { onResult(false, it.localizedMessage ?: "Partner অনুমোদন যাচাই করা যায়নি।") }
+    }
+
     fun requestPartner(businessId: String, email: String, onResult: (Boolean, String) -> Unit) {
         val user = auth().currentUser
         val uid = user?.uid
