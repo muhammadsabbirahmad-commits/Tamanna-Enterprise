@@ -49,6 +49,23 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.role == "OWNER";
     }
 
+    match /preApprovedPartners/{partnerId} {
+      allow get: if signedIn()
+        && (
+          resource.data.email == request.auth.token.email
+          || (resource.data.businessId != ""
+              && get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerUid == request.auth.uid)
+        );
+      allow list: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.businessId is string
+        && request.resource.data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.ownerUid == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.businessId is string
+        && get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerUid == request.auth.uid;
+    }
+
     match /accessRequests/{userId} {
       allow get: if signedIn() && request.auth.uid == userId;
       allow list: if enterpriseAdmin();
@@ -123,6 +140,16 @@ service cloud.firestore {
               && request.resource.data.role == "PARTNER"
               && request.resource.data.approved == false
               && request.resource.data.blocked == false)
+          || (signedIn()
+              && memberId == request.auth.uid
+              && request.resource.data.uid == request.auth.uid
+              && request.resource.data.email == request.auth.token.email
+              && request.resource.data.role == "PARTNER"
+              && request.resource.data.approved == true
+              && request.resource.data.blocked == false
+              && exists(/databases/$(database)/documents/preApprovedPartners/$("partner_" + request.auth.token.email.lower().replace(".", "_").replace("@", "_")))
+              && get(/databases/$(database)/documents/preApprovedPartners/$("partner_" + request.auth.token.email.lower().replace(".", "_").replace("@", "_"))).data.email == request.auth.token.email
+              && get(/databases/$(database)/documents/preApprovedPartners/$("partner_" + request.auth.token.email.lower().replace(".", "_").replace("@", "_"))).data.businessId == businessId)
           || (signedIn()
               && memberId == request.auth.uid
               && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
