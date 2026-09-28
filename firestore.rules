@@ -115,12 +115,6 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
-    match /licenses/{licenseCode} {
-      allow get: if signedIn();
-      allow list: if admin();
-      allow create, update, delete: if admin();
-    }
-
     match /businesses/{businessId} {
       allow read: if member(businessId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
