@@ -49,7 +49,6 @@ class CloudBackupActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun CloudBackupScreen() {
-        // ফিক্স: ফায়ারবেস থেকে না পেলে লোকাল স্টোরেজ থেকে ইমেইল নিবে, ফলে সাদা দেখাবে না
         val authUser = FirebaseAuth.getInstance().currentUser
         val localUser = SecurityStorage.getCurrentUser(this@CloudBackupActivity)
         val displayEmail = authUser?.email ?: localUser?.email
@@ -69,6 +68,7 @@ class CloudBackupActivity : ComponentActivity() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("সংযুক্ত Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleMedium)
+                // এখানে displayEmail ব্যবহার করা হয়েছে
                 Text(displayEmail ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(30.dp))
 
@@ -86,7 +86,7 @@ class CloudBackupActivity : ComponentActivity() {
                             }
                         }
                     },
-                    // বাটন এনাবল থাকবে যদি displayEmail থাকে
+                    // এখানেও displayEmail ব্যবহার করা হয়েছে
                     enabled = !busy && displayEmail != null,
                     modifier = Modifier.size(140.dp),
                     shape = CircleShape
