@@ -39,21 +39,22 @@ import com.tamanna.enterprise.settings.ThemeStorage
 class CloudBackupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // অ্যাক্টিভিটির শুরুতেই সেফলি ইউজার বা ইমেইল ফেচ করে নেওয়া হচ্ছে
+        val authUser = FirebaseAuth.getInstance().currentUser
+        val localUser = SecurityStorage.getCurrentUser(this)
+        val userEmail = authUser?.email ?: localUser?.email
+
         setContent {
             TamannaTheme(ThemeStorage.getTheme(this)) {
-                CloudBackupScreen()
+                CloudBackupScreen(userEmail)
             }
         }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun CloudBackupScreen() {
-        val authUser = FirebaseAuth.getInstance().currentUser
-        val localUser = SecurityStorage.getCurrentUser(this@CloudBackupActivity)
-        val displayEmail = authUser?.email ?: localUser?.email
-        val email = displayEmail // পুরনো কোডের রেফারেন্স ঠিক রাখার জন্য
-
+    private fun CloudBackupScreen(email: String?) {
         var message by remember { mutableStateOf("স্ট্যাটাস: রেডি") }
         var busy by remember { mutableStateOf(false) }
         var autoSyncEnabled by remember { mutableStateOf(CloudSyncManager.isAutoSyncEnabled()) }
