@@ -6,7 +6,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.business.LicenseStorage
 
 data class CloudAccessUser(val uid: String, val email: String, val role: String, val approved: Boolean, val blocked: Boolean = false)
 
@@ -23,18 +22,17 @@ object CloudAccessManager {
             return
         }
 
-        val isActiveLicense = LicenseStorage.isActive(context)
         val b = BusinessAccountStorage.get(context)
         val businessId = b.businessId
 
-        if (businessId.isBlank() || businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID || !isActiveLicense) {
+        if (businessId.isBlank() || businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID) {
             if (adminLogin) {
                 val user = CloudAccessUser(u.uid, verifiedEmail, SecurityStorage.ROLE_ADMIN, true, false)
                 saveLocalLogin(context, user)
-                onResult(true, "লাইসেন্স যাচাই করা হয়নি, তবে ডিফল্ট অ্যাডমিন এক্সেস দেওয়া হলো।", user)
+                onResult(true, "", user)
             } else {
                 auth().signOut()
-                onResult(false, "আগে বৈধ License Activate করতে হবে।", null)
+                onResult(false, "Business access এখনো অনুমোদিত হয়নি।", null)
             }
             return
         }
@@ -120,7 +118,7 @@ object CloudAccessManager {
     fun validateCurrentSession(context: Context, onResult: (Boolean) -> Unit) {
         val u = auth().currentUser ?: run { onResult(false); return }
         val b = BusinessAccountStorage.get(context)
-        if (b.businessId.isBlank() || b.businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID || !LicenseStorage.isActive(context)) { 
+        if (b.businessId.isBlank() || b.businessId == BusinessAccountStorage.LEGACY_BUSINESS_ID) { 
             SecurityStorage.logout(context); auth().signOut(); onResult(false); return 
         }
         
