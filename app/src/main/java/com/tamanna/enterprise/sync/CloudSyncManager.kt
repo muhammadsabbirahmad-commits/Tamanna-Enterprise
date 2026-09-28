@@ -10,6 +10,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
@@ -47,19 +48,17 @@ object CloudSyncManager {
         }.also {
             handler.post(it)
         }
-        Log.d(TAG, "Auto-sync started.")
     }
 
     fun stopAutoSync() {
         isAutoSyncRunning = false
         autoSyncRunnable?.let { handler.removeCallbacks(it) }
         autoSyncRunnable = null
-        Log.d(TAG, "Auto-sync stopped.")
     }
 
     /**
-     * পার্টনারদের জন্য রিয়েল-টাইম সিঙ্ক: 
-     * মালিক ডেটা পরিবর্তন করলেই পার্টনারের অ্যাপে অটোমেটিক রিসিভ (Pull) হবে।
+     * শুধুমাত্র পার্টনারের জন্য রিয়েল-টাইম আপডেট।
+     * মালিক ডেটা সেভ করলেই পার্টনারের অ্যাপে সাথে সাথে চলে আসবে।
      */
     fun startRealtimeSync(context: Context) {
         val authUser = FirebaseAuth.getInstance().currentUser ?: return
@@ -68,45 +67,45 @@ object CloudSyncManager {
 
         realtimeListenerStarting = true
         val db = FirebaseFirestore.getInstance()
-        
-        // শেয়ার্ড বিজনেস ব্যাকআপ পাথ
-        val ref = db.collection("businesses")
+        val memberRef = db.collection("businesses")
             .document(businessId)
-            .collection("data")
-            .document("backup")
+            .collection("members")
+            .document(authUser.uid)
 
-        val localUser = SecurityStorage.getCurrentUser(context)
-        // শুধুমাত্র পার্টনারদের জন্য রিয়েলটাইম লিসেনার চালু হবে (মালিক তো নিজেই পুশ করছে)
-        if (localUser?.role == "PARTNER") {
-            realtimeListener = ref.addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.w(TAG, "Partner realtime sync listener failed.", error)
-                    return@addSnapshotListener
+        memberRef.get()
+            .addOnSuccessListener { member ->
+                realtimeListenerStarting = false
+                val role = member.getString("role").orEmpty()
+                val approved = member.getBoolean("approved") == true
+                val blocked = member.getBoolean("blocked") == true
+
+                // শুধুমাত্র ভেরিফাইড পার্টনারের জন্য লিসেনার অন হবে
+                if (role != "PARTNER" || !approved || blocked) {
+                    return@addOnSuccessListener
                 }
-                if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
 
-                val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
-                val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+                val ref = db.collection("businesses").document(businessId).collection("data").document("backup")
+                realtimeListener = ref.addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                    
+                    val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
+                    val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                    val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
 
-                if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
+                    if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
 
-                // মালিকের ব্যাকআপ থেকে পার্টনারের ফোনে ডেটা ডাউনলোড (Pull) করা হচ্ছে
-                pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
-                    if (success) Log.d(TAG, "Partner data updated from Owner cloud backup.")
+                    pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
+                        if (success) Log.d(TAG, "Partner data updated from Owner's cloud.")
+                    }
                 }
             }
-            Log.d(TAG, "Partner realtime sync started for businessId=$businessId")
-        } else {
-            realtimeListenerStarting = false
-        }
+            .addOnFailureListener { realtimeListenerStarting = false }
     }
 
     fun stopRealtimeSync() {
         realtimeListener?.remove()
         realtimeListener = null
         realtimeListenerStarting = false
-        Log.d(TAG, "Partner realtime sync stopped.")
     }
 
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
@@ -123,18 +122,37 @@ object CloudSyncManager {
         }
 
         val db = FirebaseFirestore.getInstance()
-        val sharedRef = db.collection("businesses")
-            .document(businessId)
-            .collection("data")
-            .document("backup")
-
+        val businessRef = db.collection("businesses").document(businessId)
+        val sharedRef = businessRef.collection("data").document("backup")
         val localUser = SecurityStorage.getCurrentUser(context)
-        
-        // যদি ইউজার OWNER বা ADMIN হয়, তবে canPush = true (সে আপলোড করতে পারবে)
-        // যদি ইউজার PARTNER হয়, তবে canPush = false (সে শুধু ডাউনলোড করতে পারবে)
-        val isOwner = localUser?.role == "OWNER" || localUser?.role == SecurityStorage.ROLE_ADMIN
-        
-        onResult(sharedRef, isOwner)
+
+        // মালিকের (Owner/Admin) ডেটাবেস ভেরিফিকেশন ফিক্স
+        if (localUser?.role == SecurityStorage.ROLE_ADMIN) {
+            BusinessMembershipManager.createOrUpdateOwner(businessId, authUser.email.orEmpty()) { success, _ ->
+                if (!success) {
+                    onResult(null, false)
+                    return@createOrUpdateOwner
+                }
+                val adminData = mapOf("uid" to authUser.uid, "role" to "ADMIN", "email" to authUser.email.orEmpty())
+                db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
+                onResult(sharedRef, true) // Owner canPush = true
+            }
+            return
+        }
+
+        // পার্টনার চেক: পার্টনার হলে canPush = false হবে (View Only)
+        val memberRef = businessRef.collection("members").document(authUser.uid)
+        memberRef.get()
+            .addOnSuccessListener { member ->
+                val role = member.getString("role").orEmpty()
+                val approved = member.getBoolean("approved") == true
+                val blocked = member.getBoolean("blocked") == true
+                val isOwner = role == "OWNER" && approved && !blocked
+                onResult(sharedRef, isOwner)
+            }
+            .addOnFailureListener {
+                onResult(null, false)
+            }
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -159,7 +177,7 @@ object CloudSyncManager {
 
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
-                if (!isAuto) onComplete("বিজনেস অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।", false)
+                if (!isAuto) onComplete("বিজনেস প্রোফাইল সম্পূর্ণ নয়।", false)
                 return@getTargetSyncDoc
             }
 
@@ -173,22 +191,16 @@ object CloudSyncManager {
 
                 when {
                     canPush && currentLocalHash != lastSyncedHash -> {
-                        // শুধুমাত্র OWNER ডেটা আপলোড (Push) করবে
+                        // শুধু মালিক আপলোড করবে
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                            if (!isAuto) {
-                                val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
-                                onComplete(msg, success)
-                            }
+                            if (!isAuto) onComplete(if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।", success)
                         }
                     }
                     isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) -> {
-                        // PARTNER সব সময় ডেটা ডাউনলোড (Pull) করবে (এমনকি OWNER-ও অন্য ডিভাইস থেকে সিঙ্ক করলে Pull করবে)
+                        // পার্টনার সব সময় ডাউনলোড করবে
                         val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
                         pullAllFromCloud(appContext, metaRef, pullHash) { success ->
-                            if (!isAuto) {
-                                val msg = if (success) "ক্লাউড থেকে সর্বশেষ আপডেট পাওয়া গেছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
-                                onComplete(msg, success)
-                            }
+                            if (!isAuto) onComplete(if (success) "মালিকের নতুন আপডেট পাওয়া গেছে! ☁️⬇️" else "ডাউনলোড ব্যর্থ হয়েছে।", success)
                         }
                     }
                     else -> {
@@ -198,10 +210,7 @@ object CloudSyncManager {
             }.addOnFailureListener {
                 if (canPush) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                        if (!isAuto) {
-                            val msg = if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।"
-                            onComplete(msg, success)
-                        }
+                        if (!isAuto) onComplete(if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ফায়ারবেস রুলস পারমিশন দিচ্ছে না।", success)
                     }
                 } else {
                     if (!isAuto) onComplete("মালিক এখনো কোনো ডেটা আপলোড করেননি।", false)
@@ -239,7 +248,7 @@ object CloudSyncManager {
                         if (cloudData != null) {
                             val prefs = BusinessStorage.prefs(context, ns)
                             val editor = prefs.edit()
-                            editor.clear() // আগের সব লোকাল ডেটা মুছে মালিকের ফ্রেশ ডেটা বসানো হচ্ছে
+                            editor.clear()
                             for ((k, v) in cloudData) {
                                 if (k is String && v != null) {
                                     when (v) {
