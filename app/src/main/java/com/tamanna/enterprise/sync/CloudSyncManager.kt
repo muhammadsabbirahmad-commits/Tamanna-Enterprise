@@ -8,6 +8,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.SetOptions
+import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
@@ -66,34 +67,30 @@ object CloudSyncManager {
         val db = FirebaseFirestore.getInstance()
         val isAdmin = currentUser?.role == SecurityStorage.ROLE_ADMIN || authUser.email == "sakhiravoice9@gmail.com"
 
+        val businessId = BusinessAccountStorage.get(context).businessId.trim()
+        if (businessId.isBlank()) {
+            onResult(null, false)
+            return
+        }
+
+        // Owner and Partner use the same business-scoped cloud document.
+        // Owner remains the only writer; Partner remains read-only.
+        val sharedRef = db.collection("businesses")
+            .document(businessId)
+            .collection("data")
+            .document("backup")
+
         if (isAdmin) {
-            val adminRef = db.collection("users").document(authUser.uid).collection("data").document("backup")
-            
             val adminData = mapOf(
                 "adminUid" to authUser.uid,
-                "uid" to authUser.uid, 
+                "uid" to authUser.uid,
                 "email" to (authUser.email ?: ""),
                 "role" to "ADMIN"
             )
             db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
-            
-            onResult(adminRef, true)
-        } else {
-            db.collection("appConfig").document("admin").get()
-                .addOnSuccessListener { doc ->
-                    // এখানে adminUid না পেলে অটোমেটিক uid ফিল্ড থেকে আইডি নিয়ে নিবে
-                    val adminUid = doc.getString("adminUid") ?: doc.getString("uid")
-                    if (!adminUid.isNullOrBlank()) {
-                        val partnerRef = db.collection("users").document(adminUid).collection("data").document("backup")
-                        onResult(partnerRef, false)
-                    } else {
-                        onResult(null, false)
-                    }
-                }
-                .addOnFailureListener {
-                    onResult(null, false)
-                }
         }
+
+        onResult(sharedRef, isAdmin)
     }
 
     fun calculateLocalHash(context: Context): String {
