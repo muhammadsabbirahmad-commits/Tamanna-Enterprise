@@ -7,6 +7,7 @@ import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
@@ -16,7 +17,6 @@ object CloudSyncManager {
     private const val PREF_SYNC = "tamanna_sync_prefs"
     private const val KEY_LAST_LOCAL_HASH = "last_local_hash"
 
-    // অ্যাপের সমস্ত লোকাল ডেটা স্টোরেজ বা নেমস্পেসগুলোর তালিকা
     private val namespaces = listOf(
         "tamanna_enterprise_settings",
         "tamanna_business_prefs",
@@ -31,7 +31,6 @@ object CloudSyncManager {
 
     fun isAutoSyncEnabled(): Boolean = isAutoSyncRunning
 
-    // অটো-সিঙ্ক চালু করার ফাংশন
     fun startAutoSync(context: Context, intervalMillis: Long = 30000L) {
         if (isAutoSyncRunning) return
         isAutoSyncRunning = true
@@ -47,7 +46,6 @@ object CloudSyncManager {
         Log.d(TAG, "Auto-sync started.")
     }
 
-    // অটো-সিঙ্ক বন্ধ করার ফাংশন
     fun stopAutoSync() {
         isAutoSyncRunning = false
         autoSyncRunnable?.let { handler.removeCallbacks(it) }
@@ -55,7 +53,6 @@ object CloudSyncManager {
         Log.d(TAG, "Auto-sync stopped.")
     }
 
-    // অ্যাডমিন বা পার্টনারের জন্য ফায়ারস্টোর সঠিক পাথ বা ডকুমেন্ট রেফারেন্স বের করা
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
         val currentUser = SecurityStorage.getCurrentUser(context)
         val authUser = FirebaseAuth.getInstance().currentUser
@@ -66,33 +63,42 @@ object CloudSyncManager {
         }
 
         val db = FirebaseFirestore.getInstance()
-        val isAdmin = currentUser?.role == SecurityStorage.ROLE_ADMIN || authUser.email == "sathiravoice9@gmail.com"
+        // অ্যাডমিন চেক (ইমেইল বানান ঠিক করা হয়েছে)
+        val isAdmin = currentUser?.role == SecurityStorage.ROLE_ADMIN || authUser.email == "sakhiravoice9@gmail.com"
 
         if (isAdmin) {
-            val adminRef = db.collection("backups").document(authUser.uid)
-            // অ্যাডমিনের ইউআইডি appConfig/admin-এ সেভ করে রাখা যাতে পার্টনারা সঠিক পাথ পায়
-            db.collection("appConfig").document("admin")
-                .set(mapOf("adminUid" to authUser.uid, "email" to (authUser.email ?: "")))
-            onResult(adminRef, true)
+            // ফিক্স: ফায়ারবেস রুলস অনুযায়ী সঠিক ব্যাকআপ পাথ
+            val adminRef = db.collection("users").document(authUser.uid).collection("data").document("backup")
+            
+            // ফিক্স: রুলসের সাথে মিলিয়ে appConfig/admin আপডেট করা হচ্ছে
+            val adminData = mapOf(
+                "adminUid" to authUser.uid,
+                "uid" to authUser.uid, 
+                "email" to (authUser.email ?: ""),
+                "role" to "ADMIN"
+            )
+            db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
+            
+            onResult(adminRef, true) // true মানে অ্যাডমিন ক্লাউডে ডেটা পাঠাতে পারবে
         } else {
-            // পার্টনার হলে appConfig/admin থেকে মূল অ্যাডমিনের UID এনে সিঙ্ক পাথ ঠিক করা
+            // পার্টনারের জন্য অ্যাডমিনের UID বের করে রিড পাথ তৈরি করা
             db.collection("appConfig").document("admin").get()
                 .addOnSuccessListener { doc ->
                     val adminUid = doc.getString("adminUid")
                     if (!adminUid.isNullOrBlank()) {
-                        val partnerRef = db.collection("backups").document(adminUid)
-                        onResult(partnerRef, false)
+                        // পার্টনার শুধুমাত্র অ্যাডমিনের ডেটা রিড করবে
+                        val partnerRef = db.collection("users").document(adminUid).collection("data").document("backup")
+                        onResult(partnerRef, false) // false মানে পার্টনার ক্লাউডে ডেটা পাঠাতে পারবে না (View Only)
                     } else {
-                        onResult(db.collection("backups").document(authUser.uid), false)
+                        onResult(null, false)
                     }
                 }
                 .addOnFailureListener {
-                    onResult(db.collection("backups").document(authUser.uid), false)
+                    onResult(null, false)
                 }
         }
     }
 
-    // লোকাল ডেটার হাশ বা স্বাক্ষর হিসাব করার ফাংশন
     fun calculateLocalHash(context: Context): String {
         val sb = StringBuilder()
         for (ns in namespaces) {
@@ -110,7 +116,6 @@ object CloudSyncManager {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    // মূল স্মার্ট সিঙ্ক ফাংশন (লোকাল ফাঁকা থাকলে ফোর্স পুল করে ডেটা ফিরিয়ে আনবে)
     fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String, Boolean) -> Unit) {
         val appContext = context.applicationContext
 
@@ -124,14 +129,12 @@ object CloudSyncManager {
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
             val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
 
-            // চেক করা হচ্ছে লোকাল ফোনে কোনো ডেটা আছে কি না
             val isLocalEmpty = namespaces.all { ns -> BusinessStorage.prefs(appContext, ns).all.isEmpty() }
 
             metaRef.get().addOnSuccessListener { doc ->
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    // লোকাল ফোন ফাঁকা থাকলে অথবা ক্লাউডে নতুন ডেটা থাকলে জোরপূর্বক (Force) ক্লাউড থেকে নামিয়ে আনবে
                     isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) -> {
                         val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
                         pullAllFromCloud(appContext, metaRef, pullHash) { success ->
@@ -141,7 +144,6 @@ object CloudSyncManager {
                             }
                         }
                     }
-                    // শুধুমাত্র অ্যাডমিন হলে এবং লোকাল ডেটা পরিবর্তিত হলে ক্লাউডে পাঠাবে (Push)
                     canPush && currentLocalHash != lastSyncedHash -> {
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                             if (!isAuto) {
@@ -151,7 +153,7 @@ object CloudSyncManager {
                         }
                     }
                     else -> {
-                        if (!isAuto) onComplete("সব ডেটা আপ-টু-데이트 আছে। ✅", false)
+                        if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅", false)
                     }
                 }
             }.addOnFailureListener {
@@ -169,7 +171,6 @@ object CloudSyncManager {
         }
     }
 
-    // ক্লাউডে ডেটা আপলোড করা (Push)
     fun pushAllToCloud(context: Context, currentLocalHash: String, metaRef: DocumentReference, onResult: (Boolean) -> Unit) {
         val dataMap = mutableMapOf<String, Any>()
         for (ns in namespaces) {
@@ -190,7 +191,6 @@ object CloudSyncManager {
             }
     }
 
-    // ক্লাউড থেকে ডেটা নামিয়ে আনা ও লোকাল স্টোরেজে সংরক্ষণ করা (Pull)
     fun pullAllFromCloud(context: Context, metaRef: DocumentReference, cloudHash: String, onResult: (Boolean) -> Unit) {
         metaRef.get()
             .addOnSuccessListener { doc ->
