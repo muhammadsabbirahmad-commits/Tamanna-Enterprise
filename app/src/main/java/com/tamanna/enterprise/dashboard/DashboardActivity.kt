@@ -37,6 +37,7 @@ import com.tamanna.enterprise.settings.SettingsStorage
 import com.tamanna.enterprise.settings.ThemeStorage
 import com.tamanna.enterprise.search.GlobalSearchActivity
 import com.tamanna.enterprise.sync.CloudBackupActivity
+import com.tamanna.enterprise.sync.CloudSyncManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -44,6 +45,7 @@ import java.util.Locale
 class DashboardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
+        CloudSyncManager.startRealtimeSync(this)
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val loggedIn = SecurityStorage.getCurrentUser(this) != null
         val sales = if (loggedIn) SalesStorage.getSales(this) else emptyList()
@@ -79,6 +81,11 @@ class DashboardActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onPause() {
+        CloudSyncManager.stopRealtimeSync()
+        super.onPause()
     }
 }
 
