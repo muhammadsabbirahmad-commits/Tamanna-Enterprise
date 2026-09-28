@@ -52,6 +52,7 @@ class CloudBackupActivity : ComponentActivity() {
         val authUser = FirebaseAuth.getInstance().currentUser
         val localUser = SecurityStorage.getCurrentUser(this@CloudBackupActivity)
         val displayEmail = authUser?.email ?: localUser?.email
+        val email = displayEmail // পুরনো কোডের রেফারেন্স ঠিক রাখার জন্য
 
         var message by remember { mutableStateOf("স্ট্যাটাস: রেডি") }
         var busy by remember { mutableStateOf(false) }
@@ -68,8 +69,7 @@ class CloudBackupActivity : ComponentActivity() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("সংযুক্ত Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleMedium)
-                // এখানে displayEmail ব্যবহার করা হয়েছে
-                Text(displayEmail ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
+                Text(email ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(30.dp))
 
                 Button(
@@ -86,8 +86,7 @@ class CloudBackupActivity : ComponentActivity() {
                             }
                         }
                     },
-                    // এখানেও displayEmail ব্যবহার করা হয়েছে
-                    enabled = !busy && displayEmail != null,
+                    enabled = !busy && email != null,
                     modifier = Modifier.size(140.dp),
                     shape = CircleShape
                 ) {
