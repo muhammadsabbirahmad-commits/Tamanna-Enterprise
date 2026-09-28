@@ -40,21 +40,20 @@ class CloudBackupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // অ্যাক্টিভিটির শুরুতেই সেফলি ইউজার বা ইমেইল ফেচ করে নেওয়া হচ্ছে
         val authUser = FirebaseAuth.getInstance().currentUser
         val localUser = SecurityStorage.getCurrentUser(this)
-        val userEmail = authUser?.email ?: localUser?.email
+        val displayEmail = authUser?.email ?: localUser?.email
 
         setContent {
             TamannaTheme(ThemeStorage.getTheme(this)) {
-                CloudBackupScreen(userEmail)
+                CloudBackupScreen(displayEmail)
             }
         }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun CloudBackupScreen(email: String?) {
+    private fun CloudBackupScreen(displayEmail: String?) {
         var message by remember { mutableStateOf("স্ট্যাটাস: রেডি") }
         var busy by remember { mutableStateOf(false) }
         var autoSyncEnabled by remember { mutableStateOf(CloudSyncManager.isAutoSyncEnabled()) }
@@ -70,7 +69,7 @@ class CloudBackupActivity : ComponentActivity() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("সংযুক্ত Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleMedium)
-                Text(email ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
+                Text(displayEmail ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(30.dp))
 
                 Button(
@@ -87,7 +86,7 @@ class CloudBackupActivity : ComponentActivity() {
                             }
                         }
                     },
-                    enabled = !busy && email != null,
+                    enabled = !busy && displayEmail != null,
                     modifier = Modifier.size(140.dp),
                     shape = CircleShape
                 ) {
