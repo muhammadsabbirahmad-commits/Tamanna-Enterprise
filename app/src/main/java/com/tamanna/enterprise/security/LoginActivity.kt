@@ -16,6 +16,9 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
+import com.tamanna.enterprise.business.BusinessAccountStorage
+import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.tamanna.enterprise.dashboard.DashboardActivity
 
 class LoginActivity : ComponentActivity() {
@@ -40,14 +43,29 @@ class LoginActivity : ComponentActivity() {
                 val db = FirebaseFirestore.getInstance()
 
                 // --- গ্লোবাল ক্লাউড বাইপাস লজিক ---
-                db.collection("preApprovedPartners").document(partnerKey).get()
+                db.collection("preApprovedPartners").document(partnerKey).get(Source.SERVER)
                     .addOnCompleteListener { docTask ->
                         if (docTask.isSuccessful && docTask.result?.exists() == true) {
-                            // জিমেইলটি ফায়ারবেসের পার্টনার লিস্টে আছে! সরাসরি ড্যাশবোর্ডে প্রবেশ।
-                            SecurityStorage.upsertGoogleUser(this@LoginActivity, email, "PARTNER", true, currentUser.uid)
-                            SecurityStorage.findByGoogleEmail(this@LoginActivity, email)?.let { SecurityStorage.login(this@LoginActivity, it) }
-                            success?.invoke()
-                            clear()
+                            // Gmailটি Business App-এর অনুমোদিত Partner তালিকায় আছে। Business ID ও membership cloud থেকে নিশ্চিত করে তারপর সরাসরি প্রবেশ।
+                            val businessId = docTask.result?.getString("businessId").orEmpty().trim()
+                            if (businessId.isBlank()) {
+                                auth.signOut()
+                                failure?.invoke("এই Partner Gmail-এর Business ID সংরক্ষিত নেই। Owner-এর Partner তালিকা থেকে Gmailটি আবার সংরক্ষণ করুন।")
+                                clear()
+                                return@addOnCompleteListener
+                            }
+                            BusinessAccountStorage.setActiveBusinessId(this@LoginActivity, businessId)
+                            BusinessMembershipManager.ensurePreApprovedPartnerMembership(businessId, email) { membershipOk, membershipMessage ->
+                                if (!membershipOk) {
+                                    auth.signOut()
+                                    failure?.invoke(membershipMessage)
+                                } else {
+                                    SecurityStorage.upsertGoogleUser(this@LoginActivity, email, SecurityStorage.ROLE_PARTNER, true, currentUser.uid)
+                                    SecurityStorage.findByGoogleEmail(this@LoginActivity, email)?.let { SecurityStorage.login(this@LoginActivity, it) }
+                                    success?.invoke()
+                                }
+                                clear()
+                            }
                         } else {
                             // পার্টনার না হলে রেগুলার অ্যাডমিন চেকিং হবে
                             AccessRequestManager.requestOrCheck { ok, message, record ->
@@ -87,7 +105,7 @@ class LoginActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
                     Text("Gmail Login", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
-                    Text("Gmail দিয়ে Login করুন। প্রথমবার Login করলে Admin-এর কাছে অনুমোদনের অনুরোধ যাবে। Admin অনুমোদন ও মেয়াদ নির্ধারণ না করা পর্যন্ত অ্যাপ ব্যবহার করা যাবে না।")
+                    Text("Gmail দিয়ে Login করুন। Business App-এ Partner Gmail আগে থেকে সংরক্ষিত থাকলে সরাসরি View-Only প্রবেশ হবে; না থাকলে Admin-এর কাছে অনুমোদনের অনুরোধ যাবে।")
                     Spacer(Modifier.height(12.dp))
                     if (message.isNotBlank()) { Text(message, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
                     Button(onClick = {
