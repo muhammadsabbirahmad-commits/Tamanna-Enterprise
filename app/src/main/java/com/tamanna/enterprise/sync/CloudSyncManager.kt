@@ -30,6 +30,7 @@ object CloudSyncManager {
     private val handler = Handler(Looper.getMainLooper())
     private var autoSyncRunnable: Runnable? = null
     private var isAutoSyncRunning = false
+    private var realtimeListener: com.google.firebase.firestore.ListenerRegistration? = null
 
     fun isAutoSyncEnabled(): Boolean = isAutoSyncRunning
 
@@ -53,6 +54,50 @@ object CloudSyncManager {
         autoSyncRunnable?.let { handler.removeCallbacks(it) }
         autoSyncRunnable = null
         Log.d(TAG, "Auto-sync stopped.")
+    }
+
+    /**
+     * Keeps approved Partners continuously subscribed to the shared business backup.
+     * Owner remains the only writer; Partners only receive/pull changes.
+     */
+    fun startRealtimeSync(context: Context) {
+        val currentUser = SecurityStorage.getCurrentUser(context) ?: return
+        if (currentUser.role != SecurityStorage.ROLE_PARTNER) return
+
+        val businessId = BusinessAccountStorage.get(context).businessId.trim()
+        if (businessId.isBlank()) return
+        if (realtimeListener != null) return
+
+        val ref = FirebaseFirestore.getInstance()
+            .collection("businesses")
+            .document(businessId)
+            .collection("data")
+            .document("backup")
+
+        realtimeListener = ref.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.w(TAG, "Partner realtime sync listener failed.", error)
+                return@addSnapshotListener
+            }
+            if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
+
+            val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
+            val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+            val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+
+            if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
+
+            pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
+                if (success) Log.d(TAG, "Partner data updated from Owner cloud backup.")
+            }
+        }
+        Log.d(TAG, "Partner realtime sync started for businessId=$businessId")
+    }
+
+    fun stopRealtimeSync() {
+        realtimeListener?.remove()
+        realtimeListener = null
+        Log.d(TAG, "Partner realtime sync stopped.")
     }
 
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
