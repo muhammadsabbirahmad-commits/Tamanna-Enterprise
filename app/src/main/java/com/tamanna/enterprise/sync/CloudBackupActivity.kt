@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.dashboard.TamannaTheme
-import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.settings.ThemeStorage
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,9 +39,8 @@ class CloudBackupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val authUser = FirebaseAuth.getInstance().currentUser
-        val localUser = SecurityStorage.getCurrentUser(this)
-        val displayEmail = authUser?.email ?: localUser?.email
+        // ফিক্স: লোকাল ইউজারে ইমেইল ফিল্ড না থাকায় সরাসরি ফায়ারবেস থেকে ইমেইল নেওয়া হচ্ছে
+        val displayEmail = FirebaseAuth.getInstance().currentUser?.email
 
         setContent {
             TamannaTheme(ThemeStorage.getTheme(this)) {
