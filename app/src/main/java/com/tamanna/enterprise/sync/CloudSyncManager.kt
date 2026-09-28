@@ -9,6 +9,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
 import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
 object CloudSyncManager {
@@ -45,47 +46,63 @@ object CloudSyncManager {
         }.also {
             handler.post(it)
         }
+        Log.d(TAG, "Auto-sync started.")
     }
 
     fun stopAutoSync() {
         isAutoSyncRunning = false
         autoSyncRunnable?.let { handler.removeCallbacks(it) }
         autoSyncRunnable = null
+        Log.d(TAG, "Auto-sync stopped.")
     }
 
+    /**
+     * রিয়েলটাইম সিঙ্ক: মালিক ক্লাউডে আপডেট দিলেই পার্টনারের অ্যাপে লাইভ সিঙ্ক হবে।
+     */
     fun startRealtimeSync(context: Context) {
         val authUser = FirebaseAuth.getInstance().currentUser ?: return
-        var businessId = BusinessAccountStorage.get(context).businessId.trim()
-        if (businessId.isBlank()) businessId = authUser.uid
-        
         if (realtimeListener != null || realtimeListenerStarting) return
 
         realtimeListenerStarting = true
-        val db = FirebaseFirestore.getInstance()
-        val ref = db.collection("businesses").document(businessId).collection("data").document("backup")
+        
+        getTargetSyncDoc(context) { ref, _ ->
+            if (ref == null) {
+                realtimeListenerStarting = false
+                return@getTargetSyncDoc
+            }
 
-        realtimeListener = ref.addSnapshotListener { snapshot, error ->
-            realtimeListenerStarting = false
-            if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
-            
-            val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
-            val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-            val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+            realtimeListener = ref.addSnapshotListener { snapshot, error ->
+                realtimeListenerStarting = false
+                if (error != null) {
+                    Log.w(TAG, "Realtime sync listener failed.", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
 
-            if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
+                val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
+                val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
 
-            pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
-                if (success) Log.d(TAG, "Data updated from cloud backup.")
+                if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
+
+                pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
+                    if (success) Log.d(TAG, "Local data updated from cloud backup.")
+                }
             }
         }
+        Log.d(TAG, "Realtime sync started for userId=${authUser.uid}")
     }
 
     fun stopRealtimeSync() {
         realtimeListener?.remove()
         realtimeListener = null
         realtimeListenerStarting = false
+        Log.d(TAG, "Realtime sync stopped.")
     }
 
+    /**
+     * সিঙ্ক পাথ নির্ধারণ এবং পার্টনার (View Only) চেক করার ফাংশন
+     */
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
         val authUser = FirebaseAuth.getInstance().currentUser
         if (authUser == null) {
@@ -93,20 +110,22 @@ object CloudSyncManager {
             return
         }
 
-        // বিজনেস আইডি ফাঁকা থাকলে ইউজারের UID স্বয়ংক্রিয়ভাবে ব্যবহার হবে, তাই আর এরর আসবে না
-        var businessId = BusinessAccountStorage.get(context).businessId.trim()
-        if (businessId.isBlank()) {
-            businessId = authUser.uid
+        val db = FirebaseFirestore.getInstance()
+        val businessId = BusinessAccountStorage.get(context).businessId.trim()
+        val localUser = SecurityStorage.getCurrentUser(context)
+
+        // যদি ইউজার PARTNER হয়, তবে সে Push করতে পারবে না (canPush = false)
+        val isPartner = localUser?.role == "PARTNER"
+        val canPush = !isPartner
+
+        // বিজনেস আইডি থাকলে বিজনেসের ফোল্ডারে, না থাকলে ইউজারের নিজস্ব ফোল্ডারে
+        val sharedRef = if (businessId.isNotBlank()) {
+            db.collection("businesses").document(businessId).collection("data").document("backup")
+        } else {
+            db.collection("users").document(authUser.uid).collection("data").document("backup")
         }
 
-        val db = FirebaseFirestore.getInstance()
-        val sharedRef = db.collection("businesses")
-            .document(businessId)
-            .collection("data")
-            .document("backup")
-
-        // সিঙ্ক করার জন্য পারমিশন সফলভাবে দেওয়া হলো
-        onResult(sharedRef, true)
+        onResult(sharedRef, canPush)
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -131,28 +150,37 @@ object CloudSyncManager {
 
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
-                if (!isAuto) onComplete("সিঙ্ক পাথ পাওয়া যায়নি।", false)
+                if (!isAuto) onComplete("অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।", false)
                 return@getTargetSyncDoc
             }
 
             val currentLocalHash = calculateLocalHash(appContext)
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
             val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+
             val isLocalEmpty = namespaces.all { ns -> BusinessStorage.prefs(appContext, ns).all.isEmpty() }
 
             metaRef.get().addOnSuccessListener { doc ->
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
+                    // শুধুমাত্র মালিক ডেটা ক্লাউডে আপলোড করতে পারবে
                     canPush && currentLocalHash != lastSyncedHash -> {
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                            if (!isAuto) onComplete(if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।", success)
+                            if (!isAuto) {
+                                val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
+                                onComplete(msg, success)
+                            }
                         }
                     }
+                    // পার্টনার বা নতুন ইনস্টলের ক্ষেত্রে ক্লাউড থেকে ডেটা ডাউনলোড হবে
                     isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) -> {
                         val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
                         pullAllFromCloud(appContext, metaRef, pullHash) { success ->
-                            if (!isAuto) onComplete(if (success) "ক্লাউড থেকে ডেটা সফলভাবে সিঙ্ক হয়েছে! ☁️⬇️" else "ডাউনলোড ব্যর্থ হয়েছে।", success)
+                            if (!isAuto) {
+                                val msg = if (success) "ক্লাউড থেকে সর্বশেষ ডেটা সফলভাবে সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                                onComplete(msg, success)
+                            }
                         }
                     }
                     else -> {
@@ -162,10 +190,13 @@ object CloudSyncManager {
             }.addOnFailureListener {
                 if (canPush) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                        if (!isAuto) onComplete(if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।", success)
+                        if (!isAuto) {
+                            val msg = if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                            onComplete(msg, success)
+                        }
                     }
                 } else {
-                    if (!isAuto) onComplete("ক্লাউডে এখনো কোনো ব্যাকআপ নেই।", false)
+                    if (!isAuto) onComplete("মালিক এখনো কোনো ব্যাকআপ সেভ করেননি।", false)
                 }
             }
         }
