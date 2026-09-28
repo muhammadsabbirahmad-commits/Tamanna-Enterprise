@@ -10,6 +10,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.SetOptions
 import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
@@ -137,26 +138,41 @@ object CloudSyncManager {
 
         val db = FirebaseFirestore.getInstance()
         val businessRef = db.collection("businesses").document(businessId)
-        val memberRef = businessRef.collection("members").document(authUser.uid)
         val sharedRef = businessRef.collection("data").document("backup")
+        val localUser = SecurityStorage.getCurrentUser(context)
 
+        // The app's local ADMIN is the Business Owner for cloud backup.
+        // Ensure the matching Firestore OWNER membership exists before accessing the shared backup.
+        if (localUser?.role == SecurityStorage.ROLE_ADMIN) {
+            BusinessMembershipManager.createOrUpdateOwner(
+                businessId = businessId,
+                email = authUser.email.orEmpty()
+            ) { success, message ->
+                if (!success) {
+                    Log.w(TAG, "Could not establish Owner membership for cloud sync: $message")
+                    onResult(null, false)
+                    return@createOrUpdateOwner
+                }
+
+                val adminData = mapOf(
+                    "adminUid" to authUser.uid,
+                    "uid" to authUser.uid,
+                    "email" to (authUser.email ?: ""),
+                    "role" to "ADMIN"
+                )
+                db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
+                onResult(sharedRef, true)
+            }
+            return
+        }
+
+        val memberRef = businessRef.collection("members").document(authUser.uid)
         memberRef.get()
             .addOnSuccessListener { member ->
                 val role = member.getString("role").orEmpty()
                 val approved = member.getBoolean("approved") == true
                 val blocked = member.getBoolean("blocked") == true
                 val isOwner = role == "OWNER" && approved && !blocked
-
-                if (isOwner) {
-                    val adminData = mapOf(
-                        "adminUid" to authUser.uid,
-                        "uid" to authUser.uid,
-                        "email" to (authUser.email ?: ""),
-                        "role" to "ADMIN"
-                    )
-                    db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
-                }
-
                 onResult(sharedRef, isOwner)
             }
             .addOnFailureListener {
