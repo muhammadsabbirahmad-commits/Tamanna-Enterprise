@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.dashboard.TamannaTheme
+import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.settings.ThemeStorage
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,7 +49,11 @@ class CloudBackupActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun CloudBackupScreen() {
-        val email = FirebaseAuth.getInstance().currentUser?.email
+        // ফিক্স: ফায়ারবেস থেকে না পেলে লোকাল স্টোরেজ থেকে ইমেইল নিবে, ফলে সাদা দেখাবে না
+        val authUser = FirebaseAuth.getInstance().currentUser
+        val localUser = SecurityStorage.getCurrentUser(this@CloudBackupActivity)
+        val displayEmail = authUser?.email ?: localUser?.email
+
         var message by remember { mutableStateOf("স্ট্যাটাস: রেডি") }
         var busy by remember { mutableStateOf(false) }
         var autoSyncEnabled by remember { mutableStateOf(CloudSyncManager.isAutoSyncEnabled()) }
@@ -64,27 +69,25 @@ class CloudBackupActivity : ComponentActivity() {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("সংযুক্ত Google অ্যাকাউন্ট", style = MaterialTheme.typography.titleMedium)
-                Text(email ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
+                Text(displayEmail ?: "কোনো অ্যাকাউন্ট সংযুক্ত নেই।", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(30.dp))
 
-                // একটি মাত্র ম্যানুয়াল স্মার্ট সিঙ্ক বাটন (ইন এবং আউট একসাথে কাজ করবে)
                 Button(
                     onClick = {
                         busy = true
                         message = "ডেটা মেলানো হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন..."
                         
-                        // এখানে দুটি প্যারামিটার (resultMsg এবং isDataSynced) সঠিকভাবে রিসিভ করা হয়েছে
                         CloudSyncManager.smartSync(this@CloudBackupActivity, isAuto = false) { resultMsg, isDataSynced ->
                             busy = false
                             message = resultMsg
                             
-                            // যদি নতুন ডেটা সফলভাবে ক্লাউড থেকে আসে, তবে স্ক্রিন রিফ্রেশ হবে
                             if (isDataSynced) {
                                 recreate()
                             }
                         }
                     },
-                    enabled = !busy && email != null,
+                    // বাটন এনাবল থাকবে যদি displayEmail থাকে
+                    enabled = !busy && displayEmail != null,
                     modifier = Modifier.size(140.dp),
                     shape = CircleShape
                 ) {
@@ -105,7 +108,6 @@ class CloudBackupActivity : ComponentActivity() {
 
                 Spacer(Modifier.height(30.dp))
 
-                // অটো-সিঙ্ক সুইচ
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
