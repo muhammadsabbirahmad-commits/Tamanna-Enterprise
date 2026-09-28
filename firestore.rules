@@ -107,11 +107,14 @@ service cloud.firestore {
     match /businesses/{businessId} {
       allow read: if member(businessId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if businessAdmin(businessId);
+      allow update, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
 
       match /members/{memberId} {
-        allow read: if businessAdmin(businessId) || (member(businessId) && request.auth.uid == memberId);
-        allow create: if businessAdmin(businessId)
+        allow read: if (signedIn()
+              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid)
+          || (member(businessId) && request.auth.uid == memberId);
+        allow create: if (signedIn()
+              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid)
           || (signedIn()
               && memberId == request.auth.uid
               && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid != ""
@@ -128,18 +131,23 @@ service cloud.firestore {
               && request.resource.data.role == "OWNER"
               && request.resource.data.approved == true
               && request.resource.data.blocked == false);
-        allow update: if businessAdmin(businessId)
+        allow update: if signedIn()
+          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
           && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid
           && request.resource.data.uid == memberId
           && request.resource.data.role == "PARTNER"
           && request.resource.data.email == resource.data.email;
-        allow delete: if businessAdmin(businessId)
+        allow delete: if signedIn()
+          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
           && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid;
       }
 
       match /data/{document} {
-        allow read: if member(businessId);
-        allow write: if businessAdmin(businessId);
+        allow read: if member(businessId)
+          || (signedIn()
+              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid);
+        allow write: if signedIn()
+          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
       }
     }
 
