@@ -11,17 +11,6 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/accessUsers/$(request.auth.uid));
     }
 
-    function approvedUser() {
-      return signedIn()
-        && currentAccess().data.approved == true
-        && currentAccess().data.blocked != true
-        && (
-          currentAccess().data.role == "ADMIN" ||
-          currentAccess().data.role == "PARTNER" ||
-          currentAccess().data.role == "VIEWER"
-        );
-    }
-
     function admin() {
       return signedIn()
         && currentAccess().data.approved == true
@@ -152,11 +141,6 @@ service cloud.firestore {
         allow read: if member(businessId);
         allow write: if businessAdmin(businessId);
       }
-    }
-
-    match /users/{userId}/data/{document} {
-      allow read: if approvedUser() && (request.auth.uid == userId || admin());
-      allow write: if admin();
     }
 
     match /{document=**} {
