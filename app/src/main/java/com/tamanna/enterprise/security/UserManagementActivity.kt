@@ -41,7 +41,8 @@ fun UserManagementScreen() {
 
     fun loadData() {
         loading = true
-        db.collection("preApprovedPartners").get()
+        val businessId = com.tamanna.enterprise.business.BusinessAccountStorage.get(context).businessId
+        db.collection("preApprovedPartners").whereEqualTo("businessId", businessId).get()
             .addOnSuccessListener { snap ->
                 val list = snap.documents.mapNotNull { doc ->
                     val email = doc.getString("email") ?: return@mapNotNull null
@@ -90,7 +91,8 @@ fun UserManagementScreen() {
                                 val emailToSave = newEmail.trim().lowercase()
                                 if (emailToSave.isNotBlank() && emailToSave.contains("@")) {
                                     val partnerKey = "partner_" + emailToSave.replace(".", "_").replace("@", "_")
-                                    val data = mapOf("email" to emailToSave, "addedAt" to System.currentTimeMillis())
+                                    val businessId = com.tamanna.enterprise.business.BusinessAccountStorage.get(context).businessId
+                                    val data = mapOf("email" to emailToSave, "businessId" to businessId, "addedByUid" to (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""), "addedAt" to System.currentTimeMillis())
                                     
                                     db.collection("preApprovedPartners").document(partnerKey)
                                         .set(data)
