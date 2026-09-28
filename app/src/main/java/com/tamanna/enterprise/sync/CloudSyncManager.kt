@@ -17,12 +17,14 @@ object CloudSyncManager {
     private const val PREF_SYNC = "tamanna_sync_prefs"
     private const val KEY_LAST_LOCAL_HASH = "last_local_hash"
 
+    // এখানে পণ্যের ডেটাবেজের সঠিক নাম "tamanna_enterprise_products" যুক্ত করা হয়েছে
     private val namespaces = listOf(
         "tamanna_enterprise_settings",
         "tamanna_business_prefs",
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
-        "tamanna_transactions_prefs"
+        "tamanna_transactions_prefs",
+        "tamanna_enterprise_products" 
     )
 
     private val handler = Handler(Looper.getMainLooper())
@@ -202,10 +204,10 @@ object CloudSyncManager {
                                         is String -> editor.putString(k, v)
                                         is Int -> editor.putInt(k, v)
                                         is Long -> editor.putLong(k, v)
-                                        is Double -> editor.putFloat(k, v.toFloat()) // ফিক্স: ফায়ারস্টোরের Double নাম্বার হ্যান্ডলিং
+                                        is Double -> editor.putFloat(k, v.toFloat()) 
                                         is Float -> editor.putFloat(k, v)
                                         is Boolean -> editor.putBoolean(k, v)
-                                        is Number -> editor.putLong(k, v.toLong()) // ব্যাকআপ নাম্বার টাইপ
+                                        is Number -> editor.putLong(k, v.toLong())
                                     }
                                 }
                             }
