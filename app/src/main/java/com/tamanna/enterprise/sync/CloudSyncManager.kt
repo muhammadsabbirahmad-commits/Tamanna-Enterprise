@@ -7,11 +7,7 @@ import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.SetOptions
-import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.business.BusinessMembershipManager
-import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
 object CloudSyncManager {
@@ -59,70 +55,53 @@ object CloudSyncManager {
     }
 
     /**
-     * Keeps approved Partners continuously subscribed to the shared business backup.
-     * Owner remains the only writer; Partners only receive/pull changes.
+     * ইউজারের নিজস্ব রিয়েলটাইম সিঙ্ক।
+     * ইউজার যদি অন্য কোনো ডিভাইসে ডেটা আপডেট করে, তবে এই লিসেনার দিয়ে তা স্বয়ংক্রিয়ভাবে আপডেট হবে।
      */
     fun startRealtimeSync(context: Context) {
         val authUser = FirebaseAuth.getInstance().currentUser ?: return
-        val businessId = BusinessAccountStorage.get(context).businessId.trim()
-        if (businessId.isBlank() || realtimeListener != null || realtimeListenerStarting) return
+        if (realtimeListener != null || realtimeListenerStarting) return
 
         realtimeListenerStarting = true
         val db = FirebaseFirestore.getInstance()
-        val memberRef = db.collection("businesses")
-            .document(businessId)
-            .collection("members")
+        
+        // ইউজারের নিজস্ব ব্যাকআপ পাথ
+        val ref = db.collection("users")
             .document(authUser.uid)
+            .collection("data")
+            .document("backup")
 
-        memberRef.get()
-            .addOnSuccessListener { member ->
-                realtimeListenerStarting = false
-                val role = member.getString("role").orEmpty()
-                val approved = member.getBoolean("approved") == true
-                val blocked = member.getBoolean("blocked") == true
-
-                if (role != "PARTNER" || !approved || blocked) {
-                    Log.d(TAG, "Partner realtime sync not started: business membership is not an approved Partner.")
-                    return@addOnSuccessListener
-                }
-
-                val ref = db.collection("businesses")
-                    .document(businessId)
-                    .collection("data")
-                    .document("backup")
-
-                realtimeListener = ref.addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Partner realtime sync listener failed.", error)
-                        return@addSnapshotListener
-                    }
-                    if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
-
-                    val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
-                    val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                    val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
-
-                    if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
-
-                    pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
-                        if (success) Log.d(TAG, "Partner data updated from Owner cloud backup.")
-                    }
-                }
-                Log.d(TAG, "Partner realtime sync started for businessId=$businessId")
+        realtimeListener = ref.addSnapshotListener { snapshot, error ->
+            realtimeListenerStarting = false
+            if (error != null) {
+                Log.w(TAG, "Realtime sync listener failed.", error)
+                return@addSnapshotListener
             }
-            .addOnFailureListener {
-                realtimeListenerStarting = false
-                Log.w(TAG, "Could not verify Partner business membership.", it)
+            if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
+
+            val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
+            val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+            val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+
+            if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
+
+            pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
+                if (success) Log.d(TAG, "Local data updated from user's personal cloud backup.")
             }
+        }
+        Log.d(TAG, "Realtime sync started for userId=${authUser.uid}")
     }
 
     fun stopRealtimeSync() {
         realtimeListener?.remove()
         realtimeListener = null
         realtimeListenerStarting = false
-        Log.d(TAG, "Partner realtime sync stopped.")
+        Log.d(TAG, "Realtime sync stopped.")
     }
 
+    /**
+     * সরাসরি ইউজারের নিজস্ব ফোল্ডার টার্গেট করার ফাংশন
+     */
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
         val authUser = FirebaseAuth.getInstance().currentUser
         if (authUser == null) {
@@ -130,55 +109,16 @@ object CloudSyncManager {
             return
         }
 
-        val businessId = BusinessAccountStorage.get(context).businessId.trim()
-        if (businessId.isBlank()) {
-            onResult(null, false)
-            return
-        }
-
         val db = FirebaseFirestore.getInstance()
-        val businessRef = db.collection("businesses").document(businessId)
-        val sharedRef = businessRef.collection("data").document("backup")
-        val localUser = SecurityStorage.getCurrentUser(context)
+        
+        // বিজনেস আইডির বদলে সরাসরি ইউজারের ফায়ারস্টোর পাথ ব্যবহার করা হচ্ছে
+        val sharedRef = db.collection("users")
+            .document(authUser.uid)
+            .collection("data")
+            .document("backup")
 
-        // The app's local ADMIN is the Business Owner for cloud backup.
-        // Ensure the matching Firestore OWNER membership exists before accessing the shared backup.
-        if (localUser?.role == SecurityStorage.ROLE_ADMIN) {
-            BusinessMembershipManager.createOrUpdateOwner(
-                businessId = businessId,
-                email = authUser.email.orEmpty()
-            ) { success, message ->
-                if (!success) {
-                    Log.w(TAG, "Could not establish Owner membership for cloud sync: $message")
-                    onResult(null, false)
-                    return@createOrUpdateOwner
-                }
-
-                val adminData = mapOf(
-                    "adminUid" to authUser.uid,
-                    "uid" to authUser.uid,
-                    "email" to (authUser.email ?: ""),
-                    "role" to "ADMIN"
-                )
-                db.collection("appConfig").document("admin").set(adminData, SetOptions.merge())
-                onResult(sharedRef, true)
-            }
-            return
-        }
-
-        val memberRef = businessRef.collection("members").document(authUser.uid)
-        memberRef.get()
-            .addOnSuccessListener { member ->
-                val role = member.getString("role").orEmpty()
-                val approved = member.getBoolean("approved") == true
-                val blocked = member.getBoolean("blocked") == true
-                val isOwner = role == "OWNER" && approved && !blocked
-                onResult(sharedRef, isOwner)
-            }
-            .addOnFailureListener {
-                Log.w(TAG, "Could not verify business membership for cloud sync.", it)
-                onResult(null, false)
-            }
+        // ইউজার যেহেতু তার নিজের ডেটা নিজেই সেভ করছে, তাই সব সময় True (canPush) রিটার্ন হবে
+        onResult(sharedRef, true)
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -203,7 +143,7 @@ object CloudSyncManager {
 
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
-                if (!isAuto) onComplete("অ্যাডমিন অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।", false)
+                if (!isAuto) onComplete("অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।", false)
                 return@getTargetSyncDoc
             }
 
@@ -218,7 +158,6 @@ object CloudSyncManager {
 
                 when {
                     canPush && currentLocalHash != lastSyncedHash -> {
-                        // Owner is the single writer: local changes always go to the shared cloud backup.
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                             if (!isAuto) {
                                 val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
@@ -227,7 +166,6 @@ object CloudSyncManager {
                         }
                     }
                     isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) -> {
-                        // Partners and fresh devices pull the latest shared business backup.
                         val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
                         pullAllFromCloud(appContext, metaRef, pullHash) { success ->
                             if (!isAuto) {
