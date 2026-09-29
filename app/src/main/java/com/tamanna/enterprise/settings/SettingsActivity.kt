@@ -165,7 +165,7 @@ private fun SettingsScreen(
                 // --- ক্লাউড সিঙ্ক ও ব্যাকআপ সেকশন যোগ করা হলো ---
                 Text("ক্লাউড সিঙ্ক ও ব্যাকআপ", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
-                Text("অ্যাডমিন ও পার্টনারদের মধ্যে রিয়েল-টাইম ডাটা আদান-প্রদান করতে সিঙ্ক করুন।", style = MaterialTheme.typography.bodySmall)
+                Text("ক্লাউডে ব্যবসার ডাটা ব্যাকআপ ও রিয়েল-টাইম সিঙ্কের জন্য ব্যবহার করুন।", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
 
                 Button(
@@ -224,25 +224,7 @@ private fun SettingsScreen(
                             }
                         }
                     }
-                } else {
-                    Text(
-                        "এখান থেকেই Partner Login করবেন। Login Screen আর অ্যাপ চালুর সময় দেখানো হবে না।",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(Modifier.height(10.dp))
 
-                    Button(
-                        onClick = {
-                            context.startActivity(
-                                Intent(context, com.tamanna.enterprise.security.LoginActivity::class.java)
-                                    .putExtra("LOGIN_MODE", "PARTNER")
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("👤 Partner Login")
-                    }
-                }
 
                 Spacer(Modifier.height(20.dp))
 
@@ -274,14 +256,6 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                Text("পার্টনার ও ব্যবহারকারী ব্যবস্থাপনা", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = { context.startActivity(Intent(context, com.tamanna.enterprise.security.UserManagementActivity::class.java)) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("👥 Partner Management")
-                }
 
                 Spacer(Modifier.height(20.dp))
 
