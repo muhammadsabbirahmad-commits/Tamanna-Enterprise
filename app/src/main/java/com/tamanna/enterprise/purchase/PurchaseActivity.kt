@@ -66,7 +66,7 @@ class PurchaseActivity : ComponentActivity() {
 @Composable
 private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var purchases by remember { mutableStateOf(PurchaseStorage.getPurchases(context)) }
+    val canWrite = com.tamanna.enterprise.security.SecurityStorage.canWrite(context)\n    var purchases by remember { mutableStateOf(PurchaseStorage.getPurchases(context)) }
     var selectedPurchase by remember { mutableStateOf<Purchase?>(null) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
