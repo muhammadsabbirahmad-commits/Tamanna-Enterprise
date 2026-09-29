@@ -211,7 +211,29 @@ object CloudSyncManager {
             return
         }
 
-        val dataMap = mutableMapOf<String, Any>()
+        val db = FirebaseFirestore.getInstance()
+        val businessDocRef = db.collection("businesses").document(businessId)
+
+        val businessData = mapOf(
+            "ownerUid" to authUser.uid,
+            "updatedAt" to System.currentTimeMillis()
+        )
+
+        // Keep the metadata document small. Each preference namespace is stored
+        // in its own document so the complete backup is not limited by Firestore's
+        // per-document size limit.
+        val metadata = mapOf(
+            "dataHash" to currentLocalHash,
+            "updatedAt" to System.currentTimeMillis(),
+            "businessId" to businessId,
+            "ownerUid" to authUser.uid,
+            "schemaVersion" to 2
+        )
+
+        val batch = db.batch()
+        batch.set(businessDocRef, businessData, com.google.firebase.firestore.SetOptions.merge())
+        batch.set(metaRef, metadata)
+
         for (ns in namespaces) {
             val prefs = BusinessStorage.prefs(context, ns)
             val nsMap = mutableMapOf<String, Any>()
@@ -224,89 +246,98 @@ object CloudSyncManager {
                     }
                 }
             }
-            dataMap[ns] = nsMap
+
+            val nsRef = metaRef.collection("backupData").document(ns)
+            batch.set(nsRef, mapOf("data" to nsMap))
         }
-        dataMap["dataHash"] = currentLocalHash
-        dataMap["updatedAt"] = System.currentTimeMillis()
 
-        val db = FirebaseFirestore.getInstance()
-
-        // The backup path and the parent business document must use the same Business ID.
-        val businessDocRef = db.collection("businesses").document(businessId)
-
-        val businessData = mapOf(
-            "ownerUid" to authUser.uid,
-            "updatedAt" to System.currentTimeMillis()
-        )
-
-        businessDocRef.set(businessData, com.google.firebase.firestore.SetOptions.merge())
+        batch.commit()
             .addOnSuccessListener {
-                metaRef.set(dataMap)
-                    .addOnSuccessListener {
-                        val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                        syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, currentLocalHash).apply()
-                        onResult(true)
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Push failed on backup doc", e)
-                        onResult(false)
-                    }
+                val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, currentLocalHash).apply()
+                onResult(true)
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to create/update parent business doc", e)
+                Log.e(TAG, "Push failed while writing backup batch", e)
                 onResult(false)
             }
     }
 
     fun pullAllFromCloud(context: Context, metaRef: DocumentReference, cloudHash: String, onResult: (Boolean) -> Unit) {
         metaRef.get()
-            .addOnSuccessListener { doc ->
-                try {
-                    if (doc.exists()) {
-                        for (ns in namespaces) {
-                            val cloudData = doc.get(ns) as? Map<*, *>
-                            if (cloudData != null) {
-                                val prefs = BusinessStorage.prefs(context, ns)
-                                val editor = prefs.edit()
-                                editor.clear()
-                                for ((k, v) in cloudData) {
-                                    if (k is String && v != null) {
-                                        try {
-                                            when (v) {
-                                                is String -> editor.putString(k, v)
-                                                is Int -> editor.putInt(k, v)
-                                                is Long -> editor.putLong(k, v)
-                                                is Double -> editor.putFloat(k, v.toFloat())
-                                                is Float -> editor.putFloat(k, v)
-                                                is Boolean -> editor.putBoolean(k, v)
-                                                is Number -> editor.putLong(k, v.toLong())
-                                                is List<*> -> {
-                                                    val stringSet = v.filterIsInstance<String>().toSet()
-                                                    editor.putStringSet(k, stringSet)
-                                                }
-                                            }
-                                        } catch (e: Exception) {
-                                            Log.e(TAG, "Error parsing key $k in namespace $ns", e)
-                                        }
-                                    }
+            .addOnSuccessListener { metaDoc ->
+                if (!metaDoc.exists()) {
+                    onResult(false)
+                    return@addOnSuccessListener
+                }
+
+                val backupDataRef = metaRef.collection("backupData")
+                backupDataRef.get()
+                    .addOnSuccessListener { backupSnapshot ->
+                        try {
+                            if (backupSnapshot.documents.isNotEmpty()) {
+                                for (nsDoc in backupSnapshot.documents) {
+                                    val ns = nsDoc.id
+                                    if (ns !in namespaces) continue
+                                    val cloudData = nsDoc.get("data") as? Map<*, *> ?: continue
+                                    restoreNamespace(context, ns, cloudData)
                                 }
-                                editor.apply()
+                            } else {
+                                // Backward compatibility for backups created by the
+                                // previous single-document format.
+                                for (ns in namespaces) {
+                                    val cloudData = metaDoc.get(ns) as? Map<*, *> ?: continue
+                                    restoreNamespace(context, ns, cloudData)
+                                }
                             }
+
+                            val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                            syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, cloudHash).apply()
+                            onResult(true)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Exception during pullAllFromCloud processing", e)
+                            onResult(false)
                         }
-                        val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                        syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, cloudHash).apply()
-                        onResult(true)
-                    } else {
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "Failed to read backup data", e)
                         onResult(false)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Exception during pullAllFromCloud processing", e)
-                    onResult(false)
-                }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Pull failed", e)
                 onResult(false)
             }
     }
+
+    private fun restoreNamespace(context: Context, ns: String, cloudData: Map<*, *>) {
+        val prefs = BusinessStorage.prefs(context, ns)
+        val editor = prefs.edit()
+        editor.clear()
+
+        for ((k, v) in cloudData) {
+            if (k is String && v != null) {
+                try {
+                    when (v) {
+                        is String -> editor.putString(k, v)
+                        is Int -> editor.putInt(k, v)
+                        is Long -> editor.putLong(k, v)
+                        is Double -> editor.putFloat(k, v.toFloat())
+                        is Float -> editor.putFloat(k, v)
+                        is Boolean -> editor.putBoolean(k, v)
+                        is Number -> editor.putLong(k, v.toLong())
+                        is List<*> -> {
+                            val stringSet = v.filterIsInstance<String>().toSet()
+                            editor.putStringSet(k, stringSet)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing key $k in namespace $ns", e)
+                }
+            }
+        }
+
+        editor.apply()
+    }
+
 }
