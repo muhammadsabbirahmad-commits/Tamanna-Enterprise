@@ -10,9 +10,6 @@ import android.graphics.pdf.PdfDocument
 import com.tamanna.enterprise.due.DueEntry
 import com.tamanna.enterprise.finance.DamageRecord
 import com.tamanna.enterprise.finance.Expense
-import com.tamanna.enterprise.finance.PartnerWithdrawal
-import com.tamanna.enterprise.partner.Partner
-import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.purchase.Purchase
 import com.tamanna.enterprise.purchase.SupplierDueEntry
@@ -31,9 +28,7 @@ object ReportPdfExporter {
         sales: List<Sale>,
         purchases: List<Purchase>,
         products: List<Product>,
-        partners: List<Partner>,
         expenses: List<Expense>,
-        withdrawals: List<PartnerWithdrawal>,
         damages: List<DamageRecord>,
         customerDue: List<DueEntry>,
         supplierDue: List<SupplierDueEntry>
@@ -87,17 +82,6 @@ object ReportPdfExporter {
             line("Total Units: " + products.sumOf { it.stockQuantity })
             line("Stock Cost: ৳ %.2f".format(Locale.getDefault(), products.sumOf { it.stockQuantity * it.purchasePrice }))
             products.forEach { line(it.code + " | " + it.name + " | Qty " + it.stockQuantity + " | Cost ৳ %.2f".format(Locale.getDefault(), it.stockQuantity * it.purchasePrice)) }
-        }
-        if ("partners" in selected) {
-            val profit = sales.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }.coerceAtLeast(0.0)
-            section("PARTNERS")
-            line("Total Investment: ৳ %.2f".format(Locale.getDefault(), partners.sumOf { it.investment }))
-            partners.forEach { line(it.name + " | Investment ৳ %.2f | ".format(Locale.getDefault(), it.investment) + it.percentage + "% | Profit Share ৳ %.2f".format(Locale.getDefault(), PartnerStorage.profitShare(profit, it))) }
-        }
-        if ("withdrawal" in selected) {
-            section("PARTNER WITHDRAWALS")
-            line("Total Withdrawal: ৳ %.2f".format(Locale.getDefault(), withdrawals.sumOf { it.amount }))
-            withdrawals.forEach { line(it.date + " | " + it.partnerName + " | ৳ %.2f | ".format(Locale.getDefault(), it.amount) + it.method) }
         }
         if ("expense" in selected) {
             section("BUSINESS EXPENSES")
