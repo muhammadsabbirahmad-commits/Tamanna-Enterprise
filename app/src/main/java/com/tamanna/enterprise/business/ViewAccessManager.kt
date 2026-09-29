@@ -150,4 +150,33 @@ object ViewAccessManager {
             }
             .addOnFailureListener { onResult(null) }
     }
+
+    fun listForBusiness(
+        businessId: String,
+        onResult: (List<ViewAccessEntry>) -> Unit
+    ) {
+        if (businessId.isBlank()) {
+            onResult(emptyList())
+            return
+        }
+
+        db().collection(BUSINESSES).document(businessId)
+            .collection(VIEW_ACCESS)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                onResult(
+                    snapshot.documents.mapNotNull { doc ->
+                        if (doc.getBoolean("active") != true) return@mapNotNull null
+                        ViewAccessEntry(
+                            email = doc.getString("email").orEmpty(),
+                            businessId = doc.getString("businessId").orEmpty(),
+                            ownerUid = doc.getString("ownerUid").orEmpty(),
+                            active = true
+                        )
+                    }.sortedBy { it.email }
+                )
+            }
+            .addOnFailureListener { onResult(emptyList()) }
+    }
+
 }
