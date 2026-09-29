@@ -42,7 +42,7 @@ object CloudSyncManager {
     fun startAutoSync(context: Context, intervalMillis: Long = 30000L) {
         if (isAutoSyncRunning) return
         isAutoSyncRunning = true
-        
+
         autoSyncRunnable = object : Runnable {
             override fun run() {
                 smartSync(context, isAuto = true) { _, _ -> }
@@ -60,11 +60,11 @@ object CloudSyncManager {
     }
 
     fun startRealtimeSync(context: Context) {
-        val authUser = FirebaseAuth.getInstance().currentUser ?: return
+        FirebaseAuth.getInstance().currentUser ?: return
         if (realtimeListener != null || realtimeListenerStarting) return
 
         realtimeListenerStarting = true
-        
+
         getTargetSyncDoc(context) { ref, _ ->
             if (ref == null) {
                 realtimeListenerStarting = false
@@ -105,16 +105,20 @@ object CloudSyncManager {
             return
         }
 
-        val db = FirebaseFirestore.getInstance()
-        // বর্তমান লগইন করা Owner-এর UID দিয়ে ব্যাকআপ পাথ নির্ধারণ
         val businessId = BusinessStorage.getActiveBusinessId(context).trim()
         if (businessId.isBlank()) {
             onResult(null, false)
             return
         }
+
         val isOwner = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
-        val ref = db.collection("businesses").document(businessId).collection("data").document("backup")
-        onResult(ref, isOwner) 
+        val ref = FirebaseFirestore.getInstance()
+            .collection("businesses")
+            .document(businessId)
+            .collection("data")
+            .document("backup")
+
+        onResult(ref, isOwner)
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -200,7 +204,13 @@ object CloudSyncManager {
             onResult(false)
             return
         }
-        
+
+        val businessId = BusinessStorage.getActiveBusinessId(context).trim()
+        if (businessId.isBlank()) {
+            onResult(false)
+            return
+        }
+
         val dataMap = mutableMapOf<String, Any>()
         for (ns in namespaces) {
             val prefs = BusinessStorage.prefs(context, ns)
@@ -220,7 +230,9 @@ object CloudSyncManager {
         dataMap["updatedAt"] = System.currentTimeMillis()
 
         val db = FirebaseFirestore.getInstance()
-        val businessDocRef = db.collection("businesses").document(authUser.uid)
+
+        // The backup path and the parent business document must use the same Business ID.
+        val businessDocRef = db.collection("businesses").document(businessId)
 
         val businessData = mapOf(
             "ownerUid" to authUser.uid,
@@ -241,7 +253,7 @@ object CloudSyncManager {
                     }
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to create parent business doc", e)
+                Log.e(TAG, "Failed to create/update parent business doc", e)
                 onResult(false)
             }
     }
