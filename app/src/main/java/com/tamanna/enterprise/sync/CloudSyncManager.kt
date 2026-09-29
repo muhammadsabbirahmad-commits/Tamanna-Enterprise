@@ -104,7 +104,6 @@ object CloudSyncManager {
         val businessAccount = BusinessAccountStorage.get(context)
         val localUser = SecurityStorage.getCurrentUser(context)
         
-        // businessId ফাঁকা থাকলে ইউজারের নিজস্ব UID ব্যবহার করবে যাতে কোনো ব্ল্যাংক পাথ না হয়
         val businessId = businessAccount.businessId.ifBlank { authUser.uid }
         val isPartner = localUser?.role == "PARTNER"
 
@@ -214,7 +213,6 @@ object CloudSyncManager {
         dataMap["dataHash"] = currentLocalHash
         dataMap["updatedAt"] = System.currentTimeMillis()
 
-        // ফায়ারবেসে স্বয়ংক্রিয়ভাবে মূল বিজনেস ফোল্ডার ও ডকুমেন্ট তৈরি করে নেওয়া যাতে পারমিশন এরর না আসে
         val businessId = BusinessAccountStorage.get(context).businessId.ifBlank { authUser.uid }
         val db = FirebaseFirestore.getInstance()
         val businessDocRef = db.collection("businesses").document(businessId)
@@ -246,37 +244,46 @@ object CloudSyncManager {
     fun pullAllFromCloud(context: Context, metaRef: DocumentReference, cloudHash: String, onResult: (Boolean) -> Unit) {
         metaRef.get()
             .addOnSuccessListener { doc ->
-                if (doc.exists()) {
-                    for (ns in namespaces) {
-                        val cloudData = doc.get(ns) as? Map<*, *>
-                        if (cloudData != null) {
-                            val prefs = BusinessStorage.prefs(context, ns)
-                            val editor = prefs.edit()
-                            editor.clear()
-                            for ((k, v) in cloudData) {
-                                if (k is String && v != null) {
-                                    when (v) {
-                                        is String -> editor.putString(k, v)
-                                        is Int -> editor.putInt(k, v)
-                                        is Long -> editor.putLong(k, v)
-                                        is Double -> editor.putFloat(k, v.toFloat())
-                                        is Float -> editor.putFloat(k, v)
-                                        is Boolean -> editor.putBoolean(k, v)
-                                        is Number -> editor.putLong(k, v.toLong())
-                                        is List<*> -> {
-                                            val stringSet = v.filterIsInstance<String>().toSet()
-                                            editor.putStringSet(k, stringSet)
+                try {
+                    if (doc.exists()) {
+                        for (ns in namespaces) {
+                            val cloudData = doc.get(ns) as? Map<*, *>
+                            if (cloudData != null) {
+                                val prefs = BusinessStorage.prefs(context, ns)
+                                val editor = prefs.edit()
+                                editor.clear()
+                                for ((k, v) in cloudData) {
+                                    if (k is String && v != null) {
+                                        try {
+                                            when (v) {
+                                                is String -> editor.putString(k, v)
+                                                is Int -> editor.putInt(k, v)
+                                                is Long -> editor.putLong(k, v)
+                                                is Double -> editor.putFloat(k, v.toFloat())
+                                                is Float -> editor.putFloat(k, v)
+                                                is Boolean -> editor.putBoolean(k, v)
+                                                is Number -> editor.putLong(k, v.toLong())
+                                                is List<*> -> {
+                                                    val stringSet = v.filterIsInstance<String>().toSet()
+                                                    editor.putStringSet(k, stringSet)
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "Error parsing key $k in namespace $ns", e)
                                         }
                                     }
                                 }
+                                editor.apply()
                             }
-                            editor.apply()
                         }
+                        val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                        syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, cloudHash).apply()
+                        onResult(true)
+                    } else {
+                        onResult(false)
                     }
-                    val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                    syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, cloudHash).apply()
-                    onResult(true)
-                } else {
+                } catch (e: Exception) {
+                    Log.e(TAG, "Exception during pullAllFromCloud processing", e)
                     onResult(false)
                 }
             }
