@@ -9,8 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.tamanna.enterprise.partner.Partner
-import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
@@ -21,7 +19,7 @@ class FinanceActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super
 fun todayFinance()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())
 @Composable fun FinanceScreen(a:ComponentActivity){
  var tab by remember{mutableIntStateOf(0)}
- Column(Modifier.fillMaxSize().padding(16.dp)){Text("খরচ, পার্টনার উত্তোলন ও ড্যামেজ",style=MaterialTheme.typography.headlineSmall);Row{Button({tab=0},Modifier.weight(1f)){Text("প্রতিষ্ঠানের খরচ")};Button({tab=1},Modifier.weight(1f)){Text("পার্টনার উত্তোলন")};Button({tab=2},Modifier.weight(1f)){Text("ড্যামেজ মাল")}};Spacer(Modifier.height(8.dp));when(tab){0->ExpensePane(a);1->WithdrawalPane(a);2->DamagePane(a)}}}
+ Column(Modifier.fillMaxSize().padding(16.dp)){Text("খরচ ও ড্যামেজ",style=MaterialTheme.typography.headlineSmall);Row{Button({tab=0},Modifier.weight(1f)){Text("প্রতিষ্ঠানের খরচ")};Button({tab=1},Modifier.weight(1f)){Text("ড্যামেজ মাল")}};Spacer(Modifier.height(8.dp));when(tab){0->ExpensePane(a);1->DamagePane(a)}}}
 
 @Composable fun ExpensePane(a:ComponentActivity){
  var cat by remember{mutableStateOf("")};var amt by remember{mutableStateOf("")};var note by remember{mutableStateOf("")};var date by remember{mutableStateOf(todayFinance())};var list by remember{mutableStateOf(ExpenseStorage.getExpenses(a))};var msg by remember{mutableStateOf("")}
@@ -46,10 +44,6 @@ fun todayFinance()=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Dat
   LazyColumn{items(list.take(50)){Text(it.date+" — "+it.category+": ৳ "+String.format(Locale.US,"%.2f",it.amount),Modifier.padding(5.dp))}}
  }
 }
-
-@Composable fun WithdrawalPane(a:ComponentActivity){
- val canManage=SecurityStorage.canManage(a);val ps=remember{PartnerStorage.getPartners(a)};var p by remember{mutableStateOf<Partner?>(ps.firstOrNull())};var amt by remember{mutableStateOf("")};var method by remember{mutableStateOf("নগদ")};var note by remember{mutableStateOf("")};var date by remember{mutableStateOf(todayFinance())};var list by remember{mutableStateOf(ExpenseStorage.getWithdrawals(a))};var open by remember{mutableStateOf(false)}
- Column{if(!canManage)Text("শুধু Admin পার্টনার উত্তোলন সংরক্ষণ করতে পারবেন।",color=MaterialTheme.colorScheme.error);if(ps.isEmpty())Text("আগে পার্টনার যোগ করুন।")else{Box{Button({open=true},Modifier.fillMaxWidth()){Text("পার্টনার নির্বাচন")};DropdownMenu(open,{open=false}){ps.forEach{x->DropdownMenuItem(text={Text(x.name)},onClick={p=x;open=false})}}};Text("নির্বাচিত: "+(p?.name?:""));OutlinedTextField(date,{date=it},label={Text("তারিখ")},modifier=Modifier.fillMaxWidth());OutlinedTextField(amt,{amt=it},label={Text("উত্তোলনের টাকা")},modifier=Modifier.fillMaxWidth());OutlinedTextField(method,{method=it},label={Text("পদ্ধতি: নগদ / bKash / ব্যাংক")},modifier=Modifier.fillMaxWidth());OutlinedTextField(note,{note=it},label={Text("বিবরণ")},modifier=Modifier.fillMaxWidth());Button({val x=amt.toDoubleOrNull();val q=p;if(!canManage){}else if(q!=null&&x!=null&&x>0){ExpenseStorage.addWithdrawal(a,PartnerWithdrawal(System.currentTimeMillis(),date,q.id,q.name,x,method,note));ActivityLogStorage.add(a,"পার্টনার উত্তোলন যোগ",q.name+" — ৳ "+String.format(Locale.US,"%.2f",x));list=ExpenseStorage.getWithdrawals(a);amt="";note=""}},Modifier.fillMaxWidth(),enabled=canManage){Text("উত্তোলন সংরক্ষণ")};Text("মোট উত্তোলন: ৳ %.2f".format(Locale.US,list.sumOf{it.amount}));LazyColumn{items(list.take(50)){Text(it.date+" — "+it.partnerName+": ৳ "+String.format(Locale.US,"%.2f",it.amount)+" ("+it.method+")",Modifier.padding(5.dp))}}}}}
 
 @Composable fun DamagePane(a:ComponentActivity){
  val canManage=SecurityStorage.canManage(a);val products=remember{ProductStorage.getProducts(a)};var code by remember{mutableStateOf("")};var qty by remember{mutableStateOf("")};var reason by remember{mutableStateOf("")};var date by remember{mutableStateOf(todayFinance())};var list by remember{mutableStateOf(ExpenseStorage.getDamages(a))};var msg by remember{mutableStateOf("")}
