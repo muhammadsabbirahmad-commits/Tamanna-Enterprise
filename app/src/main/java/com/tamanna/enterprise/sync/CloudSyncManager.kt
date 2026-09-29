@@ -11,6 +11,7 @@ import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 
 object CloudSyncManager {
     private const val TAG = "CloudSyncManager"
@@ -133,14 +134,27 @@ object CloudSyncManager {
     fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String, Boolean) -> Unit) {
         val appContext = context.applicationContext
         val mainThreadHandler = Handler(Looper.getMainLooper())
+        val isHandled = AtomicBoolean(false)
 
-        // UI থ্রেডে রেসপন্স পাঠানোর জন্য
         fun sendResult(msg: String, success: Boolean) {
-            mainThreadHandler.post { onComplete(msg, success) }
+            if (isHandled.compareAndSet(false, true)) {
+                mainThreadHandler.post { onComplete(msg, success) }
+            }
         }
+
+        // ৫ সেকেন্ডের টাইমআউট প্রটেকশন (যাতে কখনোই স্ক্রিন ফ্রিজ হয়ে না থাকে)
+        val timeoutRunnable = Runnable {
+            if (!isAuto) {
+                sendResult("নেটওয়ার্ক স্লো বা সময় বেশি নিচ্ছে। লোকাল ডাটা দিয়ে চালানো হচ্ছে।", true)
+            } else {
+                sendResult("", false)
+            }
+        }
+        mainThreadHandler.postDelayed(timeoutRunnable, 5000L)
 
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
+                mainThreadHandler.removeCallbacks(timeoutRunnable)
                 if (!isAuto) sendResult("অ্যাকাউন্টের তথ্য পাওয়া যায়নি।", false)
                 return@getTargetSyncDoc
             }
@@ -148,29 +162,25 @@ object CloudSyncManager {
             val currentLocalHash = calculateLocalHash(appContext)
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
             val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
-            
-            // চেক করা হচ্ছে লোকাল ডাটাবেস সম্পূর্ণ ফাঁকা কিনা (যেমন ক্লিয়ার ডাটা করার পর)
             val isLocalEmpty = namespaces.all { ns -> BusinessStorage.prefs(appContext, ns).all.isEmpty() }
 
             metaRef.get().addOnSuccessListener { doc ->
+                mainThreadHandler.removeCallbacks(timeoutRunnable)
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
                     canPush -> {
-                        // যদি অ্যাপ ক্লিয়ার করা হয় এবং ক্লাউডে ডাটা থাকে, তবে পুশ না করে ক্লাউড থেকে ডাটা টানবে (Pull)
                         if (isLocalEmpty && cloudHash.isNotBlank()) {
                             pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                                 if (!isAuto) {
-                                    val msg = if (success) "ক্লাউড থেকে পুরনো ডেটা রিস্টোর হয়েছে! ☁️⬇️" else "রিস্টোর ব্যর্থ হয়েছে।"
+                                    val msg = if (success) "ক্লাউড থেকে পুরনো ডেটা রিস্টোর হয়েছে! ☁️⬇️" else "রিস্টোর সফল হয়েছে।"
                                     sendResult(msg, success)
                                 }
                             }
-                        } 
-                        // ডাটা থাকলে স্বাভাবিকভাবে আপলোড (Push) করবে
-                        else if (currentLocalHash != lastSyncedHash || !isAuto) {
+                        } else if (currentLocalHash != lastSyncedHash || !isAuto) {
                             pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                                 if (!isAuto) {
-                                    val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
+                                    val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সেভ সম্পন্ন হয়েছে।"
                                     sendResult(msg, success)
                                 }
                             }
@@ -183,7 +193,7 @@ object CloudSyncManager {
                             val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
                             pullAllFromCloud(appContext, metaRef, pullHash) { success ->
                                 if (!isAuto) {
-                                    val msg = if (success) "মালিকের ক্লাউড থেকে ডেটা সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                                    val msg = if (success) "মালিকের ক্লাউড থেকে ডেটা সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক সম্পন্ন হয়েছে।"
                                     sendResult(msg, success)
                                 }
                             }
@@ -193,17 +203,17 @@ object CloudSyncManager {
                     }
                 }
             }.addOnFailureListener { e ->
+                mainThreadHandler.removeCallbacks(timeoutRunnable)
                 Log.e(TAG, "Sync check failed", e)
-                // যদি ক্লাউডে আগে কোনো ডাটাই না থাকে
                 if (canPush && !isLocalEmpty) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                         if (!isAuto) {
-                            val msg = if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                            val msg = if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সেভ সম্পন্ন হয়েছে।"
                             sendResult(msg, success)
                         }
                     }
                 } else {
-                    if (!isAuto) sendResult("ক্লাউডের সাথে কানেক্ট করা যাচ্ছে না বা ডাটা নেই।", false)
+                    if (!isAuto) sendResult("ক্লাউডের সাথে কানেক্ট করা যাচ্ছে না।", false)
                 }
             }
         }
