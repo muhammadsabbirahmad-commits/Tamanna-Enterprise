@@ -99,7 +99,7 @@ object CloudSyncManager {
         }
 
         val db = FirebaseFirestore.getInstance()
-        // পার্টনারের ঝামেলা সম্পূর্ণ বাদ, সরাসরি লগইন করা ইউজারের নিজস্ব UID দিয়ে পাথ নির্ধারণ
+        // বর্তমান লগইন করা Owner-এর UID দিয়ে ব্যাকআপ পাথ নির্ধারণ
         val ref = db.collection("businesses").document(authUser.uid).collection("data").document("backup")
         onResult(ref, true) 
     }
