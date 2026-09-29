@@ -32,7 +32,7 @@ class CustomerDueActivity : ComponentActivity() {
         var showAddCustomer by remember { mutableStateOf(false) }
         var newName by remember { mutableStateOf("") }
         var newMobile by remember { mutableStateOf("") }
-        var message by remember { mutableStateOf("") }
+        val canWrite = com.tamanna.enterprise.security.SecurityStorage.canWrite(context)\n        var message by remember { mutableStateOf("") }
 
         val entries = remember(refresh) { CustomerDueStorage.getEntries(context) }
         val balances = remember(refresh) { CustomerDueStorage.getBalances(context) }
@@ -78,7 +78,7 @@ class CustomerDueActivity : ComponentActivity() {
                             CustomerDueStorage.addPayment(context, selected, mobile, amount, note)
                             payment = ""; note = ""; refresh++
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("বাকি থেকে জমা নিন") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("বাকি থেকে জমা নিন") }\n                    else Text("শুধু দেখার অনুমতি — পেমেন্ট নেওয়া যাবে না।", color = MaterialTheme.colorScheme.error)
                 }
 
                 Text("ক্রেতার তালিকা", style = MaterialTheme.typography.titleMedium)
@@ -109,7 +109,7 @@ class CustomerDueActivity : ComponentActivity() {
             }
         }
 
-        if (showAddCustomer) {
+        if (showAddCustomer && canWrite) {
             AlertDialog(
                 onDismissRequest = { showAddCustomer = false },
                 title = { Text("নতুন ক্রেতা যোগ করুন") },
