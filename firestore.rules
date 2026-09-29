@@ -37,35 +37,6 @@ service cloud.firestore {
         );
     }
 
-    function member(businessId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid))
-        && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.approved == true
-        && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.blocked == false;
-    }
-
-    function businessAdmin(businessId) {
-      return member(businessId)
-        && get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid)).data.role == "OWNER";
-    }
-
-    match /preApprovedPartners/{partnerId} {
-      allow get: if signedIn()
-        && (
-          resource.data.email == request.auth.token.email
-          || (resource.data.businessId != ""
-              && get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerUid == request.auth.uid)
-        );
-      allow list: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.businessId is string
-        && request.resource.data.email == request.auth.token.email
-        && get(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.ownerUid == request.auth.uid;
-      allow update, delete: if signedIn()
-        && resource.data.businessId is string
-        && get(/databases/$(database)/documents/businesses/$(resource.data.businessId)).data.ownerUid == request.auth.uid;
-    }
-
     match /accessRequests/{userId} {
       allow get: if signedIn() && request.auth.uid == userId;
       allow list: if enterpriseAdmin();
@@ -92,88 +63,60 @@ service cloud.firestore {
 
     match /accessUsers/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || admin());
+
       allow create: if signedIn()
         && request.auth.uid == userId
         && request.resource.data.uid == request.auth.uid
         && request.auth.token.email_verified == true
+        && request.resource.data.role == "ADMIN"
+        && request.resource.data.approved == true
+        && request.resource.data.email == request.auth.token.email
         && (
-          (request.resource.data.role == "PARTNER" &&
-           request.resource.data.approved == false &&
-           request.resource.data.email == request.auth.token.email)
-          ||
-          (request.resource.data.role == "ADMIN" &&
-           request.resource.data.approved == true &&
-           request.resource.data.email == request.auth.token.email &&
-           (!exists(/databases/$(database)/documents/appConfig/admin) ||
-            get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid))
+          !exists(/databases/$(database)/documents/appConfig/admin)
+          || get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
         );
+
       allow update, delete: if admin();
     }
 
     match /appConfig/admin {
       allow read: if signedIn();
+
       allow create: if signedIn()
         && request.auth.token.email_verified == true
         && !exists(/databases/$(database)/documents/appConfig/admin)
         && request.resource.data.role == "ADMIN"
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.email == request.auth.token.email;
+
       allow update, delete: if admin();
     }
 
     match /businesses/{businessId} {
-      allow read: if member(businessId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
 
       match /members/{memberId} {
-        allow read: if (signedIn()
-              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid)
-          || (member(businessId) && request.auth.uid == memberId);
-        allow create: if (signedIn()
-              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid)
-          || (signedIn()
-              && memberId == request.auth.uid
-              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid != ""
-              && request.resource.data.uid == request.auth.uid
-              && request.resource.data.email == request.auth.token.email
-              && request.resource.data.role == "PARTNER"
-              && request.resource.data.approved == false
-              && request.resource.data.blocked == false)
-          || (signedIn()
-              && memberId == request.auth.uid
-              && request.resource.data.uid == request.auth.uid
-              && request.resource.data.email == request.auth.token.email
-              && request.resource.data.role == "PARTNER"
-              && request.resource.data.approved == true
-              && request.resource.data.blocked == false
-              && exists(/databases/$(database)/documents/preApprovedPartners/$("partner_" + request.auth.token.email.lower().replace(".", "_").replace("@", "_")))
-              && get(/databases/$(database)/documents/preApprovedPartners/$("partner_" + request.auth.token.email.lower().replace(".", "_").replace("@", "_"))).data.email == request.auth.token.email
-              && get(/databases/$(database)/documents/preApprovedPartners/$("partner_" + request.auth.token.email.lower().replace(".", "_").replace("@", "_"))).data.businessId == businessId)
-          || (signedIn()
-              && memberId == request.auth.uid
-              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
-              && request.resource.data.uid == request.auth.uid
-              && request.resource.data.email == request.auth.token.email
-              && request.resource.data.role == "OWNER"
-              && request.resource.data.approved == true
-              && request.resource.data.blocked == false);
-        allow update: if signedIn()
+        allow read: if signedIn()
+          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
+
+        allow create, update: if signedIn()
+          && memberId == request.auth.uid
           && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
-          && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid
-          && request.resource.data.uid == memberId
-          && request.resource.data.role == "PARTNER"
-          && request.resource.data.email == resource.data.email;
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.role == "OWNER"
+          && request.resource.data.approved == true
+          && request.resource.data.blocked == false;
+
         allow delete: if signedIn()
-          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
-          && memberId != get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid;
+          && memberId == request.auth.uid
+          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
       }
 
       match /data/{document} {
-        allow read: if member(businessId)
-          || (signedIn()
-              && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid);
-        allow write: if signedIn()
+        allow read, write: if signedIn()
           && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
       }
     }
