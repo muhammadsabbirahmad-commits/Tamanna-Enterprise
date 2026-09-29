@@ -39,43 +39,17 @@ class LoginActivity : ComponentActivity() {
                 val currentUser = auth.currentUser
                 if (currentUser == null) { failure?.invoke("ইউজার পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
-                val email = currentUser.email?.trim()?.lowercase() ?: ""
-                val partnerKey = "partner_" + email.replace(".", "_").replace("@", "_")
-                val db = FirebaseFirestore.getInstance()
-
-                db.collection("preApprovedPartners").document(partnerKey).get(Source.SERVER)
-                    .addOnCompleteListener { docTask ->
-                        if (docTask.isSuccessful && docTask.result?.exists() == true) {
-                            val businessId = docTask.result?.getString("businessId").orEmpty().trim()
-                            if (businessId.isBlank()) {
-                                auth.signOut()
-                                failure?.invoke("এই Partner Gmail-এর Business ID সংরক্ষিত নেই। Owner-এর Partner তালিকা থেকে Gmailটি আবার সংরক্ষণ করুন।")
-                                clear()
-                                return@addOnCompleteListener
-                            }
-                            BusinessAccountStorage.setActiveBusinessId(this@LoginActivity, businessId)
-                            BusinessMembershipManager.ensurePreApprovedPartnerMembership(businessId, email) { membershipOk, membershipMessage ->
-                                if (!membershipOk) {
-                                    auth.signOut()
-                                    failure?.invoke(membershipMessage)
-                                } else {
-                                    SecurityStorage.upsertGoogleUser(this@LoginActivity, email, SecurityStorage.ROLE_PARTNER, true, currentUser.uid)
-                                    SecurityStorage.findByGoogleEmail(this@LoginActivity, email)?.let { SecurityStorage.login(this@LoginActivity, it) }
-                                    success?.invoke()
-                                }
-                                clear()
-                            }
-                        } else {
-                            AccessRequestManager.requestOrCheck { ok, message, record ->
-                                if (ok && record != null) {
-                                    SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
-                                    SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let { SecurityStorage.login(this@LoginActivity, it) }
-                                    success?.invoke()
-                                } else { auth.signOut(); failure?.invoke(message) }
-                                clear()
-                            }
-                        }
+                AccessRequestManager.requestOrCheck { ok, message, record ->
+                    if (ok && record != null) {
+                        SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
+                        SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let { SecurityStorage.login(this@LoginActivity, it) }
+                        success?.invoke()
+                    } else {
+                        auth.signOut()
+                        failure?.invoke(message)
                     }
+                    clear()
+                }
             }
         } catch (e: ApiException) { failure?.invoke("Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"); clear() }
         catch (e: Exception) { failure?.invoke(e.localizedMessage ?: "Google লগইনে সমস্যা হয়েছে।"); clear() }
