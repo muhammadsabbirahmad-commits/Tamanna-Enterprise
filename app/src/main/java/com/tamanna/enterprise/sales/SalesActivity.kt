@@ -69,7 +69,7 @@ private fun SalesScreen(onNewSale: () -> Unit) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("বিক্রয় ইতিহাস", style = MaterialTheme.typography.headlineSmall)
-                    Button(onClick = onNewSale) { Text("নতুন বিক্রয়") }
+                    if (canWrite) Button(onClick = onNewSale) { Text("নতুন বিক্রয়") } else Text("শুধু দেখার অনুমতি", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.height(12.dp))
 
