@@ -93,9 +93,6 @@ object CloudSyncManager {
         realtimeListenerStarting = false
     }
 
-    /**
-     * আপনার Firestore Rules অনুযায়ী সঠিক পাথ টার্গেট করা
-     */
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
         val authUser = FirebaseAuth.getInstance().currentUser
         if (authUser == null) {
@@ -109,18 +106,16 @@ object CloudSyncManager {
         val isPartner = localUser?.role == "PARTNER"
 
         if (isPartner) {
-            // পার্টনারের জন্য: মালিকের UID বের করে তার users/{ownerUid}/data/backup পাথ থেকে রিড করা
             val ownerUid = businessAccount.ownerUid.ifBlank { businessAccount.businessId }
             if (ownerUid.isBlank()) {
                 onResult(null, false)
                 return
             }
             val ref = db.collection("users").document(ownerUid).collection("data").document("backup")
-            onResult(ref, false) // canPush = false (View Only)
+            onResult(ref, false)
         } else {
-            // মালিকের জন্য: সরাসরি নিজের পাথে (users/{myUid}/data/backup) সেভ করা
             val ref = db.collection("users").document(authUser.uid).collection("data").document("backup")
-            onResult(ref, true) // canPush = true
+            onResult(ref, true)
         }
     }
 
@@ -159,25 +154,30 @@ object CloudSyncManager {
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    canPush && currentLocalHash != lastSyncedHash -> {
-                        pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
-                            if (!isAuto) {
-                                val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
-                                onComplete(msg, success)
+                    canPush -> {
+                        if (currentLocalHash != lastSyncedHash || !isAuto) {
+                            pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
+                                if (!isAuto) {
+                                    val msg = if (success) "নতুন ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "ক্লাউডে সেভ ব্যর্থ হয়েছে।"
+                                    onComplete(msg, success)
+                                }
                             }
+                        } else {
+                            if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅", false)
                         }
                     }
-                    isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) -> {
-                        val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
-                        pullAllFromCloud(appContext, metaRef, pullHash) { success ->
-                            if (!isAuto) {
-                                val msg = if (success) "মালিকের ক্লাউড থেকে ডেটা সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
-                                onComplete(msg, success)
+                    !canPush -> {
+                        if (isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) || !isAuto) {
+                            val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
+                            pullAllFromCloud(appContext, metaRef, pullHash) { success ->
+                                if (!isAuto) {
+                                    val msg = if (success) "মালিকের ক্লাউড থেকে ডেটা সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                                    onComplete(msg, success)
+                                }
                             }
+                        } else {
+                            if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅", false)
                         }
-                    }
-                    else -> {
-                        if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅", false)
                     }
                 }
             }.addOnFailureListener { e ->
