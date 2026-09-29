@@ -46,19 +46,14 @@ object CloudSyncManager {
         }.also {
             handler.post(it)
         }
-        Log.d(TAG, "Auto-sync started.")
     }
 
     fun stopAutoSync() {
         isAutoSyncRunning = false
         autoSyncRunnable?.let { handler.removeCallbacks(it) }
         autoSyncRunnable = null
-        Log.d(TAG, "Auto-sync stopped.")
     }
 
-    /**
-     * রিয়েলটাইম সিঙ্ক: মালিক ক্লাউডে আপডেট দিলেই পার্টনারের অ্যাপে লাইভ সিঙ্ক হবে।
-     */
     fun startRealtimeSync(context: Context) {
         val authUser = FirebaseAuth.getInstance().currentUser ?: return
         if (realtimeListener != null || realtimeListenerStarting) return
@@ -86,22 +81,20 @@ object CloudSyncManager {
                 if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
 
                 pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
-                    if (success) Log.d(TAG, "Local data updated from cloud backup.")
+                    if (success) Log.d(TAG, "Local data updated from owner's cloud backup.")
                 }
             }
         }
-        Log.d(TAG, "Realtime sync started for userId=${authUser.uid}")
     }
 
     fun stopRealtimeSync() {
         realtimeListener?.remove()
         realtimeListener = null
         realtimeListenerStarting = false
-        Log.d(TAG, "Realtime sync stopped.")
     }
 
     /**
-     * সিঙ্ক পাথ নির্ধারণ এবং পার্টনার (View Only) চেক করার ফাংশন
+     * আপনার Firestore Rules অনুযায়ী সঠিক পাথ টার্গেট করা
      */
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
         val authUser = FirebaseAuth.getInstance().currentUser
@@ -111,21 +104,24 @@ object CloudSyncManager {
         }
 
         val db = FirebaseFirestore.getInstance()
-        val businessId = BusinessAccountStorage.get(context).businessId.trim()
+        val businessAccount = BusinessAccountStorage.get(context)
         val localUser = SecurityStorage.getCurrentUser(context)
-
-        // যদি ইউজার PARTNER হয়, তবে সে Push করতে পারবে না (canPush = false)
         val isPartner = localUser?.role == "PARTNER"
-        val canPush = !isPartner
 
-        // বিজনেস আইডি থাকলে বিজনেসের ফোল্ডারে, না থাকলে ইউজারের নিজস্ব ফোল্ডারে
-        val sharedRef = if (businessId.isNotBlank()) {
-            db.collection("businesses").document(businessId).collection("data").document("backup")
+        if (isPartner) {
+            // পার্টনারের জন্য: মালিকের UID বের করে তার users/{ownerUid}/data/backup পাথ থেকে রিড করা
+            val ownerUid = businessAccount.ownerUid.ifBlank { businessAccount.businessId }
+            if (ownerUid.isBlank()) {
+                onResult(null, false)
+                return
+            }
+            val ref = db.collection("users").document(ownerUid).collection("data").document("backup")
+            onResult(ref, false) // canPush = false (View Only)
         } else {
-            db.collection("users").document(authUser.uid).collection("data").document("backup")
+            // মালিকের জন্য: সরাসরি নিজের পাথে (users/{myUid}/data/backup) সেভ করা
+            val ref = db.collection("users").document(authUser.uid).collection("data").document("backup")
+            onResult(ref, true) // canPush = true
         }
-
-        onResult(sharedRef, canPush)
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -150,21 +146,19 @@ object CloudSyncManager {
 
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
-                if (!isAuto) onComplete("অ্যাকাউন্ট বা পাথ পাওয়া যায়নি।", false)
+                if (!isAuto) onComplete("মালিকের অ্যাকাউন্ট তথ্য পাওয়া যায়নি।", false)
                 return@getTargetSyncDoc
             }
 
             val currentLocalHash = calculateLocalHash(appContext)
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
             val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
-
             val isLocalEmpty = namespaces.all { ns -> BusinessStorage.prefs(appContext, ns).all.isEmpty() }
 
             metaRef.get().addOnSuccessListener { doc ->
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    // শুধুমাত্র মালিক ডেটা ক্লাউডে আপলোড করতে পারবে
                     canPush && currentLocalHash != lastSyncedHash -> {
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                             if (!isAuto) {
@@ -173,12 +167,11 @@ object CloudSyncManager {
                             }
                         }
                     }
-                    // পার্টনার বা নতুন ইনস্টলের ক্ষেত্রে ক্লাউড থেকে ডেটা ডাউনলোড হবে
                     isLocalEmpty || (cloudHash.isNotBlank() && cloudHash != lastSyncedHash) -> {
                         val pullHash = if (cloudHash.isBlank()) "forced_sync" else cloudHash
                         pullAllFromCloud(appContext, metaRef, pullHash) { success ->
                             if (!isAuto) {
-                                val msg = if (success) "ক্লাউড থেকে সর্বশেষ ডেটা সফলভাবে সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
+                                val msg = if (success) "মালিকের ক্লাউড থেকে ডেটা সিঙ্ক হয়েছে! ☁️⬇️" else "সিঙ্ক ব্যর্থ হয়েছে।"
                                 onComplete(msg, success)
                             }
                         }
@@ -187,7 +180,8 @@ object CloudSyncManager {
                         if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅", false)
                     }
                 }
-            }.addOnFailureListener {
+            }.addOnFailureListener { e ->
+                Log.e(TAG, "Sync check failed", e)
                 if (canPush) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                         if (!isAuto) {
@@ -204,9 +198,20 @@ object CloudSyncManager {
 
     fun pushAllToCloud(context: Context, currentLocalHash: String, metaRef: DocumentReference, onResult: (Boolean) -> Unit) {
         val dataMap = mutableMapOf<String, Any>()
+        
         for (ns in namespaces) {
             val prefs = BusinessStorage.prefs(context, ns)
-            dataMap[ns] = prefs.all
+            val nsMap = mutableMapOf<String, Any>()
+            for ((k, v) in prefs.all) {
+                if (k != null && v != null) {
+                    if (v is Set<*>) {
+                        nsMap[k] = v.filterNotNull().toList()
+                    } else {
+                        nsMap[k] = v
+                    }
+                }
+            }
+            dataMap[ns] = nsMap
         }
         dataMap["dataHash"] = currentLocalHash
         dataMap["updatedAt"] = System.currentTimeMillis()
@@ -217,7 +222,8 @@ object CloudSyncManager {
                 syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, currentLocalHash).apply()
                 onResult(true)
             }
-            .addOnFailureListener {
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Push failed", e)
                 onResult(false)
             }
     }
@@ -242,6 +248,10 @@ object CloudSyncManager {
                                         is Float -> editor.putFloat(k, v)
                                         is Boolean -> editor.putBoolean(k, v)
                                         is Number -> editor.putLong(k, v.toLong())
+                                        is List<*> -> {
+                                            val stringSet = v.filterIsInstance<String>().toSet()
+                                            editor.putStringSet(k, stringSet)
+                                        }
                                     }
                                 }
                             }
@@ -255,7 +265,8 @@ object CloudSyncManager {
                     onResult(false)
                 }
             }
-            .addOnFailureListener {
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Pull failed", e)
                 onResult(false)
             }
     }
