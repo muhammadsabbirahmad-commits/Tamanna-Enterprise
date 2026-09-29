@@ -14,6 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.finance.FinanceActivity
 import com.tamanna.enterprise.due.CustomerDueActivity
 import com.tamanna.enterprise.product.ProductActivity
@@ -44,15 +47,41 @@ import java.util.Locale
 class DashboardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
-        CloudSyncManager.startRealtimeSync(this)
+        
+        // ফিক্স: ড্যাশবোর্ডে আসার পর লোকাল businessId ফাঁকা থাকলে ফায়ারবেস থেকে রিকভার করে নেওয়া হচ্ছে
+        val context = this
+        val currentBusinessId = BusinessStorage.getActiveBusinessId(context).trim()
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        
+        if (currentBusinessId.isBlank() && currentUser != null) {
+            val uid = currentUser.uid
+            FirebaseFirestore.getInstance().collection("businesses")
+                .whereEqualTo("ownerUid", uid)
+                .get()
+                .addOnSuccessListener { documents ->
+                    val businessId = if (!documents.isEmpty) {
+                        documents.documents[0].id
+                    } else {
+                        uid
+                    }
+                    BusinessStorage.setActiveBusinessId(context, businessId)
+                    CloudSyncManager.startRealtimeSync(context)
+                }
+                .addOnFailureListener {
+                    BusinessStorage.setActiveBusinessId(context, uid)
+                    CloudSyncManager.startRealtimeSync(context)
+                }
+        } else {
+            CloudSyncManager.startRealtimeSync(context)
+        }
         
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val loggedIn = SecurityStorage.getCurrentUser(this) != null
+        val loggedIn = SecurityStorage.getCurrentUser(context) != null
         
         // Data Fetching
-        val sales = if (loggedIn) SalesStorage.getSales(this) else emptyList()
-        val purchases = if (loggedIn) PurchaseStorage.getPurchases(this) else emptyList()
-        val products = if (loggedIn) ProductStorage.getProducts(this) else emptyList()
+        val sales = if (loggedIn) SalesStorage.getSales(context) else emptyList()
+        val purchases = if (loggedIn) PurchaseStorage.getPurchases(context) else emptyList()
+        val products = if (loggedIn) ProductStorage.getProducts(context) else emptyList()
         
         // Calculations
         val todaySales = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.salePrice }
@@ -61,30 +90,30 @@ class DashboardActivity : ComponentActivity() {
         val totalStock = products.sumOf { it.stockQuantity }
 
         setContent {
-            TamannaTheme(ThemeStorage.getTheme(this)) {
+            TamannaTheme(ThemeStorage.getTheme(context)) {
                 DashboardScreen(
                     todaySales = todaySales,
                     todayPurchases = todayPurchases,
                     todayProfit = todayProfit,
                     totalStock = totalStock,
                     loggedIn = loggedIn,
-                    onProductClick = { if (loggedIn) startActivity(Intent(this, ProductActivity::class.java)) },
-                    onPurchaseClick = { if (loggedIn) startActivity(Intent(this, PurchaseActivity::class.java)) },
-                    onSalesClick = { if (loggedIn) startActivity(Intent(this, SalesActivity::class.java)) },
-                    onStockClick = { if (loggedIn) startActivity(Intent(this, StockActivity::class.java)) },
-                    onStockAlertClick = { if (loggedIn) startActivity(Intent(this, StockAlertActivity::class.java)) },
-                    onReportsClick = { if (loggedIn) startActivity(Intent(this, ReportsActivity::class.java)) },
-                    onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(this, FinancialDashboardActivity::class.java)) },
-                    onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(this, FinancialCalendarActivity::class.java)) },
-                    onProfitClick = { if (loggedIn) startActivity(Intent(this, ProfitActivity::class.java)) },
-                    onScannerClick = { if (loggedIn) startActivity(Intent(this, SalesScanActivity::class.java)) },
-                    onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
-                    onFinanceClick = { if (loggedIn) startActivity(Intent(this, FinanceActivity::class.java)) },
-                    onDueClick = { if (loggedIn) startActivity(Intent(this, CustomerDueActivity::class.java)) },
-                    onSupplierDueClick = { if (loggedIn) startActivity(Intent(this, SupplierDueActivity::class.java)) },
-                    onGlobalSearchClick = { if (loggedIn) startActivity(Intent(this, GlobalSearchActivity::class.java)) },
-                    onBackupClick = { if (loggedIn) startActivity(Intent(this, CloudBackupActivity::class.java)) },
-                    shopName = SettingsStorage.getShopName(this)
+                    onProductClick = { if (loggedIn) startActivity(Intent(context, ProductActivity::class.java)) },
+                    onPurchaseClick = { if (loggedIn) startActivity(Intent(context, PurchaseActivity::class.java)) },
+                    onSalesClick = { if (loggedIn) startActivity(Intent(context, SalesActivity::class.java)) },
+                    onStockClick = { if (loggedIn) startActivity(Intent(context, StockActivity::class.java)) },
+                    onStockAlertClick = { if (loggedIn) startActivity(Intent(context, StockAlertActivity::class.java)) },
+                    onReportsClick = { if (loggedIn) startActivity(Intent(context, ReportsActivity::class.java)) },
+                    onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(context, FinancialDashboardActivity::class.java)) },
+                    onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(context, FinancialCalendarActivity::class.java)) },
+                    onProfitClick = { if (loggedIn) startActivity(Intent(context, ProfitActivity::class.java)) },
+                    onScannerClick = { if (loggedIn) startActivity(Intent(context, SalesScanActivity::class.java)) },
+                    onSettingsClick = { startActivity(Intent(context, SettingsActivity::class.java)) },
+                    onFinanceClick = { if (loggedIn) startActivity(Intent(context, FinanceActivity::class.java)) },
+                    onDueClick = { if (loggedIn) startActivity(Intent(context, CustomerDueActivity::class.java)) },
+                    onSupplierDueClick = { if (loggedIn) startActivity(Intent(context, SupplierDueActivity::class.java)) },
+                    onGlobalSearchClick = { if (loggedIn) startActivity(Intent(context, GlobalSearchActivity::class.java)) },
+                    onBackupClick = { if (loggedIn) startActivity(Intent(context, CloudBackupActivity::class.java)) },
+                    shopName = SettingsStorage.getShopName(context)
                 )
             }
         }
@@ -234,7 +263,7 @@ fun DashboardScreen(
                     if (index < (menuItems.size + 2) / 3 - 1) Spacer(Modifier.height(10.dp))
                 }
 
-                Spacer(Modifier.height(90.dp))
+Spacer(Modifier.height(90.dp))
             }
         }
     }
@@ -259,12 +288,11 @@ private fun DashboardMenuRow(
                 icon = icon,
                 title = item.first,
                 onClick = item.second,
-                background = menuColors[(startIndex + index) % menuColors.size], // Added modulo operator for safety
+                background = menuColors[(startIndex + index) % menuColors.size],
                 modifier = Modifier.weight(1f)
             )
         }
         
-        // Fill empty spaces if a row has less than 3 items
         repeat(3 - items.size) {
             Spacer(modifier = Modifier.weight(1f))
         }
@@ -292,7 +320,7 @@ private fun DashboardMenuButton(
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(icon, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(4.dp))
-            Text(title, style = MaterialTheme.typography.labelMedium) // Adjusted for better text fitting
+            Text(title, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
