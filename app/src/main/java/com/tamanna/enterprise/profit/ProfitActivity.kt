@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -13,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.product.ProductStorage
-import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -37,7 +34,6 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val sales = remember(refresh) { SalesStorage.getSales(activity) }
     val purchases = remember(refresh) { PurchaseStorage.getPurchases(activity) }
     val products = remember(refresh) { ProductStorage.getProducts(activity) }
-    val partners = remember(refresh) { PartnerStorage.getPartners(activity) }
 
     val validRange = from.isNotBlank() && to.isNotBlank() && from <= to
     val rangeSales = if (validRange) sales.filter { it.date.substringBefore(" ") in from..to } else emptyList()
@@ -50,10 +46,8 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val soldUnits = rangeSales.sumOf { it.quantity }
     val purchasedUnits = rangePurchases.sumOf { it.quantity }
     val stockUnits = products.sumOf { it.stockQuantity }
-    val partnerPercentage = partners.sumOf { it.percentage }
     val expenses = if (validRange) ExpenseStorage.getExpenses(activity).filter { it.date in from..to } else emptyList()
     val damages = if (validRange) ExpenseStorage.getDamages(activity).filter { it.date in from..to } else emptyList()
-    val withdrawals = if (validRange) ExpenseStorage.getWithdrawals(activity).filter { it.date in from..to } else emptyList()
     val institutionExpenses = expenses.sumOf { it.amount }
     val damageLoss = damages.sumOf { it.totalLoss }
     val netProfit = profit - institutionExpenses - damageLoss
@@ -80,35 +74,10 @@ private fun ProfitScreen(activity: ComponentActivity) {
                     SummaryCard("প্রতিষ্ঠানের খরচ", "৳ %.2f".format(institutionExpenses))
                     SummaryCard("ড্যামেজ ক্ষতি", "৳ %.2f".format(damageLoss))
                     SummaryCard("নিট লাভ", "৳ %.2f".format(netProfit))
-                    SummaryCard("পার্টনারদের উত্তোলন", "৳ %.2f".format(withdrawals.sumOf { it.amount }))
                     SummaryCard("মোট ক্রয়", "৳ %.2f".format(purchasedAmount))
                     SummaryCard("বিক্রি হয়েছে", "$soldUnits ইউনিট".replace("$", ""))
                     SummaryCard("ক্রয় হয়েছে", "$purchasedUnits ইউনিট".replace("$", ""))
                     SummaryCard("বর্তমান স্টক", "$stockUnits ইউনিট".replace("$", ""))
-
-                    if (partners.isNotEmpty()) {
-                        Spacer(Modifier.height(14.dp))
-                        Text("পার্টনারদের লাভ বণ্টন", style = MaterialTheme.typography.titleLarge)
-                        Text("মোট নির্ধারিত অংশ: %.2f%%".format(Locale.US, partnerPercentage))
-                        if (partnerPercentage > 100.0001) {
-                            Text("সতর্কতা: পার্টনারদের শতাংশ ১০০%-এর বেশি।", color = MaterialTheme.colorScheme.error)
-                        }
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.heightIn(max = 420.dp)) {
-                            items(partners, key = { it.id }) { partner ->
-                                val share = PartnerStorage.profitShare(netProfit, partner)
-                                Card(Modifier.fillMaxWidth()) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(partner.name, style = MaterialTheme.typography.titleMedium)
-                                        Text("বিনিয়োগ: ৳ %.2f".format(Locale.US, partner.investment))
-                                        Text("লাভের অংশ: %.2f%%".format(Locale.US, partner.percentage))
-                                        Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, share))
-                                    }
-                                }
-                            }
-                        }
-                        val unallocated = netProfit * (100.0 - partnerPercentage) / 100.0
-                        Text("অবণ্টিত লাভ: ৳ %.2f".format(Locale.US, unallocated))
-                    }
                 }
             }
         }
