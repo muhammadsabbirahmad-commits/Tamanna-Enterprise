@@ -7,9 +7,7 @@ import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
-import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
 object CloudSyncManager {
@@ -101,14 +99,9 @@ object CloudSyncManager {
         }
 
         val db = FirebaseFirestore.getInstance()
-        val businessAccount = BusinessAccountStorage.get(context)
-        val localUser = SecurityStorage.getCurrentUser(context)
-        
-        val businessId = businessAccount.businessId.ifBlank { authUser.uid }
-        val isPartner = localUser?.role == "PARTNER"
-
-        val ref = db.collection("businesses").document(businessId).collection("data").document("backup")
-        onResult(ref, !isPartner) 
+        // পার্টনারের ঝামেলা সম্পূর্ণ বাদ, সরাসরি লগইন করা ইউজারের নিজস্ব UID দিয়ে পাথ নির্ধারণ
+        val ref = db.collection("businesses").document(authUser.uid).collection("data").document("backup")
+        onResult(ref, true) 
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -133,7 +126,7 @@ object CloudSyncManager {
 
         getTargetSyncDoc(appContext) { metaRef, canPush ->
             if (metaRef == null) {
-                if (!isAuto) onComplete("বিজনেস বা মালিকের তথ্য পাওয়া যায়নি।", false)
+                if (!isAuto) onComplete("লগইন তথ্য পাওয়া যায়নি।", false)
                 return@getTargetSyncDoc
             }
 
@@ -183,7 +176,7 @@ object CloudSyncManager {
                         }
                     }
                 } else {
-                    if (!isAuto) onComplete("মালিক এখনো কোনো ব্যাকআপ সেভ করেননি।", false)
+                    if (!isAuto) onComplete("ক্লাউডে কোনো ব্যাকআপ পাওয়া যায়নি।", false)
                 }
             }
         }
@@ -213,9 +206,8 @@ object CloudSyncManager {
         dataMap["dataHash"] = currentLocalHash
         dataMap["updatedAt"] = System.currentTimeMillis()
 
-        val businessId = BusinessAccountStorage.get(context).businessId.ifBlank { authUser.uid }
         val db = FirebaseFirestore.getInstance()
-        val businessDocRef = db.collection("businesses").document(businessId)
+        val businessDocRef = db.collection("businesses").document(authUser.uid)
 
         val businessData = mapOf(
             "ownerUid" to authUser.uid,
