@@ -37,6 +37,21 @@ service cloud.firestore {
         );
     }
 
+    function isBusinessOwner(businessId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
+    }
+
+    function hasViewAccess(businessId) {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower()))
+        && get(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower())).data.email == request.auth.token.email.lower()
+        && get(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower())).data.businessId == businessId
+        && get(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower())).data.active == true;
+    }
+
     match /accessRequests/{userId} {
       allow get: if signedIn() && request.auth.uid == userId;
       allow list: if enterpriseAdmin();
@@ -93,17 +108,37 @@ service cloud.firestore {
     }
 
     match /businesses/{businessId} {
-      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isBusinessOwner(businessId);
+
+      match /viewAccess/{emailKey} {
+        allow read: if isBusinessOwner(businessId)
+          || (
+            signedIn()
+            && request.auth.token.email_verified == true
+            && request.auth.token.email != null
+            && emailKey == request.auth.token.email.lower()
+            && resource.data.email == request.auth.token.email.lower()
+            && resource.data.active == true
+          );
+
+        allow create, update: if isBusinessOwner(businessId)
+          && request.resource.data.email == emailKey
+          && request.resource.data.email == request.resource.data.email.lower()
+          && request.resource.data.businessId == businessId
+          && request.resource.data.ownerUid == request.auth.uid
+          && request.resource.data.active == true;
+
+        allow delete: if isBusinessOwner(businessId);
+      }
 
       match /members/{memberId} {
-        allow read: if signedIn()
-          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
+        allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
 
         allow create, update: if signedIn()
           && memberId == request.auth.uid
-          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid
+          && isBusinessOwner(businessId)
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.email == request.auth.token.email
           && request.resource.data.role == "OWNER"
@@ -112,12 +147,12 @@ service cloud.firestore {
 
         allow delete: if signedIn()
           && memberId == request.auth.uid
-          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
+          && isBusinessOwner(businessId);
       }
 
       match /data/{document} {
-        allow read, write: if signedIn()
-          && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
+        allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
+        allow write: if isBusinessOwner(businessId);
       }
     }
 
