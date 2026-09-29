@@ -32,7 +32,8 @@ class CustomerDueActivity : ComponentActivity() {
         var showAddCustomer by remember { mutableStateOf(false) }
         var newName by remember { mutableStateOf("") }
         var newMobile by remember { mutableStateOf("") }
-        val canWrite = com.tamanna.enterprise.security.SecurityStorage.canWrite(context)\n        var message by remember { mutableStateOf("") }
+        val canWrite = com.tamanna.enterprise.security.SecurityStorage.canWrite(context)
+        var message by remember { mutableStateOf("") }
 
         val entries = remember(refresh) { CustomerDueStorage.getEntries(context) }
         val balances = remember(refresh) { CustomerDueStorage.getBalances(context) }
@@ -50,9 +51,11 @@ class CustomerDueActivity : ComponentActivity() {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("মোট পাওনা: ৳ " + String.format(Locale.getDefault(), "%.2f", balances.values.sum()),
                         style = MaterialTheme.typography.titleLarge)
-                    Button(onClick = {
+                    if (canWrite) {
+                        Button(onClick = {
                         newName = ""; newMobile = ""; message = ""; showAddCustomer = true
-                    }) { Text("＋ ক্রেতা যোগ") }
+                        }) { Text("＋ ক্রেতা যোগ") }
+                    }
                 }
 
                 OutlinedTextField(
@@ -71,14 +74,18 @@ class CustomerDueActivity : ComponentActivity() {
                         label = { Text("জমা ৳") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     OutlinedTextField(value = note, onValueChange = { note = it },
                         label = { Text("নোট") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Button(onClick = {
+                    if (canWrite) {
+                        Button(onClick = {
                         val amount = payment.toDoubleOrNull() ?: 0.0
                         val balance = CustomerDueStorage.getBalance(context, selected, mobile)
                         if (amount > 0 && amount <= balance) {
                             CustomerDueStorage.addPayment(context, selected, mobile, amount, note)
                             payment = ""; note = ""; refresh++
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("বাকি থেকে জমা নিন") }\n                    else Text("শুধু দেখার অনুমতি — পেমেন্ট নেওয়া যাবে না।", color = MaterialTheme.colorScheme.error)
+                        }, modifier = Modifier.fillMaxWidth()) { Text("বাকি থেকে জমা নিন") }
+                    } else {
+                        Text("শুধু দেখার অনুমতি — পেমেন্ট নেওয়া যাবে না।", color = MaterialTheme.colorScheme.error)
+                    }
                 }
 
                 Text("ক্রেতার তালিকা", style = MaterialTheme.typography.titleMedium)
