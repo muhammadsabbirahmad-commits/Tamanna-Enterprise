@@ -58,7 +58,7 @@ object SettingsStorage {
             ?: DEFAULT_SHOP_NAME
 
     fun saveShopName(context: Context, name: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        BusinessStorage.prefs(context, PREFS)
             .edit()
             .putString(KEY_SHOP_NAME, name.trim().ifBlank { DEFAULT_SHOP_NAME })
             .apply()
