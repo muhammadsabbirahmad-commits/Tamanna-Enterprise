@@ -48,11 +48,11 @@ class DashboardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         
-        // ফিক্স: ড্যাশবোর্ডে আসার পর লোকাল businessId ফাঁকা থাকলে ফায়ারবেস থেকে রিকভার করে নেওয়া হচ্ছে
         val context = this
         val currentBusinessId = BusinessStorage.getActiveBusinessId(context).trim()
         val currentUser = FirebaseAuth.getInstance().currentUser
         
+        // ফায়ারবেস থেকে সঠিক businessId রিকভার করে শুধুমাত্র একবার (One-time) ডেটা ফেচ করা হচ্ছে
         if (currentBusinessId.isBlank() && currentUser != null) {
             val uid = currentUser.uid
             FirebaseFirestore.getInstance().collection("businesses")
@@ -65,14 +65,16 @@ class DashboardActivity : ComponentActivity() {
                         uid
                     }
                     BusinessStorage.setActiveBusinessId(context, businessId)
-                    CloudSyncManager.startRealtimeSync(context)
+                    // রিয়েল-টাইম লাইভ লিসেনার বাদ দিয়ে একবারের জন্য smartSync কল করা হলো
+                    CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
                 }
                 .addOnFailureListener {
                     BusinessStorage.setActiveBusinessId(context, uid)
-                    CloudSyncManager.startRealtimeSync(context)
+                    CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
                 }
-        } else {
-            CloudSyncManager.startRealtimeSync(context)
+        } else if (currentUser != null) {
+            // অ্যাপে প্রবেশ করার সময় ব্যাকগ্রাউন্ডে এককালীন সিঙ্ক করে নেবে
+            CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
         }
         
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -120,7 +122,6 @@ class DashboardActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        CloudSyncManager.stopRealtimeSync()
         super.onPause()
     }
 }
@@ -263,7 +264,7 @@ fun DashboardScreen(
                     if (index < (menuItems.size + 2) / 3 - 1) Spacer(Modifier.height(10.dp))
                 }
 
-Spacer(Modifier.height(90.dp))
+                Spacer(Modifier.height(90.dp))
             }
         }
     }
