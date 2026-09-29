@@ -47,7 +47,7 @@ class DashboardActivity : ComponentActivity() {
         CloudSyncManager.startRealtimeSync(this)
         
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val loggedIn = SecurityStorage.getCurrentUser(this) != null
+        val currentUser = SecurityStorage.getCurrentUser(this)\n        val loggedIn = currentUser != null\n        val isViewer = currentUser?.role == SecurityStorage.ROLE_VIEWER
         
         // Data Fetching
         val sales = if (loggedIn) SalesStorage.getSales(this) else emptyList()
@@ -67,7 +67,7 @@ class DashboardActivity : ComponentActivity() {
                     todayPurchases = todayPurchases,
                     todayProfit = todayProfit,
                     totalStock = totalStock,
-                    loggedIn = loggedIn,
+                    loggedIn = loggedIn,\n                    isViewer = isViewer,
                     onProductClick = { if (loggedIn) startActivity(Intent(this, ProductActivity::class.java)) },
                     onPurchaseClick = { if (loggedIn) startActivity(Intent(this, PurchaseActivity::class.java)) },
                     onSalesClick = { if (loggedIn) startActivity(Intent(this, SalesActivity::class.java)) },
@@ -157,7 +157,7 @@ fun DashboardScreen(
                     selected = false,
                     onClick = onSettingsClick,
                     icon = { Text("⚙", style = MaterialTheme.typography.titleMedium) },
-                    label = { Text("সেটিংস") }
+                    label = { Text("সেটিংস") },\n                    enabled = !isViewer
                 )
             }
         },
@@ -193,7 +193,7 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                Spacer(Modifier.height(18.dp))
+                if (isViewer) {\n                    Text("👁 VIEW ONLY — এই অ্যাকাউন্ট শুধু ব্যবসার তথ্য দেখতে পারবে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)\n                }\n                Spacer(Modifier.height(18.dp))
 
                 // Dashboard Cards Section
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -212,7 +212,7 @@ fun DashboardScreen(
                 Text("প্রধান মেনু", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
 
-                val menuItems = listOf(
+                val menuItems = buildList {
                     "📦" to ("পণ্য" to onProductClick),
                     "🛒" to ("ক্রয়" to onPurchaseClick),
                     "🧾" to ("বিক্রয়" to onSalesClick),
