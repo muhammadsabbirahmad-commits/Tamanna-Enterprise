@@ -15,10 +15,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Source
-import com.tamanna.enterprise.business.BusinessAccountStorage
-import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.sync.CloudSyncManager
 
@@ -77,7 +73,7 @@ class LoginActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
                     Text("Gmail Login", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
-                    Text("Gmail দিয়ে Login করুন। Business App-এ Partner Gmail আগে থেকে সংরক্ষিত থাকলে সরাসরি View-Only প্রবেশ হবে; না থাকলে Admin-এর কাছে অনুমোদনের অনুরোধ যাবে।")
+                    Text("Gmail দিয়ে Login করুন। Admin অনুমোদনের পর ব্যবসায়িক ডাটায় প্রবেশ করা যাবে।")
                     Spacer(Modifier.height(12.dp))
                     if (message.isNotBlank()) { Text(message, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
                     Button(onClick = {
