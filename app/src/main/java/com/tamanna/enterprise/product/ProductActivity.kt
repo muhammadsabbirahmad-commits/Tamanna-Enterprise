@@ -120,12 +120,14 @@ fun ProductScreen(
             ) {
                 Text("পণ্য ব্যবস্থাপনা", style = MaterialTheme.typography.headlineMedium)
 
-                Button(
-                    onClick = onAddProductClick,
-                    enabled = canWrite,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (canWrite) "নতুন পণ্য যোগ করুন" else "নতুন পণ্য যোগ করুন (অ্যাডমিন অনুমতি প্রয়োজন)")
+                // ভিউয়ারদের জন্য 'নতুন পণ্য যোগ করুন' বাটনটি এখানে সম্পূর্ণ লুকিয়ে রাখা হয়েছে
+                if (canWrite) {
+                    Button(
+                        onClick = onAddProductClick,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("নতুন পণ্য যোগ করুন")
+                    }
                 }
 
                 OutlinedTextField(
@@ -415,7 +417,7 @@ fun StockDialog(
                     it.code.equals(product.code, ignoreCase = true)
                 }
                 when {
-                    latest == null -> error = "পণ্যটি আর পাওয়া যাচ্ছে কক্ষ না।"
+                    latest == null -> error = "পণ্যটি আর পাওয়া যাচ্ছে না।"
                     q == null || q <= 0 -> error = "সঠিক পরিমাণ দিন।"
                     add && latest.stockQuantity > Int.MAX_VALUE - q ->
                         error = "স্টক সীমা অতিক্রম করছে।"
