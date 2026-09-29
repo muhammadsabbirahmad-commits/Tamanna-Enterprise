@@ -66,7 +66,8 @@ class PurchaseActivity : ComponentActivity() {
 @Composable
 private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val canWrite = com.tamanna.enterprise.security.SecurityStorage.canWrite(context)\n    var purchases by remember { mutableStateOf(PurchaseStorage.getPurchases(context)) }
+    val canWrite = com.tamanna.enterprise.security.SecurityStorage.canWrite(context)
+    var purchases by remember { mutableStateOf(PurchaseStorage.getPurchases(context)) }
     var selectedPurchase by remember { mutableStateOf<Purchase?>(null) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -76,9 +77,13 @@ private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (canWrite) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onAddPurchase, modifier = Modifier.weight(1f)) { Text("নতুন ক্রয়") }
                     Button(onClick = onMemoScan, modifier = Modifier.weight(1f)) { Text("মেমো স্ক্যান") }
+                    }
+                } else {
+                    Text("👁 VIEW ONLY — ক্রয়ের তথ্য দেখা যাবে, নতুন ক্রয়/মেমো স্ক্যান করা যাবে না।", color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 if (purchases.isEmpty()) {
