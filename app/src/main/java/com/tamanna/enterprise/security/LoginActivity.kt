@@ -36,6 +36,8 @@ class LoginActivity : ComponentActivity() {
                 
                 val currentUser = auth.currentUser
                 if (currentUser == null) { failure?.invoke("ইউজার পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
+                val verifiedEmail = account.email?.trim()?.lowercase().orEmpty()
+                if (verifiedEmail.isBlank()) { failure?.invoke("Google Gmail ঠিকানা পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
                 // আগে View Access খোঁজা হবে। এতে অনুমোদিত Gmail একই Enterprise app-এ
                 // নির্দিষ্ট Business-এর জন্য সরাসরি read-only access পাবে।
