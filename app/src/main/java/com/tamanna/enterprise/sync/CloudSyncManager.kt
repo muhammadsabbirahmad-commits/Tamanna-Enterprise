@@ -81,7 +81,7 @@ object CloudSyncManager {
                 if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
 
                 pullAllFromCloud(context.applicationContext, ref, cloudHash) { success ->
-                    if (success) Log.d(TAG, "Local data updated from owner's cloud backup.")
+                    if (success) Log.d(TAG, "Local data updated from cloud backup.")
                 }
             }
         }
@@ -93,9 +93,6 @@ object CloudSyncManager {
         realtimeListenerStarting = false
     }
 
-    /**
-     * ফিক্সড: আপনার রুলস অনুযায়ী businesses/{businessId}/data/backup ফোল্ডার টার্গেট করা হয়েছে
-     */
     fun getTargetSyncDoc(context: Context, onResult: (DocumentReference?, Boolean) -> Unit) {
         val authUser = FirebaseAuth.getInstance().currentUser
         if (authUser == null) {
@@ -107,18 +104,11 @@ object CloudSyncManager {
         val businessAccount = BusinessAccountStorage.get(context)
         val localUser = SecurityStorage.getCurrentUser(context)
         
+        // businessId ফাঁকা থাকলে ইউজারের নিজস্ব UID ব্যবহার করবে যাতে কোনো ব্ল্যাংক পাথ না হয়
+        val businessId = businessAccount.businessId.ifBlank { authUser.uid }
         val isPartner = localUser?.role == "PARTNER"
-        val businessId = businessAccount.businessId
 
-        if (businessId.isBlank()) {
-            onResult(null, false)
-            return
-        }
-
-        // এখন মালিক এবং পার্টনার উভয়েই businesses ফোল্ডারের নির্দিষ্ট বিজনেসের ব্যাকআপ পাথ ব্যবহার করবে
         val ref = db.collection("businesses").document(businessId).collection("data").document("backup")
-        
-        // পার্টনার হলে canPush হবে false, মালিক হলে true
         onResult(ref, !isPartner) 
     }
 
@@ -156,11 +146,9 @@ object CloudSyncManager {
             metaRef.get().addOnSuccessListener { doc ->
                 val cloudHash = doc.getString("dataHash") ?: ""
 
-                // ফিক্সড: Sync Wipe বাগটি সমাধান করা হয়েছে
                 when {
                     isLocalEmpty && cloudHash.isNotBlank() -> {
-                        val pullHash = cloudHash
-                        pullAllFromCloud(appContext, metaRef, pullHash) { success ->
+                        pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                             if (!isAuto) {
                                 val msg = if (success) "ক্লাউড থেকে ডেটা রিস্টোর হয়েছে! ☁️⬇️" else "রিস্টোর ব্যর্থ হয়েছে।"
                                 onComplete(msg, success)
@@ -187,8 +175,7 @@ object CloudSyncManager {
                         if (!isAuto) onComplete("সব ডেটা আপ-টু-ডেট আছে। ✅", false)
                     }
                 }
-            }.addOnFailureListener { e ->
-                Log.e(TAG, "Sync check failed", e)
+            }.addOnFailureListener {
                 if (canPush) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                         if (!isAuto) {
@@ -204,8 +191,12 @@ object CloudSyncManager {
     }
 
     fun pushAllToCloud(context: Context, currentLocalHash: String, metaRef: DocumentReference, onResult: (Boolean) -> Unit) {
-        val dataMap = mutableMapOf<String, Any>()
+        val authUser = FirebaseAuth.getInstance().currentUser ?: run {
+            onResult(false)
+            return
+        }
         
+        val dataMap = mutableMapOf<String, Any>()
         for (ns in namespaces) {
             val prefs = BusinessStorage.prefs(context, ns)
             val nsMap = mutableMapOf<String, Any>()
@@ -223,14 +214,31 @@ object CloudSyncManager {
         dataMap["dataHash"] = currentLocalHash
         dataMap["updatedAt"] = System.currentTimeMillis()
 
-        metaRef.set(dataMap)
+        // ফায়ারবেসে স্বয়ংক্রিয়ভাবে মূল বিজনেস ফোল্ডার ও ডকুমেন্ট তৈরি করে নেওয়া যাতে পারমিশন এরর না আসে
+        val businessId = BusinessAccountStorage.get(context).businessId.ifBlank { authUser.uid }
+        val db = FirebaseFirestore.getInstance()
+        val businessDocRef = db.collection("businesses").document(businessId)
+
+        val businessData = mapOf(
+            "ownerUid" to authUser.uid,
+            "updatedAt" to System.currentTimeMillis()
+        )
+
+        businessDocRef.set(businessData, com.google.firebase.firestore.SetOptions.merge())
             .addOnSuccessListener {
-                val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, currentLocalHash).apply()
-                onResult(true)
+                metaRef.set(dataMap)
+                    .addOnSuccessListener {
+                        val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                        syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, currentLocalHash).apply()
+                        onResult(true)
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "Push failed on backup doc", e)
+                        onResult(false)
+                    }
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Push failed", e)
+                Log.e(TAG, "Failed to create parent business doc", e)
                 onResult(false)
             }
     }
