@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.finance.FinanceActivity
 import com.tamanna.enterprise.due.CustomerDueActivity
-import com.tamanna.enterprise.partner.PartnerActivity
 import com.tamanna.enterprise.product.ProductActivity
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseActivity
@@ -80,7 +79,6 @@ class DashboardActivity : ComponentActivity() {
                     onProfitClick = { if (loggedIn) startActivity(Intent(this, ProfitActivity::class.java)) },
                     onScannerClick = { if (loggedIn) startActivity(Intent(this, SalesScanActivity::class.java)) },
                     onSettingsClick = { startActivity(Intent(this, SettingsActivity::class.java)) },
-                    onPartnerClick = { if (loggedIn) startActivity(Intent(this, PartnerActivity::class.java)) },
                     onFinanceClick = { if (loggedIn) startActivity(Intent(this, FinanceActivity::class.java)) },
                     onDueClick = { if (loggedIn) startActivity(Intent(this, CustomerDueActivity::class.java)) },
                     onSupplierDueClick = { if (loggedIn) startActivity(Intent(this, SupplierDueActivity::class.java)) },
@@ -126,7 +124,6 @@ fun DashboardScreen(
     onProfitClick: () -> Unit,
     onScannerClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onPartnerClick: () -> Unit,
     onFinanceClick: () -> Unit,
     onDueClick: () -> Unit,
     onSupplierDueClick: () -> Unit,
@@ -191,7 +188,7 @@ fun DashboardScreen(
                 if (!loggedIn) {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "🔒 ব্যবসায়িক ডাটা লক করা আছে। সেটিংস → Admin Login অথবা Partner Login থেকে প্রবেশ করুন।",
+                        "🔒 ব্যবসায়িক ডাটা লক করা আছে। সেটিংস → Google/Admin Login থেকে প্রবেশ করুন।",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -226,8 +223,7 @@ fun DashboardScreen(
                     "📅" to ("আর্থিক ক্যালেন্ডার" to onFinancialCalendarClick),
                     "🔎" to ("গ্লোবাল সার্চ" to onGlobalSearchClick),
                     "💰" to ("লাভ" to onProfitClick),
-                    "🤝" to ("পার্টনার" to onPartnerClick),
-                    "💸" to ("খরচ/উত্তোলন" to onFinanceClick),
+                    "💸" to ("খরচ/ড্যামেজ" to onFinanceClick),
                     "👤" to ("ক্রেতার বাকি" to onDueClick),
                     "🏭" to ("সরবরাহকারীর বাকি" to onSupplierDueClick),
                     "☁️" to ("ডাটা ব্যাকআপ" to onBackupClick)
