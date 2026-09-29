@@ -8,6 +8,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
 object CloudSyncManager {
@@ -21,7 +22,13 @@ object CloudSyncManager {
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
         "tamanna_transactions_prefs",
-        "tamanna_enterprise_products"
+        "tamanna_enterprise_products",
+        "tamanna_enterprise_purchases",
+        "tamanna_supplier_due",
+        "tamanna_enterprise_sale_returns",
+        "tamanna_enterprise_sale_transactions",
+        "tamanna_enterprise_activity_log",
+        "tamanna_inventory_meta"
     )
 
     private val handler = Handler(Looper.getMainLooper())
@@ -100,8 +107,14 @@ object CloudSyncManager {
 
         val db = FirebaseFirestore.getInstance()
         // বর্তমান লগইন করা Owner-এর UID দিয়ে ব্যাকআপ পাথ নির্ধারণ
-        val ref = db.collection("businesses").document(authUser.uid).collection("data").document("backup")
-        onResult(ref, true) 
+        val businessId = BusinessStorage.getActiveBusinessId(context).trim()
+        if (businessId.isBlank()) {
+            onResult(null, false)
+            return
+        }
+        val isOwner = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
+        val ref = db.collection("businesses").document(businessId).collection("data").document("backup")
+        onResult(ref, isOwner) 
     }
 
     fun calculateLocalHash(context: Context): String {
