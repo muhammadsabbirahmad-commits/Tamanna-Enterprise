@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
-import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.purchase.SupplierDueStorage
@@ -42,8 +41,6 @@ private fun ReportsScreen() {
             ReportOption("purchase", "ক্রয় হিসাব"),
             ReportOption("sales", "বিক্রয় হিসাব"),
             ReportOption("profit", "লাভের হিসাব"),
-            ReportOption("partners", "পার্টনার বিনিয়োগ ও লাভের অংশ"),
-            ReportOption("withdrawal", "পার্টনার উত্তোলন"),
             ReportOption("expense", "ব্যবসার খরচ"),
             ReportOption("damage", "নষ্ট/ড্যামেজ পণ্য"),
             ReportOption("customerDue", "কাস্টমারের বাকি"),
@@ -76,11 +73,9 @@ private fun ReportsScreen() {
     val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
     val products = ProductStorage.getProducts(context)
     val expenses = ExpenseStorage.getExpenses(context).filter { inRange(it.date) }
-    val withdrawals = ExpenseStorage.getWithdrawals(context).filter { inRange(it.date) }
     val damages = ExpenseStorage.getDamages(context).filter { inRange(it.date) }
     val customerDue = CustomerDueStorage.getEntries(context).filter { inRange(it.date) }
     val supplierDue = SupplierDueStorage.getEntries(context).filter { inRange(it.date) }
-    val partners = PartnerStorage.getPartners(context)
 
     val canExport = validRange && selected.values.any { it }
 
@@ -125,7 +120,7 @@ private fun ReportsScreen() {
                                 context, fromDate, toDate,
                                 selected = selected.filterValues { it }.keys,
                                 sales = sales, purchases = purchases, products = products,
-                                partners = partners, expenses = expenses, withdrawals = withdrawals,
+                                expenses = expenses,
                                 damages = damages, customerDue = customerDue, supplierDue = supplierDue
                             )
                         },
