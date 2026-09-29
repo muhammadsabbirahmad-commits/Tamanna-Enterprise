@@ -20,6 +20,7 @@ import com.google.firebase.firestore.Source
 import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.BusinessMembershipManager
 import com.tamanna.enterprise.dashboard.DashboardActivity
+import com.tamanna.enterprise.sync.CloudSyncManager
 
 class LoginActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
@@ -42,11 +43,9 @@ class LoginActivity : ComponentActivity() {
                 val partnerKey = "partner_" + email.replace(".", "_").replace("@", "_")
                 val db = FirebaseFirestore.getInstance()
 
-                // --- গ্লোবাল ক্লাউড বাইপাস লজিক ---
                 db.collection("preApprovedPartners").document(partnerKey).get(Source.SERVER)
                     .addOnCompleteListener { docTask ->
                         if (docTask.isSuccessful && docTask.result?.exists() == true) {
-                            // Gmailটি Business App-এর অনুমোদিত Partner তালিকায় আছে। Business ID ও membership cloud থেকে নিশ্চিত করে তারপর সরাসরি প্রবেশ।
                             val businessId = docTask.result?.getString("businessId").orEmpty().trim()
                             if (businessId.isBlank()) {
                                 auth.signOut()
@@ -67,7 +66,6 @@ class LoginActivity : ComponentActivity() {
                                 clear()
                             }
                         } else {
-                            // পার্টনার না হলে রেগুলার অ্যাডমিন চেকিং হবে
                             AccessRequestManager.requestOrCheck { ok, message, record ->
                                 if (ok && record != null) {
                                     SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
@@ -109,14 +107,19 @@ class LoginActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
                     if (message.isNotBlank()) { Text(message, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
                     Button(onClick = {
-                        message = ""; loading = true
+                        message = ""
+                        loading = true
                         success = { 
-                            loading = false
-                            setResult(RESULT_OK)
-                            val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            startActivity(intent)
-                            finish() 
+                            message = "ক্লাউড থেকে ডেটা সিঙ্ক হচ্ছে, অপেক্ষা করুন..."
+                            // লগইন হওয়ার সাথে সাথে অটোমেটিক ডেটা সিঙ্ক
+                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { syncMsg, isSynced ->
+                                loading = false
+                                setResult(RESULT_OK)
+                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                startActivity(intent)
+                                finish()
+                            }
                         }
                         failure = { loading = false; message = it }
                         startLogin()
