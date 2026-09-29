@@ -46,11 +46,16 @@ class DashboardActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         CloudSyncManager.startRealtimeSync(this)
+        
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val loggedIn = SecurityStorage.getCurrentUser(this) != null
+        
+        // Data Fetching
         val sales = if (loggedIn) SalesStorage.getSales(this) else emptyList()
         val purchases = if (loggedIn) PurchaseStorage.getPurchases(this) else emptyList()
         val products = if (loggedIn) ProductStorage.getProducts(this) else emptyList()
+        
+        // Calculations
         val todaySales = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.salePrice }
         val todayPurchases = purchases.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.purchasePrice }
         val todayProfit = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
@@ -59,7 +64,11 @@ class DashboardActivity : ComponentActivity() {
         setContent {
             TamannaTheme(ThemeStorage.getTheme(this)) {
                 DashboardScreen(
-                    todaySales, todayPurchases, todayProfit, totalStock, loggedIn,
+                    todaySales = todaySales,
+                    todayPurchases = todayPurchases,
+                    todayProfit = todayProfit,
+                    totalStock = totalStock,
+                    loggedIn = loggedIn,
                     onProductClick = { if (loggedIn) startActivity(Intent(this, ProductActivity::class.java)) },
                     onPurchaseClick = { if (loggedIn) startActivity(Intent(this, PurchaseActivity::class.java)) },
                     onSalesClick = { if (loggedIn) startActivity(Intent(this, SalesActivity::class.java)) },
@@ -175,8 +184,10 @@ fun DashboardScreen(
                     .padding(padding)
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
+                // Header Section
                 Text(shopName, style = MaterialTheme.typography.headlineMedium)
                 Text("Shop Management System", style = MaterialTheme.typography.bodyMedium)
+                
                 if (!loggedIn) {
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -187,6 +198,7 @@ fun DashboardScreen(
                 }
                 Spacer(Modifier.height(18.dp))
 
+                // Dashboard Cards Section
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DashboardCard("আজকের বিক্রয়", "৳ %.2f".format(todaySales), Color(0xFFE3F2FD), Modifier.weight(1f))
                     DashboardCard("আজকের ক্রয়", "৳ %.2f".format(todayPurchases), Color(0xFFE8F5E9), Modifier.weight(1f))
@@ -198,6 +210,8 @@ fun DashboardScreen(
                 }
 
                 Spacer(Modifier.height(24.dp))
+                
+                // Main Menu Section
                 Text("প্রধান মেনু", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
 
@@ -249,9 +263,14 @@ private fun DashboardMenuRow(
                 icon = icon,
                 title = item.first,
                 onClick = item.second,
-                background = menuColors[startIndex + index],
+                background = menuColors[(startIndex + index) % menuColors.size], // Added modulo operator for safety
                 modifier = Modifier.weight(1f)
             )
+        }
+        
+        // Fill empty spaces if a row has less than 3 items
+        repeat(3 - items.size) {
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
@@ -274,9 +293,10 @@ private fun DashboardMenuButton(
             contentColor = Color(0xFF263238)
         )
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(icon, style = MaterialTheme.typography.headlineSmall)
-            Text(title, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(title, style = MaterialTheme.typography.labelMedium) // Adjusted for better text fitting
         }
     }
 }
@@ -296,7 +316,8 @@ fun DashboardCard(
     ) {
         Column(
             Modifier.padding(14.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF263238))
             Spacer(Modifier.height(6.dp))
