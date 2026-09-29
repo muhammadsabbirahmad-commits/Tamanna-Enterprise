@@ -16,6 +16,8 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.DashboardActivity
+import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.sync.CloudSyncManager
 
 class LoginActivity : ComponentActivity() {
@@ -35,16 +37,35 @@ class LoginActivity : ComponentActivity() {
                 val currentUser = auth.currentUser
                 if (currentUser == null) { failure?.invoke("ইউজার পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
-                AccessRequestManager.requestOrCheck { ok, message, record ->
-                    if (ok && record != null) {
-                        SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
-                        SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let { SecurityStorage.login(this@LoginActivity, it) }
+                // আগে View Access খোঁজা হবে। এতে অনুমোদিত Gmail একই Enterprise app-এ
+                // নির্দিষ্ট Business-এর জন্য সরাসরি read-only access পাবে।
+                ViewAccessManager.findForEmailAcrossBusinesses(verifiedEmail) { viewEntry ->
+                    if (viewEntry != null && viewEntry.businessId.isNotBlank()) {
+                        BusinessStorage.setActiveBusinessId(this@LoginActivity, viewEntry.businessId)
+                        val viewUser = SecurityStorage.upsertGoogleUser(
+                            this@LoginActivity,
+                            verifiedEmail,
+                            SecurityStorage.ROLE_VIEWER,
+                            true,
+                            currentUser.uid
+                        )
+                        SecurityStorage.login(this@LoginActivity, viewUser)
                         success?.invoke()
+                        clear()
                     } else {
-                        auth.signOut()
-                        failure?.invoke(message)
+                        // View Access না থাকলে আগের Owner/Admin approval flow অপরিবর্তিত থাকবে।
+                        AccessRequestManager.requestOrCheck { ok, message, record ->
+                            if (ok && record != null) {
+                                SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
+                                SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let { SecurityStorage.login(this@LoginActivity, it) }
+                                success?.invoke()
+                            } else {
+                                auth.signOut()
+                                failure?.invoke(message)
+                            }
+                            clear()
+                        }
                     }
-                    clear()
                 }
             }
         } catch (e: ApiException) { failure?.invoke("Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"); clear() }
