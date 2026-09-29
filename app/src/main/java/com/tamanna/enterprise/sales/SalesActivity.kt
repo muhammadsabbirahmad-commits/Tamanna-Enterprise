@@ -52,6 +52,7 @@ private data class SaleGroup(
 @androidx.compose.runtime.Composable
 private fun SalesScreen(onNewSale: () -> Unit) {
     val context = LocalContext.current
+    val canWrite = SecurityStorage.canWrite(context)
     var selectedGroup by remember { mutableStateOf<SaleGroup?>(null) }
 
     val sales = remember { SalesStorage.getSales(context) }
@@ -69,7 +70,7 @@ private fun SalesScreen(onNewSale: () -> Unit) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("বিক্রয় ইতিহাস", style = MaterialTheme.typography.headlineSmall)
-                    if (canWrite) Button(onClick = onNewSale) { Text("নতুন বিক্রয়") } else Text("শুধু দেখার অনুমতি", style = MaterialTheme.typography.bodySmall)
+                    if (canWrite) if (canWrite) Button(onClick = onNewSale) { Text("নতুন বিক্রয়") } else Text("শুধু দেখার অনুমতি", style = MaterialTheme.typography.bodySmall) else Text("শুধু দেখার অনুমতি", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.height(12.dp))
 
