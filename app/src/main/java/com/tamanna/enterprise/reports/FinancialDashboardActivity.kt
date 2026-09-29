@@ -16,7 +16,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.finance.ExpenseStorage
-import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import java.text.SimpleDateFormat
@@ -56,8 +55,6 @@ private fun FinancialDashboardScreen() {
     val purchases = remember(refresh) { PurchaseStorage.getPurchases(context) }
     val expenses = remember(refresh) { ExpenseStorage.getExpenses(context) }
     val damages = remember(refresh) { ExpenseStorage.getDamages(context) }
-    val withdrawals = remember(refresh) { ExpenseStorage.getWithdrawals(context) }
-    val partners = remember(refresh) { PartnerStorage.getPartners(context) }
 
     val valid = fromDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) &&
         toDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && fromDate <= toDate
@@ -66,7 +63,6 @@ private fun FinancialDashboardScreen() {
     val rp = if (valid) purchases.filter { it.date.substringBefore(" ") in fromDate..toDate } else emptyList()
     val re = if (valid) expenses.filter { it.date in fromDate..toDate } else emptyList()
     val rd = if (valid) damages.filter { it.date in fromDate..toDate } else emptyList()
-    val rw = if (valid) withdrawals.filter { it.date in fromDate..toDate } else emptyList()
 
     val salesTotal = rs.sumOf { it.quantity * it.salePrice }
     val costOfSales = rs.sumOf { it.quantity * it.purchasePrice }
@@ -77,9 +73,6 @@ private fun FinancialDashboardScreen() {
     val purchaseTotal = rp.sumOf { it.quantity * it.purchasePrice }
     val dueCollection = 0.0
     val receivable = com.tamanna.enterprise.due.CustomerDueStorage.getBalances(context).values.sum()
-    val totalPartnerShare = partners.sumOf { PartnerStorage.profitShare(kotlin.math.max(0.0, netProfit), it) }
-    val withdrawalTotal = rw.sumOf { it.amount }
-    val partnerRemaining = kotlin.math.max(0.0, totalPartnerShare - withdrawalTotal)
 
     val daily = remember(rs, rp, fromDate, toDate) {
         val start = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(fromDate) }.getOrNull()
@@ -120,9 +113,6 @@ private fun FinancialDashboardScreen() {
             MetricCard("প্রতিষ্ঠানের খরচ", expenseTotal)
             MetricCard("ড্যামেজ/ক্ষতি", damageTotal)
             MetricCard("নিট লাভ", netProfit)
-            MetricCard("মোট পার্টনার লাভের অংশ", totalPartnerShare)
-            MetricCard("পার্টনার উত্তোলন", withdrawalTotal)
-            MetricCard("পার্টনার অবশিষ্ট প্রাপ্য", partnerRemaining)
             MetricCard("মোট ক্রেতা বাকি", receivable)
             MetricCard("বাকি আদায়", dueCollection)
 
