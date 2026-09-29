@@ -15,6 +15,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FirebaseFirestore
 import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.business.ViewAccessManager
@@ -104,14 +105,50 @@ class LoginActivity : ComponentActivity() {
                         loading = true
                         success = { 
                             message = "ক্লাউড থেকে ডেটা সিঙ্ক হচ্ছে, অপেক্ষা করুন..."
-                            // লগইন হওয়ার সাথে সাথে অটোমেটিক ডেটা সিঙ্ক
-                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { syncMsg, isSynced ->
-                                loading = false
-                                setResult(RESULT_OK)
-                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
-                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                startActivity(intent)
-                                finish()
+                            
+                            val context = this@LoginActivity
+                            val currentUser = FirebaseAuth.getInstance().currentUser
+                            
+                            if (currentUser != null) {
+                                val uid = currentUser.uid
+                                val db = FirebaseFirestore.getInstance()
+                                
+                                // ফায়ারবেস থেকে সঠিক businessId রিকভার করা হচ্ছে
+                                db.collection("businesses")
+                                    .whereEqualTo("ownerUid", uid)
+                                    .get()
+                                    .addOnSuccessListener { documents ->
+                                        val businessId = if (!documents.isEmpty) {
+                                            documents.documents[0].id
+                                        } else {
+                                            uid
+                                        }
+                                        
+                                        // লোকাল স্টোরেজে active businessId সেট করা হলো
+                                        BusinessStorage.setActiveBusinessId(context, businessId)
+                                        
+                                        // ক্লাউড সিঙ্ক শুরু হবে
+                                        CloudSyncManager.smartSync(context, isAuto = false) { _, _ ->
+                                            loading = false
+                                            setResult(RESULT_OK)
+                                            val intent = Intent(context, DashboardActivity::class.java)
+                                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                            startActivity(intent)
+                                            finish()
+                                        }
+                                    }
+                                    .addOnFailureListener {
+                                        BusinessStorage.setActiveBusinessId(context, uid)
+                                        
+                                        CloudSyncManager.smartSync(context, isAuto = false) { _, _ ->
+                                            loading = false
+                                            setResult(RESULT_OK)
+                                            val intent = Intent(context, DashboardActivity::class.java)
+                                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                            startActivity(intent)
+                                            finish()
+                                        }
+                                    }
                             }
                         }
                         failure = { loading = false; message = it }
