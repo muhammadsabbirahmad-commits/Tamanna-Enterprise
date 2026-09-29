@@ -107,6 +107,17 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
+    // Collection-group lookup used by Gmail View Access login.
+    // It only exposes an active record belonging to the signed-in Gmail.
+    match /{path=**}/viewAccess/{emailKey} {
+      allow read: if signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null
+        && emailKey == request.auth.token.email.lower()
+        && resource.data.email == request.auth.token.email.lower()
+        && resource.data.active == true;
+    }
+
     match /businesses/{businessId} {
       allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
