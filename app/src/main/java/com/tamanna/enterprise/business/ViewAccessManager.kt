@@ -120,6 +120,39 @@ object ViewAccessManager {
             }
     }
 
+    fun findForEmailAcrossBusinesses(
+        email: String,
+        onResult: (ViewAccessEntry?) -> Unit
+    ) {
+        val cleanEmail = normalizeEmail(email)
+        if (cleanEmail.isBlank()) {
+            onResult(null)
+            return
+        }
+
+        db().collectionGroup(VIEW_ACCESS)
+            .whereEqualTo("email", cleanEmail)
+            .whereEqualTo("active", true)
+            .limit(1)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val doc = snapshot.documents.firstOrNull()
+                if (doc == null) {
+                    onResult(null)
+                    return@addOnSuccessListener
+                }
+                onResult(
+                    ViewAccessEntry(
+                        email = doc.getString("email").orEmpty(),
+                        businessId = doc.getString("businessId").orEmpty(),
+                        ownerUid = doc.getString("ownerUid").orEmpty(),
+                        active = doc.getBoolean("active") == true
+                    )
+                )
+            }
+            .addOnFailureListener { onResult(null) }
+    }
+
     fun findForEmail(
         businessId: String,
         email: String,
