@@ -201,8 +201,7 @@ fun DashboardScreen(
     onGlobalSearchClick: () -> Unit,
     onBackupClick: () -> Unit,
     onFinancialCalendarClick: () -> Unit,
-    shopName: String,
-    partnerStorageContext: Context
+    shopName: String
 ) {
     Scaffold(
         bottomBar = {
