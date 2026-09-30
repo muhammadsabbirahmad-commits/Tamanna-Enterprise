@@ -15,7 +15,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.firestore.FirebaseFirestore
 import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.business.ViewAccessManager
@@ -40,10 +39,10 @@ class LoginActivity : ComponentActivity() {
                 val verifiedEmail = account.email?.trim()?.lowercase().orEmpty()
                 if (verifiedEmail.isBlank()) { failure?.invoke("Google Gmail ঠিকানা পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
-                // আগে View Access খোঁজা হবে। এতে অনুমোদিত Gmail একই Enterprise app-এ
-                // নির্দিষ্ট Business-এর জন্য সরাসরি read-only access পাবে।
+                // ১. সবার আগে চেক করা হবে জিমেইলটি View Access তালিকায় আছে কিনা
                 ViewAccessManager.findForEmailAcrossBusinesses(verifiedEmail) { viewEntry ->
                     if (viewEntry != null && viewEntry.businessId.isNotBlank()) {
+                        // যদি View Access তালিকায় থাকে, তবে কোনো পার্মিশন ছাড়াই সরাসরি এন্ট্রি দিন
                         BusinessStorage.setActiveBusinessId(this@LoginActivity, viewEntry.businessId)
                         val viewUser = SecurityStorage.upsertGoogleUser(
                             this@LoginActivity,
@@ -56,7 +55,7 @@ class LoginActivity : ComponentActivity() {
                         success?.invoke()
                         clear()
                     } else {
-                        // View Access না থাকলে আগের Owner/Admin approval flow অপরিবর্তিত থাকবে।
+                        // ২. View Access এ না থাকলে কেবল তখনই Admin approval flow (AccessRequestManager) এ যাবে
                         AccessRequestManager.requestOrCheck { ok, message, record ->
                             if (ok && record != null) {
                                 SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
@@ -97,7 +96,7 @@ class LoginActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
                     Text("Gmail Login", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
-                    Text("Gmail দিয়ে Login করুন। Admin অনুমোদনের পর ব্যবসায়িক ডাটায় প্রবেশ করা যাবে।")
+                    Text("Gmail দিয়ে Login করুন।")
                     Spacer(Modifier.height(12.dp))
                     if (message.isNotBlank()) { Text(message, color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(10.dp)) }
                     Button(onClick = {
@@ -105,50 +104,13 @@ class LoginActivity : ComponentActivity() {
                         loading = true
                         success = { 
                             message = "ক্লাউড থেকে ডেটা সিঙ্ক হচ্ছে, অপেক্ষা করুন..."
-                            
-                            val context = this@LoginActivity
-                            val currentUser = FirebaseAuth.getInstance().currentUser
-                            
-                            if (currentUser != null) {
-                                val uid = currentUser.uid
-                                val db = FirebaseFirestore.getInstance()
-                                
-                                // ফায়ারবেস থেকে সঠিক businessId রিকভার করা হচ্ছে
-                                db.collection("businesses")
-                                    .whereEqualTo("ownerUid", uid)
-                                    .get()
-                                    .addOnSuccessListener { documents ->
-                                        val businessId = if (!documents.isEmpty) {
-                                            documents.documents[0].id
-                                        } else {
-                                            uid
-                                        }
-                                        
-                                        // লোকাল স্টোরেজে active businessId সেট করা হলো
-                                        BusinessStorage.setActiveBusinessId(context, businessId)
-                                        
-                                        // ক্লাউড সিঙ্ক শুরু হবে
-                                        CloudSyncManager.smartSync(context, isAuto = false) { _, _ ->
-                                            loading = false
-                                            setResult(RESULT_OK)
-                                            val intent = Intent(context, DashboardActivity::class.java)
-                                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                            startActivity(intent)
-                                            finish()
-                                        }
-                                    }
-                                    .addOnFailureListener {
-                                        BusinessStorage.setActiveBusinessId(context, uid)
-                                        
-                                        CloudSyncManager.smartSync(context, isAuto = false) { _, _ ->
-                                            loading = false
-                                            setResult(RESULT_OK)
-                                            val intent = Intent(context, DashboardActivity::class.java)
-                                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                            startActivity(intent)
-                                            finish()
-                                        }
-                                    }
+                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { syncMsg, isSynced ->
+                                loading = false
+                                setResult(RESULT_OK)
+                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                startActivity(intent)
+                                finish()
                             }
                         }
                         failure = { loading = false; message = it }
