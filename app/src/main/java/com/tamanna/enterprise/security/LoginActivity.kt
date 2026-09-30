@@ -17,6 +17,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.sync.CloudSyncManager
 
@@ -42,8 +43,11 @@ class LoginActivity : ComponentActivity() {
                 // ১. সবার আগে চেক করা হবে জিমেইলটি View Access তালিকায় আছে কিনা
                 ViewAccessManager.findForEmailAcrossBusinesses(verifiedEmail) { viewEntry ->
                     if (viewEntry != null && viewEntry.businessId.isNotBlank()) {
-                        // যদি View Access তালিকায় থাকে, তবে কোনো পার্মিশন ছাড়াই সরাসরি এন্ট্রি দিন
+                        // BusinessStorage এবং BusinessAccountStorage উভয় জায়গায় active businessId সেট করা হচ্ছে
                         BusinessStorage.setActiveBusinessId(this@LoginActivity, viewEntry.businessId)
+                        val currentAcc = BusinessAccountStorage.get(this@LoginActivity)
+                        BusinessAccountStorage.save(this@LoginActivity, currentAcc.copy(businessId = viewEntry.businessId))
+
                         val viewUser = SecurityStorage.upsertGoogleUser(
                             this@LoginActivity,
                             verifiedEmail,
@@ -55,7 +59,7 @@ class LoginActivity : ComponentActivity() {
                         success?.invoke()
                         clear()
                     } else {
-                        // ২. View Access এ না থাকলে কেবল তখনই Admin approval flow (AccessRequestManager) এ যাবে
+                        // ২. View Access এ না থাকলে Admin approval flow-তে যাবে
                         AccessRequestManager.requestOrCheck { ok, message, record ->
                             if (ok && record != null) {
                                 SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
@@ -103,7 +107,7 @@ class LoginActivity : ComponentActivity() {
                         message = ""
                         loading = true
                         success = { 
-                            message = "ক্লাউড থেকে ডেটা সিঙ্ক হচ্ছে, অপেক্ষা করুন..."
+                            message = "ক্লাউড থেকে ব্যাকআপ ডেটা সিঙ্ক হচ্ছে, অপেক্ষা করুন..."
                             CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { syncMsg, isSynced ->
                                 loading = false
                                 setResult(RESULT_OK)
@@ -115,7 +119,7 @@ class LoginActivity : ComponentActivity() {
                         }
                         failure = { loading = false; message = it }
                         startLogin()
-                    }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text(if (loading) "Gmail যাচাই হচ্ছে..." else "Gmail দিয়ে Login") }
+                    }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text(if (loading) "Gmail যাচাই ও সিঙ্ক হচ্ছে..." else "Gmail দিয়ে Login") }
                 }
             } }
         }
