@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +46,7 @@ import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.security.SecurityStorage
-import com.tamanna.enterprise.sync.CloudSyncManager // সিঙ্ক ম্যানেজার ইমপোর্ট করা হলো
+import com.tamanna.enterprise.sync.CloudSyncManager
 
 object SettingsStorage {
     private const val PREFS = "tamanna_enterprise_settings"
@@ -96,7 +97,6 @@ class SettingsActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // অ্যাপ চালু থাকা অবস্থায় বা সেটিংস পেজে আসলে অটো-সিঙ্ক সক্রিয় রাখার জন্য
         CloudSyncManager.startAutoSync(this)
     }
 }
@@ -122,7 +122,7 @@ private fun SettingsScreen(
     val isPinSet = remember(pinMessage) { SecurityStorage.isAdminPinSet(context) }
     var isPinFreeEntry by remember { mutableStateOf(SecurityStorage.isPinFreeEntryEnabled(context)) }
 
-    // Sync state for button loading
+    // Sync & View Access states
     var isSyncing by remember { mutableStateOf(false) }
     var viewAccessEmail by remember { mutableStateOf("") }
     var viewAccessList by remember { mutableStateOf(emptyList<String>()) }
@@ -135,6 +135,11 @@ private fun SettingsScreen(
             viewAccessList = entries.map { it.email }
             viewAccessLoading = false
         }
+    }
+
+    // স্ক্রিনে আসার সাথে সাথেই লিস্ট অটোমেটিক রিফ্রেশ হবে
+    LaunchedEffect(businessId) {
+        refreshViewAccess()
     }
 
     TamannaTheme(selectedTheme) {
@@ -176,7 +181,6 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                // --- ক্লাউড সিঙ্ক ও ব্যাকআপ সেকশন যোগ করা হলো ---
                 Text("ক্লাউড সিঙ্ক ও ব্যাকআপ", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))
                 Text("ক্লাউডে ব্যবসার ডাটা ব্যাকআপ ও রিয়েল-টাইম সিঙ্কের জন্য ব্যবহার করুন।", style = MaterialTheme.typography.bodySmall)
@@ -192,7 +196,6 @@ private fun SettingsScreen(
                                 isSyncing = false
                                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                 
-                                // যদি সফলভাবে নতুন ডেটা ক্লাউড থেকে নেমে আসে, তবে স্ক্রিন রিফ্রেশ করুন
                                 if (isDataSynced) {
                                     val activity = context as? ComponentActivity
                                     activity?.recreate()
@@ -239,6 +242,7 @@ private fun SettingsScreen(
                                     if (success) {
                                         viewAccessEmail = ""
                                         refreshViewAccess()
+                                        CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
                                     }
                                 }
                             },
@@ -266,7 +270,10 @@ private fun SettingsScreen(
                                         onClick = {
                                             ViewAccessManager.remove(businessId, email) { success, message ->
                                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                                if (success) refreshViewAccess()
+                                                if (success) {
+                                                    refreshViewAccess()
+                                                    CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
+                                                }
                                             }
                                         }
                                     ) {
@@ -347,9 +354,6 @@ private fun SettingsScreen(
                         )
                     }
                 }
-
-                Spacer(Modifier.height(20.dp))
-
 
                 Spacer(Modifier.height(20.dp))
 
