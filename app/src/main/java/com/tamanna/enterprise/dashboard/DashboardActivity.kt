@@ -64,10 +64,19 @@ class DashboardActivity : ComponentActivity() {
             val purchases = if (loggedIn) PurchaseStorage.getPurchases(context) else emptyList()
             val products = if (loggedIn) ProductStorage.getProducts(context) else emptyList()
             
-            // Calculations
-            val todaySales = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.salePrice }
-            val todayPurchases = purchases.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.purchasePrice }
-            val todayProfit = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+            // Calculations with Flexible Date Format
+            val todaySales = sales.filter { 
+                it.date.contains(today) || it.date.startsWith(today) 
+            }.sumOf { it.quantity * it.salePrice }
+
+            val todayPurchases = purchases.filter { 
+                it.date.contains(today) || it.date.startsWith(today) 
+            }.sumOf { it.quantity * it.purchasePrice }
+
+            val todayProfit = sales.filter { 
+                it.date.contains(today) || it.date.startsWith(today) 
+            }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+
             val totalStock = products.sumOf { it.stockQuantity }
 
             setContent {
