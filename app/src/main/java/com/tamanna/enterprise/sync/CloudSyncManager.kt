@@ -17,6 +17,7 @@ object CloudSyncManager {
     private const val PREF_SYNC = "tamanna_sync_prefs"
     private const val KEY_LAST_LOCAL_HASH = "last_local_hash"
 
+    // বিক্রয় (sales) সহ সব প্রয়োজনীয় নেমস্পেস
     private val namespaces = listOf(
         "tamanna_enterprise_settings",
         "tamanna_business_prefs",
@@ -25,6 +26,7 @@ object CloudSyncManager {
         "tamanna_transactions_prefs",
         "tamanna_enterprise_products",
         "tamanna_enterprise_purchases",
+        "tamanna_enterprise_sales", // <-- বিক্রির ডাটা ক্লাউডে সিঙ্ক হওয়ার জন্য যুক্ত করা হয়েছে
         "tamanna_supplier_due",
         "tamanna_enterprise_sale_returns",
         "tamanna_enterprise_sale_transactions",
@@ -152,14 +154,12 @@ object CloudSyncManager {
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
             val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
             
-            // প্রোডাক্ট বা ইনভেন্টরি ফাঁকা কিনা সুনির্দিষ্টভাবে চেক
             val isProductsEmpty = ProductStorage.getProducts(appContext).isEmpty()
 
             metaRef.get().addOnSuccessListener { doc ->
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    // ১. যদি ক্লাউডে ব্যাকআপ থাকে এবং (লোকাল প্রোডাক্ট লিস্ট খালি অথবা স্টোরেজ ক্লিয়ার করার কারণে lastSyncedHash ফাঁকা)
                     cloudHash.isNotBlank() && (isProductsEmpty || lastSyncedHash.isBlank()) -> {
                         pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                             if (!isAuto) {
@@ -168,7 +168,6 @@ object CloudSyncManager {
                             }
                         }
                     }
-                    // ২. যদি লোকালের ডাটা পরিবর্তিত হয়ে থাকে এবং ক্লাউডে পুশ করার অনুমতি থাকে
                     canPush && currentLocalHash != lastSyncedHash -> {
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                             if (!isAuto) {
@@ -177,7 +176,6 @@ object CloudSyncManager {
                             }
                         }
                     }
-                    // ৩. ক্লাউডে নতুন হ্যাশ থাকলে পুল করা
                     cloudHash.isNotBlank() && cloudHash != lastSyncedHash -> {
                         pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                             if (!isAuto) {
