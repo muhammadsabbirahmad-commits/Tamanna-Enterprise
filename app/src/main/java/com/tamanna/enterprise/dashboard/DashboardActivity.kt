@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.finance.FinanceActivity
 import com.tamanna.enterprise.due.CustomerDueActivity
 import com.tamanna.enterprise.product.ProductActivity
@@ -45,78 +46,101 @@ import java.util.Date
 import java.util.Locale
 
 class DashboardActivity : ComponentActivity() {
+
     override fun onResume() {
         super.onResume()
         
         val context = this
         val currentBusinessId = BusinessStorage.getActiveBusinessId(context).trim()
-        val currentUser = FirebaseAuth.getInstance().currentUser
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
         
-        // ফায়ারবেস থেকে সঠিক businessId রিকভার করে শুধুমাত্র একবার (One-time) ডেটা ফেচ করা হচ্ছে
-        if (currentBusinessId.isBlank() && currentUser != null) {
-            val uid = currentUser.uid
+        // ড্যাশবোর্ডের ডাটা হিসাব করে UI সেট করার ফাংশন
+        fun renderDashboardUI() {
+            val loggedIn = SecurityStorage.getCurrentUser(context) != null
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            
+            // Data Fetching
+            val sales = if (loggedIn) SalesStorage.getSales(context) else emptyList()
+            val purchases = if (loggedIn) PurchaseStorage.getPurchases(context) else emptyList()
+            val products = if (loggedIn) ProductStorage.getProducts(context) else emptyList()
+            
+            // Calculations
+            val todaySales = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.salePrice }
+            val todayPurchases = purchases.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.purchasePrice }
+            val todayProfit = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+            val totalStock = products.sumOf { it.stockQuantity }
+
+            setContent {
+                TamannaTheme(ThemeStorage.getTheme(context)) {
+                    DashboardScreen(
+                        todaySales = todaySales,
+                        todayPurchases = todayPurchases,
+                        todayProfit = todayProfit,
+                        totalStock = totalStock,
+                        loggedIn = loggedIn,
+                        onProductClick = { if (loggedIn) startActivity(Intent(context, ProductActivity::class.java)) },
+                        onPurchaseClick = { if (loggedIn) startActivity(Intent(context, PurchaseActivity::class.java)) },
+                        onSalesClick = { if (loggedIn) startActivity(Intent(context, SalesActivity::class.java)) },
+                        onStockClick = { if (loggedIn) startActivity(Intent(context, StockActivity::class.java)) },
+                        onStockAlertClick = { if (loggedIn) startActivity(Intent(context, StockAlertActivity::class.java)) },
+                        onReportsClick = { if (loggedIn) startActivity(Intent(context, ReportsActivity::class.java)) },
+                        onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(context, FinancialDashboardActivity::class.java)) },
+                        onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(context, FinancialCalendarActivity::class.java)) },
+                        onProfitClick = { if (loggedIn) startActivity(Intent(context, ProfitActivity::class.java)) },
+                        onScannerClick = { if (loggedIn) startActivity(Intent(context, SalesScanActivity::class.java)) },
+                        onSettingsClick = { startActivity(Intent(context, SettingsActivity::class.java)) },
+                        onFinanceClick = { if (loggedIn) startActivity(Intent(context, FinanceActivity::class.java)) },
+                        onDueClick = { if (loggedIn) startActivity(Intent(context, CustomerDueActivity::class.java)) },
+                        onSupplierDueClick = { if (loggedIn) startActivity(Intent(context, SupplierDueActivity::class.java)) },
+                        onGlobalSearchClick = { if (loggedIn) startActivity(Intent(context, GlobalSearchActivity::class.java)) },
+                        onBackupClick = { if (loggedIn) startActivity(Intent(context, CloudBackupActivity::class.java)) },
+                        shopName = SettingsStorage.getShopName(context)
+                    )
+                }
+            }
+        }
+
+        // ১. আগে লোকাল ডাটা দিয়ে দ্রুত UI রেন্ডার করা
+        renderDashboardUI()
+
+        // ২. Business ID মিসিং থাকলে Admin বা Viewer হিসেবে আইডি রিকভারি
+        if (currentBusinessId.isBlank() && firebaseUser != null) {
+            val uid = firebaseUser.uid
+            val userEmail = firebaseUser.email.orEmpty()
+
             FirebaseFirestore.getInstance().collection("businesses")
                 .whereEqualTo("ownerUid", uid)
                 .get()
                 .addOnSuccessListener { documents ->
-                    val businessId = if (!documents.isEmpty) {
-                        documents.documents[0].id
+                    if (!documents.isEmpty) {
+                        val bId = documents.documents[0].id
+                        BusinessStorage.setActiveBusinessId(context, bId)
+                        CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                            if (isDataSynced) renderDashboardUI()
+                        }
                     } else {
-                        uid
+                        // যদি Owner না হয়, তবে Viewer চেক
+                        ViewAccessManager.findForEmailAcrossBusinesses(userEmail) { viewEntry ->
+                            val bId = viewEntry?.businessId ?: uid
+                            BusinessStorage.setActiveBusinessId(context, bId)
+                            CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                                if (isDataSynced) renderDashboardUI()
+                            }
+                        }
                     }
-                    BusinessStorage.setActiveBusinessId(context, businessId)
-                    // রিয়েল-টাইম লাইভ লিসেনার বাদ দিয়ে একবারের জন্য smartSync কল করা হলো
-                    CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
                 }
                 .addOnFailureListener {
                     BusinessStorage.setActiveBusinessId(context, uid)
-                    CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
+                    CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                        if (isDataSynced) renderDashboardUI()
+                    }
                 }
-        } else if (currentUser != null) {
-            // অ্যাপে প্রবেশ করার সময় ব্যাকগ্রাউন্ডে এককালীন সিঙ্ক করে নেবে
-            CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
-        }
-        
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val loggedIn = SecurityStorage.getCurrentUser(context) != null
-        
-        // Data Fetching
-        val sales = if (loggedIn) SalesStorage.getSales(context) else emptyList()
-        val purchases = if (loggedIn) PurchaseStorage.getPurchases(context) else emptyList()
-        val products = if (loggedIn) ProductStorage.getProducts(context) else emptyList()
-        
-        // Calculations
-        val todaySales = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.salePrice }
-        val todayPurchases = purchases.filter { it.date.startsWith(today) }.sumOf { it.quantity * it.purchasePrice }
-        val todayProfit = sales.filter { it.date.startsWith(today) }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
-        val totalStock = products.sumOf { it.stockQuantity }
-
-        setContent {
-            TamannaTheme(ThemeStorage.getTheme(context)) {
-                DashboardScreen(
-                    todaySales = todaySales,
-                    todayPurchases = todayPurchases,
-                    todayProfit = todayProfit,
-                    totalStock = totalStock,
-                    loggedIn = loggedIn,
-                    onProductClick = { if (loggedIn) startActivity(Intent(context, ProductActivity::class.java)) },
-                    onPurchaseClick = { if (loggedIn) startActivity(Intent(context, PurchaseActivity::class.java)) },
-                    onSalesClick = { if (loggedIn) startActivity(Intent(context, SalesActivity::class.java)) },
-                    onStockClick = { if (loggedIn) startActivity(Intent(context, StockActivity::class.java)) },
-                    onStockAlertClick = { if (loggedIn) startActivity(Intent(context, StockAlertActivity::class.java)) },
-                    onReportsClick = { if (loggedIn) startActivity(Intent(context, ReportsActivity::class.java)) },
-                    onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(context, FinancialDashboardActivity::class.java)) },
-                    onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(context, FinancialCalendarActivity::class.java)) },
-                    onProfitClick = { if (loggedIn) startActivity(Intent(context, ProfitActivity::class.java)) },
-                    onScannerClick = { if (loggedIn) startActivity(Intent(context, SalesScanActivity::class.java)) },
-                    onSettingsClick = { startActivity(Intent(context, SettingsActivity::class.java)) },
-                    onFinanceClick = { if (loggedIn) startActivity(Intent(context, FinanceActivity::class.java)) },
-                    onDueClick = { if (loggedIn) startActivity(Intent(context, CustomerDueActivity::class.java)) },
-                    onSupplierDueClick = { if (loggedIn) startActivity(Intent(context, SupplierDueActivity::class.java)) },
-                    onGlobalSearchClick = { if (loggedIn) startActivity(Intent(context, GlobalSearchActivity::class.java)) },
-                    onBackupClick = { if (loggedIn) startActivity(Intent(context, CloudBackupActivity::class.java)) },
-                    shopName = SettingsStorage.getShopName(context)
-                )
+        } else if (firebaseUser != null) {
+            // ৩. ব্যাকগ্রাউন্ডে এককালীন সিঙ্ক সম্পন্ন হলে UI রিফ্রেশ করা
+            CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                if (isDataSynced) {
+                    renderDashboardUI()
+                }
             }
         }
     }
