@@ -7,11 +7,8 @@ import com.google.firebase.firestore.SetOptions
 /**
  * Read-only access list for a specific business.
  *
- * One document is stored per authorized Gmail:
- * businesses/{businessId}/viewAccess/{normalizedEmail}
- *
- * This step only defines the data layer. UI, login routing and security rules
- * are handled in the following steps.
+ * Direct lookup optimization using 'global_view_access' collection
+ * to bypass Firestore CollectionGroup index limitations.
  */
 data class ViewAccessEntry(
     val email: String,
@@ -23,6 +20,7 @@ data class ViewAccessEntry(
 object ViewAccessManager {
     private const val BUSINESSES = "businesses"
     private const val VIEW_ACCESS = "viewAccess"
+    private const val GLOBAL_VIEW_ACCESS = "global_view_access"
 
     private fun db() = FirebaseFirestore.getInstance()
     private fun auth() = FirebaseAuth.getInstance()
@@ -64,20 +62,29 @@ object ViewAccessManager {
                     return@addOnSuccessListener
                 }
 
+                val accessData = mapOf(
+                    "email" to cleanEmail,
+                    "businessId" to businessId,
+                    "ownerUid" to uid,
+                    "active" to true,
+                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                )
+
+                // ১. স্থানীয় বিজনেস সাব-কালেকশনে সেভ
                 businessRef.collection(VIEW_ACCESS)
                     .document(cleanEmail)
-                    .set(
-                        mapOf(
-                            "email" to cleanEmail,
-                            "businessId" to businessId,
-                            "ownerUid" to uid,
-                            "active" to true,
-                            "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                        ),
-                        SetOptions.merge()
-                    )
+                    .set(accessData, SetOptions.merge())
                     .addOnSuccessListener {
-                        onResult(true, "View Access Gmail সংরক্ষণ হয়েছে।")
+                        // ২. গ্লোবাল কালেকশনে সেভ (দ্রুত ও সরাসরি সার্চের জন্য)
+                        db().collection(GLOBAL_VIEW_ACCESS)
+                            .document(cleanEmail)
+                            .set(accessData, SetOptions.merge())
+                            .addOnSuccessListener {
+                                onResult(true, "View Access Gmail সফলভাবে সংরক্ষণ হয়েছে।")
+                            }
+                            .addOnFailureListener {
+                                onResult(true, "View Access সংরক্ষণ হয়েছে।")
+                            }
                     }
                     .addOnFailureListener {
                         onResult(false, it.localizedMessage ?: "View Access সংরক্ষণ করা যায়নি।")
@@ -109,8 +116,13 @@ object ViewAccessManager {
                     return@addOnSuccessListener
                 }
 
+                // ১. সাব-কালেকশন থেকে রিমুভ
                 businessRef.collection(VIEW_ACCESS).document(cleanEmail).delete()
-                    .addOnSuccessListener { onResult(true, "View Access সরানো হয়েছে।") }
+                    .addOnSuccessListener {
+                        // ২. গ্লোবাল কালেকশন থেকেও রিমুভ
+                        db().collection(GLOBAL_VIEW_ACCESS).document(cleanEmail).delete()
+                        onResult(true, "View Access সরানো হয়েছে।")
+                    }
                     .addOnFailureListener {
                         onResult(false, it.localizedMessage ?: "View Access সরানো যায়নি।")
                     }
@@ -130,6 +142,32 @@ object ViewAccessManager {
             return
         }
 
+        // প্রথমে সরাসরি গ্লোবাল কালেকশন থেকে চেক করা (ইন্ডেক্স এরর বাইপাস করার জন্য)
+        db().collection(GLOBAL_VIEW_ACCESS).document(cleanEmail).get()
+            .addOnSuccessListener { doc ->
+                if (doc.exists() && doc.getBoolean("active") == true) {
+                    onResult(
+                        ViewAccessEntry(
+                            email = doc.getString("email").orEmpty(),
+                            businessId = doc.getString("businessId").orEmpty(),
+                            ownerUid = doc.getString("ownerUid").orEmpty(),
+                            active = true
+                        )
+                    )
+                } else {
+                    // গ্লোবালে না পেলে ব্যাকআপ হিসেবে CollectionGroup চেক
+                    fallbackCollectionGroupSearch(cleanEmail, onResult)
+                }
+            }
+            .addOnFailureListener {
+                fallbackCollectionGroupSearch(cleanEmail, onResult)
+            }
+    }
+
+    private fun fallbackCollectionGroupSearch(
+        cleanEmail: String,
+        onResult: (ViewAccessEntry?) -> Unit
+    ) {
         db().collectionGroup(VIEW_ACCESS)
             .whereEqualTo("email", cleanEmail)
             .whereEqualTo("active", true)
@@ -211,5 +249,4 @@ object ViewAccessManager {
             }
             .addOnFailureListener { onResult(emptyList()) }
     }
-
 }
