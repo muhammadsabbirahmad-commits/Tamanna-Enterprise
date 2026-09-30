@@ -50,6 +50,122 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+class DashboardActivity : ComponentActivity() {
+
+    override fun onResume() {
+        super.onResume()
+        
+        val context = this
+        val currentBusinessId = BusinessStorage.getActiveBusinessId(context).trim()
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        
+        // ড্যাশবোর্ডের ডাটা হিসাব করে UI সেট করার ফাংশন
+        fun renderDashboardUI() {
+            val loggedIn = SecurityStorage.getCurrentUser(context) != null
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            
+            // Data Fetching
+            val sales = if (loggedIn) SalesStorage.getSales(context) else emptyList()
+            val purchases = if (loggedIn) PurchaseStorage.getPurchases(context) else emptyList()
+            val products = if (loggedIn) ProductStorage.getProducts(context) else emptyList()
+            
+            // Calculations with Flexible Date Format
+            val todaySales = sales.filter { 
+                it.date.contains(today) || it.date.startsWith(today) 
+            }.sumOf { it.quantity * it.salePrice }
+
+            val todayPurchases = purchases.filter { 
+                it.date.contains(today) || it.date.startsWith(today) 
+            }.sumOf { it.quantity * it.purchasePrice }
+
+            val todayProfit = sales.filter { 
+                it.date.contains(today) || it.date.startsWith(today) 
+            }.sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+
+            val totalStock = products.sumOf { it.stockQuantity }
+
+            setContent {
+                TamannaTheme(ThemeStorage.getTheme(context)) {
+                    DashboardScreen(
+                        todaySales = todaySales,
+                        todayPurchases = todayPurchases,
+                        todayProfit = todayProfit,
+                        totalStock = totalStock,
+                        loggedIn = loggedIn,
+                        onProductClick = { if (loggedIn) startActivity(Intent(context, ProductActivity::class.java)) },
+                        onPurchaseClick = { if (loggedIn) startActivity(Intent(context, PurchaseActivity::class.java)) },
+                        onSalesClick = { if (loggedIn) startActivity(Intent(context, SalesActivity::class.java)) },
+                        onStockClick = { if (loggedIn) startActivity(Intent(context, StockActivity::class.java)) },
+                        onStockAlertClick = { if (loggedIn) startActivity(Intent(context, StockAlertActivity::class.java)) },
+                        onReportsClick = { if (loggedIn) startActivity(Intent(context, ReportsActivity::class.java)) },
+                        onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(context, FinancialDashboardActivity::class.java)) },
+                        onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(context, FinancialCalendarActivity::class.java)) },
+                        onProfitClick = { if (loggedIn) startActivity(Intent(context, ProfitActivity::class.java)) },
+                        onScannerClick = { if (loggedIn) startActivity(Intent(context, SalesScanActivity::class.java)) },
+                        onSettingsClick = { startActivity(Intent(context, SettingsActivity::class.java)) },
+                        onFinanceClick = { if (loggedIn) startActivity(Intent(context, FinanceActivity::class.java)) },
+                        onDueClick = { if (loggedIn) startActivity(Intent(context, CustomerDueActivity::class.java)) },
+                        onSupplierDueClick = { if (loggedIn) startActivity(Intent(context, SupplierDueActivity::class.java)) },
+                        onPartnerClick = { if (loggedIn) startActivity(Intent(context, PartnerActivity::class.java)) },
+                        onGlobalSearchClick = { if (loggedIn) startActivity(Intent(context, GlobalSearchActivity::class.java)) },
+                        onBackupClick = { if (loggedIn) startActivity(Intent(context, CloudBackupActivity::class.java)) },
+                        shopName = SettingsStorage.getShopName(context),
+                        partnerStorageContext = context
+                    )
+                }
+            }
+        }
+
+        // ১. আগে লোকাল ডাটা দিয়ে দ্রুত UI রেন্ডার করা
+        renderDashboardUI()
+
+        // ২. Business ID মিসিং থাকলে Admin বা Viewer হিসেবে আইডি রিকভারি
+        if (currentBusinessId.isBlank() && firebaseUser != null) {
+            val uid = firebaseUser.uid
+            val userEmail = firebaseUser.email.orEmpty()
+
+            FirebaseFirestore.getInstance().collection("businesses")
+                .whereEqualTo("ownerUid", uid)
+                .get()
+                .addOnSuccessListener { documents ->
+                    if (!documents.isEmpty) {
+                        val bId = documents.documents[0].id
+                        BusinessStorage.setActiveBusinessId(context, bId)
+                        CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                            if (isDataSynced) renderDashboardUI()
+                        }
+                    } else {
+                        // যদি Owner না হয়, তবে Viewer চেক
+                        ViewAccessManager.findForEmailAcrossBusinesses(userEmail) { viewEntry ->
+                            val bId = viewEntry?.businessId ?: uid
+                            BusinessStorage.setActiveBusinessId(context, bId)
+                            CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                                if (isDataSynced) renderDashboardUI()
+                            }
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    BusinessStorage.setActiveBusinessId(context, uid)
+                    CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                        if (isDataSynced) renderDashboardUI()
+                    }
+                }
+        } else if (firebaseUser != null) {
+            // ৩. ব্যাকগ্রাউন্ডে এককালীন সিঙ্ক সম্পন্ন হলে UI রিফ্রেশ করা
+            CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                if (isDataSynced) {
+                    renderDashboardUI()
+                }
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+    }
+}
+
 @Composable
 fun TamannaTheme(theme: String, content: @Composable () -> Unit) {
     val scheme = when (theme) {
@@ -85,8 +201,22 @@ fun DashboardScreen(
     onGlobalSearchClick: () -> Unit,
     onBackupClick: () -> Unit,
     onFinancialCalendarClick: () -> Unit,
-    shopName: String
+    shopName: String,
+    partnerStorageContext: Context
 ) {
+    var partners by remember { mutableStateOf(DashboardPartnerStorage.get(partnerStorageContext)) }
+    var showPartnerDialog by remember { mutableStateOf(false) }
+
+    if (showPartnerDialog) {
+        AddPartnerDialog(
+            onDismiss = { showPartnerDialog = false },
+            onAdd = { partner ->
+                DashboardPartnerStorage.add(partnerStorageContext, partner)
+                partners = DashboardPartnerStorage.get(partnerStorageContext)
+                showPartnerDialog = false
+            }
+        )
+    }
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -162,6 +292,50 @@ fun DashboardScreen(
                 }
 
                 Spacer(Modifier.height(24.dp))
+
+                // Partner Section — only the requested Dashboard feature
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("পার্টনার", style = MaterialTheme.typography.titleLarge)
+                    Button(
+                        onClick = { showPartnerDialog = true },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("+ পার্টনার যোগ করুন")
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                if (partners.isEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(
+                            "এখনও কোনো পার্টনার যোগ করা হয়নি।",
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+                    partners.forEach { partner ->
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(partner.name, style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(6.dp))
+                                Text("ইনভেস্টমেন্ট: ৳ ${partner.investment}")
+                                Text("লাভের পারসেন্ট: ${partner.profitPercent}%")
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
 
                 Spacer(Modifier.height(24.dp))
                 
