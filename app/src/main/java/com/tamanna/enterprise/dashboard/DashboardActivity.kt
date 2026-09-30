@@ -81,6 +81,7 @@ fun DashboardScreen(
     onFinanceClick: () -> Unit,
     onDueClick: () -> Unit,
     onSupplierDueClick: () -> Unit,
+    onPartnerClick: () -> Unit,
     onGlobalSearchClick: () -> Unit,
     onBackupClick: () -> Unit,
     onFinancialCalendarClick: () -> Unit,
@@ -182,7 +183,7 @@ fun DashboardScreen(
                     "💸" to ("খরচ/ড্যামেজ" to onFinanceClick),
                     "👤" to ("ক্রেতার বাকি" to onDueClick),
                     "🏭" to ("সরবরাহকারীর বাকি" to onSupplierDueClick),
-                    "👥" to ("পার্টনার" to { if (loggedIn) startActivity(Intent(this@DashboardActivity, PartnerActivity::class.java)) }),
+                    "👥" to ("পার্টনার" to onPartnerClick),
                     "☁️" to ("ডাটা ব্যাকআপ" to onBackupClick)
                 )
 
