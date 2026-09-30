@@ -10,6 +10,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +48,40 @@ import com.tamanna.enterprise.sync.CloudSyncManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.content.Context
+
+data class DashboardPartner(
+    val name: String,
+    val investment: String,
+    val profitPercent: String
+)
+
+private object DashboardPartnerStorage {
+    private const val PREFS = "dashboard_partner_storage"
+    private const val COUNT = "partner_count"
+
+    fun get(context: Context): List<DashboardPartner> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val count = prefs.getInt(COUNT, 0)
+        return (0 until count).mapNotNull { i ->
+            val name = prefs.getString("name_$i", null)?.trim().orEmpty()
+            val investment = prefs.getString("investment_$i", null)?.trim().orEmpty()
+            val profit = prefs.getString("profit_$i", null)?.trim().orEmpty()
+            if (name.isNotEmpty()) DashboardPartner(name, investment, profit) else null
+        }
+    }
+
+    fun add(context: Context, partner: DashboardPartner) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val index = prefs.getInt(COUNT, 0)
+        prefs.edit()
+            .putString("name_$index", partner.name)
+            .putString("investment_$index", partner.investment)
+            .putString("profit_$index", partner.profitPercent)
+            .putInt(COUNT, index + 1)
+            .apply()
+    }
+}
 
 class DashboardActivity : ComponentActivity() {
 
@@ -103,7 +141,8 @@ class DashboardActivity : ComponentActivity() {
                         onSupplierDueClick = { if (loggedIn) startActivity(Intent(context, SupplierDueActivity::class.java)) },
                         onGlobalSearchClick = { if (loggedIn) startActivity(Intent(context, GlobalSearchActivity::class.java)) },
                         onBackupClick = { if (loggedIn) startActivity(Intent(context, CloudBackupActivity::class.java)) },
-                        shopName = SettingsStorage.getShopName(context)
+                        shopName = SettingsStorage.getShopName(context),
+                        partnerStorageContext = context
                     )
                 }
             }
@@ -160,6 +199,72 @@ class DashboardActivity : ComponentActivity() {
 }
 
 @Composable
+private fun AddPartnerDialog(
+    onDismiss: () -> Unit,
+    onAdd: (DashboardPartner) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var investment by remember { mutableStateOf("") }
+    var profitPercent by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("নতুন পার্টনার যোগ করুন") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("পার্টনারের নাম") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = investment,
+                    onValueChange = { investment = it },
+                    label = { Text("ইনভেস্টমেন্ট") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = profitPercent,
+                    onValueChange = { profitPercent = it },
+                    label = { Text("লাভের পারসেন্ট (%)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (
+                        name.trim().isNotEmpty() &&
+                        investment.trim().isNotEmpty() &&
+                        profitPercent.trim().isNotEmpty()
+                    ) {
+                        onAdd(
+                            DashboardPartner(
+                                name = name.trim(),
+                                investment = investment.trim(),
+                                profitPercent = profitPercent.trim()
+                            )
+                        )
+                    }
+                }
+            ) {
+                Text("যোগ করুন")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("বাতিল")
+            }
+        }
+    )
+}
+
+@Composable
 fun TamannaTheme(theme: String, content: @Composable () -> Unit) {
     val scheme = when (theme) {
         "blue" -> lightColorScheme(primary = Color(0xFF1565C0), secondary = Color(0xFF00838F), tertiary = Color(0xFF6A1B9A))
@@ -193,8 +298,22 @@ fun DashboardScreen(
     onGlobalSearchClick: () -> Unit,
     onBackupClick: () -> Unit,
     onFinancialCalendarClick: () -> Unit,
-    shopName: String
+    shopName: String,
+    partnerStorageContext: Context
 ) {
+    var partners by remember { mutableStateOf(DashboardPartnerStorage.get(partnerStorageContext)) }
+    var showPartnerDialog by remember { mutableStateOf(false) }
+
+    if (showPartnerDialog) {
+        AddPartnerDialog(
+            onDismiss = { showPartnerDialog = false },
+            onAdd = { partner ->
+                DashboardPartnerStorage.add(partnerStorageContext, partner)
+                partners = DashboardPartnerStorage.get(partnerStorageContext)
+                showPartnerDialog = false
+            }
+        )
+    }
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -267,6 +386,52 @@ fun DashboardScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DashboardCard("আজকের লাভ", "৳ %.2f".format(todayProfit), Color(0xFFFFF3E0), Modifier.weight(1f))
                     DashboardCard("মোট স্টক", totalStock.toString(), Color(0xFFF3E5F5), Modifier.weight(1f))
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // Partner Section — only the requested Dashboard feature
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("পার্টনার", style = MaterialTheme.typography.titleLarge)
+                    Button(
+                        onClick = { showPartnerDialog = true },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("+ পার্টনার যোগ করুন")
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+
+                if (partners.isEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(
+                            "এখনও কোনো পার্টনার যোগ করা হয়নি।",
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                } else {
+                    partners.forEach { partner ->
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(partner.name, style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(6.dp))
+                                Text("ইনভেস্টমেন্ট: ৳ ${partner.investment}")
+                                Text("লাভের পারসেন্ট: ${partner.profitPercent}%")
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))
