@@ -40,14 +40,10 @@ class LoginActivity : ComponentActivity() {
                 val verifiedEmail = account.email?.trim()?.lowercase().orEmpty()
                 if (verifiedEmail.isBlank()) { failure?.invoke("Google Gmail ঠিকানা পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
-                // ১. সবার আগে চেক করা হবে জিমেইলটি View Access তালিকায় আছে কিনা
+                // ১. View Access ইউজারদের জন্য
                 ViewAccessManager.findForEmailAcrossBusinesses(verifiedEmail) { viewEntry ->
                     if (viewEntry != null && viewEntry.businessId.isNotBlank()) {
-                        
-                        // Active Business ID সেট করা হচ্ছে
                         BusinessStorage.setActiveBusinessId(this@LoginActivity, viewEntry.businessId)
-                        
-                        // ব্যাকআপ সিঙ্ক হওয়ার জন্য Owner UID সেট করা অত্যন্ত জরুরি
                         BusinessAccountStorage.setOwnerUid(this@LoginActivity, viewEntry.ownerUid)
 
                         val viewUser = SecurityStorage.upsertGoogleUser(
@@ -61,9 +57,12 @@ class LoginActivity : ComponentActivity() {
                         success?.invoke()
                         clear()
                     } else {
-                        // ২. View Access এ না থাকলে Admin approval flow-তে যাবে
+                        // ২. Owner/Admin ফ্লো
                         AccessRequestManager.requestOrCheck { ok, message, record ->
                             if (ok && record != null) {
+                                // *** মূল ফিক্স: ক্লিয়ার স্টোরেজের পর Owner UID ফাঁকা হয়ে যায়, তাই ব্যাকআপ লোড করার আগে UID সেট করে নিতে হবে ***
+                                BusinessAccountStorage.setOwnerUid(this@LoginActivity, record.uid)
+
                                 SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
                                 SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let { SecurityStorage.login(this@LoginActivity, it) }
                                 success?.invoke()
