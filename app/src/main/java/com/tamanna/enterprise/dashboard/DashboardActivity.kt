@@ -109,8 +109,7 @@ class DashboardActivity : ComponentActivity() {
                         onPartnerClick = { if (loggedIn) startActivity(Intent(context, PartnerActivity::class.java)) },
                         onGlobalSearchClick = { if (loggedIn) startActivity(Intent(context, GlobalSearchActivity::class.java)) },
                         onBackupClick = { if (loggedIn) startActivity(Intent(context, CloudBackupActivity::class.java)) },
-                        shopName = SettingsStorage.getShopName(context),
-                        partnerStorageContext = context
+                        shopName = SettingsStorage.getShopName(context)
                     )
                 }
             }
