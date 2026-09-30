@@ -17,6 +17,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.DashboardActivity
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.business.BusinessAccountStorage
 import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.sync.CloudSyncManager
 
@@ -43,8 +44,11 @@ class LoginActivity : ComponentActivity() {
                 ViewAccessManager.findForEmailAcrossBusinesses(verifiedEmail) { viewEntry ->
                     if (viewEntry != null && viewEntry.businessId.isNotBlank()) {
                         
-                        // শুধু BusinessStorage আপডেট করছি (save মেথড এরর করায় তা বাদ দেওয়া হলো)
+                        // Active Business ID সেট করা হচ্ছে
                         BusinessStorage.setActiveBusinessId(this@LoginActivity, viewEntry.businessId)
+                        
+                        // ব্যাকআপ সিঙ্ক হওয়ার জন্য Owner UID সেট করা অত্যন্ত জরুরি
+                        BusinessAccountStorage.setOwnerUid(this@LoginActivity, viewEntry.ownerUid)
 
                         val viewUser = SecurityStorage.upsertGoogleUser(
                             this@LoginActivity,
