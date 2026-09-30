@@ -8,6 +8,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
 import com.tamanna.enterprise.business.BusinessStorage
+import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 
@@ -150,13 +151,16 @@ object CloudSyncManager {
             val currentLocalHash = calculateLocalHash(appContext)
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
             val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
-            val isLocalEmpty = namespaces.all { ns -> BusinessStorage.prefs(appContext, ns).all.isEmpty() }
+            
+            // প্রোডাক্ট বা ইনভেন্টরি ফাঁকা কিনা সুনির্দিষ্টভাবে চেক
+            val isProductsEmpty = ProductStorage.getProducts(appContext).isEmpty()
 
             metaRef.get().addOnSuccessListener { doc ->
                 val cloudHash = doc.getString("dataHash") ?: ""
 
                 when {
-                    isLocalEmpty && cloudHash.isNotBlank() -> {
+                    // ১. যদি ক্লাউডে ব্যাকআপ থাকে এবং (লোকাল প্রোডাক্ট লিস্ট খালি অথবা স্টোরেজ ক্লিয়ার করার কারণে lastSyncedHash ফাঁকা)
+                    cloudHash.isNotBlank() && (isProductsEmpty || lastSyncedHash.isBlank()) -> {
                         pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                             if (!isAuto) {
                                 val msg = if (success) "ক্লাউড থেকে ডেটা রিস্টোর হয়েছে! ☁️⬇️" else "রিস্টোর ব্যর্থ হয়েছে।"
@@ -164,6 +168,7 @@ object CloudSyncManager {
                             }
                         }
                     }
+                    // ২. যদি লোকালের ডাটা পরিবর্তিত হয়ে থাকে এবং ক্লাউডে পুশ করার অনুমতি থাকে
                     canPush && currentLocalHash != lastSyncedHash -> {
                         pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                             if (!isAuto) {
@@ -172,6 +177,7 @@ object CloudSyncManager {
                             }
                         }
                     }
+                    // ৩. ক্লাউডে নতুন হ্যাশ থাকলে পুল করা
                     cloudHash.isNotBlank() && cloudHash != lastSyncedHash -> {
                         pullAllFromCloud(appContext, metaRef, cloudHash) { success ->
                             if (!isAuto) {
@@ -185,7 +191,7 @@ object CloudSyncManager {
                     }
                 }
             }.addOnFailureListener {
-                if (canPush) {
+                if (canPush && !isProductsEmpty) {
                     pushAllToCloud(appContext, currentLocalHash, metaRef) { success ->
                         if (!isAuto) {
                             val msg = if (success) "প্রাথমিক ডেটা ক্লাউডে সেভ হয়েছে। ☁️⬆️" else "সিঙ্ক ব্যর্থ হয়েছে।"
@@ -219,9 +225,6 @@ object CloudSyncManager {
             "updatedAt" to System.currentTimeMillis()
         )
 
-        // Keep the metadata document small. Each preference namespace is stored
-        // in its own document so the complete backup is not limited by Firestore's
-        // per-document size limit.
         val metadata = mapOf(
             "dataHash" to currentLocalHash,
             "updatedAt" to System.currentTimeMillis(),
@@ -283,8 +286,6 @@ object CloudSyncManager {
                                     restoreNamespace(context, ns, cloudData)
                                 }
                             } else {
-                                // Backward compatibility for backups created by the
-                                // previous single-document format.
                                 for (ns in namespaces) {
                                     val cloudData = metaDoc.get(ns) as? Map<*, *> ?: continue
                                     restoreNamespace(context, ns, cloudData)
@@ -339,5 +340,4 @@ object CloudSyncManager {
 
         editor.apply()
     }
-
 }
