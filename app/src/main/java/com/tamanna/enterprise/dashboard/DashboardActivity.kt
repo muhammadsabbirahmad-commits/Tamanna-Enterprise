@@ -204,19 +204,6 @@ fun DashboardScreen(
     shopName: String,
     partnerStorageContext: Context
 ) {
-    var partners by remember { mutableStateOf(DashboardPartnerStorage.get(partnerStorageContext)) }
-    var showPartnerDialog by remember { mutableStateOf(false) }
-
-    if (showPartnerDialog) {
-        AddPartnerDialog(
-            onDismiss = { showPartnerDialog = false },
-            onAdd = { partner ->
-                DashboardPartnerStorage.add(partnerStorageContext, partner)
-                partners = DashboardPartnerStorage.get(partnerStorageContext)
-                showPartnerDialog = false
-            }
-        )
-    }
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -293,52 +280,6 @@ fun DashboardScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                // Partner Section — only the requested Dashboard feature
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("পার্টনার", style = MaterialTheme.typography.titleLarge)
-                    Button(
-                        onClick = { showPartnerDialog = true },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("+ পার্টনার যোগ করুন")
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-
-                if (partners.isEmpty()) {
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(
-                            "এখনও কোনো পার্টনার যোগ করা হয়নি।",
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                } else {
-                    partners.forEach { partner ->
-                        Card(
-                            Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(Modifier.padding(14.dp)) {
-                                Text(partner.name, style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(6.dp))
-                                Text("ইনভেস্টমেন্ট: ৳ ${partner.investment}")
-                                Text("লাভের পারসেন্ট: ${partner.profitPercent}%")
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-
-                Spacer(Modifier.height(24.dp))
-                
                 // Main Menu Section
                 Text("প্রধান মেনু", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
