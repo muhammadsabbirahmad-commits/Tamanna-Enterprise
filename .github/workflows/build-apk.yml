@@ -6,6 +6,7 @@ on:
       - main
       - fix/safe-finance-partner-sync
       - feat/partner-profit-withdrawals
+      - feat/partner-profit-loss-allocation
   workflow_dispatch:
 
 permissions:
