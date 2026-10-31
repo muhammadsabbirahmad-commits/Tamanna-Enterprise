@@ -9,11 +9,18 @@ service cloud.firestore {
 
     function approvedUser() {
       return signedIn()
-        && exists(/databases/$(database)/documents/accessUsers/$(request.auth.uid))
-        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.approved == true
-        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.blocked != true
-        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.role == "ADMIN";
+        && (
+          enterpriseAdmin()
+          || (
+            exists(/databases/$(database)/documents/accessRequests/$(request.auth.uid))
+            && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.uid == request.auth.uid
+            && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.status == "ACTIVE"
+            && (
+              get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.expiresAt == 0
+              || get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.expiresAt > request.time.toMillis()
+            )
+          )
+        );
     }
 
     // Only the designated app owner may approve/revoke other Gmail accounts.
@@ -82,12 +89,12 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.email == request.auth.token.email;
 
-      allow update, delete: if admin();
+      allow update, delete: if enterpriseAdmin();
     }
 
     match /businesses/{businessId} {
       allow read: if isBusinessOwner(businessId);
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow create: if approvedUser() && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if isBusinessOwner(businessId);
 
       match /members/{memberId} {
