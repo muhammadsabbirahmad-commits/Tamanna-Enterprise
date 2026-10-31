@@ -10,7 +10,8 @@ data class Partner(
     val name: String,
     val shareAmount: Double,
     val profitPercentage: Double,
-    val note: String = ""
+    val note: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 object PartnerStorage {
@@ -34,7 +35,8 @@ object PartnerStorage {
                             name = obj.getString("name"),
                             shareAmount = obj.getDouble("shareAmount"),
                             profitPercentage = obj.getDouble("profitPercentage"),
-                            note = obj.optString("note", "")
+                            note = obj.optString("note", ""),
+                            updatedAt = obj.optLong("updatedAt", 0L)
                         )
                     )
                 }
@@ -54,7 +56,7 @@ object PartnerStorage {
         if (partner.name.isBlank() || partner.shareAmount < 0 || partner.profitPercentage < 0) return false
         val list = getPartners(context)
         clearDeletedId(context, partner.id)
-        val updated = list.map { if (it.id == partner.id) partner else it }
+        val updated = list.map { if (it.id == partner.id) partner.copy(updatedAt = System.currentTimeMillis()) else it }
         return savePartners(context, updated)
     }
 
@@ -75,6 +77,7 @@ object PartnerStorage {
                 put("shareAmount", item.shareAmount)
                 put("profitPercentage", item.profitPercentage)
                 put("note", item.note)
+                put("updatedAt", item.updatedAt)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY_PARTNERS, array.toString()).apply()
