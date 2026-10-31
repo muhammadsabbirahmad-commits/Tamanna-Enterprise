@@ -437,8 +437,13 @@ object CloudSyncManager {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
                 val date = item.optString("effectiveDate").takeIf { it.length == 10 } ?: continue
-                // Cloud entries win for the same effective date, matching partner edit sync behavior.
-                byDate[date] = item
+                // The most recently edited snapshot wins on both devices.
+                val existing = byDate[date]
+                if (existing == null ||
+                    item.optLong("updatedAt", 0L) >= existing.optLong("updatedAt", 0L)
+                ) {
+                    byDate[date] = item
+                }
             }
         }
         addAll(localRaw)
