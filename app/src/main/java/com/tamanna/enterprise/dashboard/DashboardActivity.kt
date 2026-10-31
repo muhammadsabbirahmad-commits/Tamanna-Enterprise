@@ -57,6 +57,11 @@ class DashboardActivity : ComponentActivity() {
         val context = this
         val currentBusinessId = BusinessStorage.getActiveBusinessId(context).trim()
         val firebaseUser = FirebaseAuth.getInstance().currentUser
+        if (firebaseUser != null) {
+            // Keep the signed-in business data synchronized while the app is in use.
+            CloudSyncManager.startAutoSync(context)
+            CloudSyncManager.startRealtimeSync(context)
+        }
         
         // ড্যাশবোর্ডের ডাটা হিসাব করে UI সেট করার ফাংশন
         fun renderDashboardUI() {
