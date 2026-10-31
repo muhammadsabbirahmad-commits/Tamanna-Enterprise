@@ -11,6 +11,8 @@ import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
+import org.json.JSONArray
+import org.json.JSONObject
 
 object CloudSyncManager {
     private const val TAG = "CloudSyncManager"
@@ -217,53 +219,140 @@ object CloudSyncManager {
             return
         }
 
-        val db = FirebaseFirestore.getInstance()
-        val businessDocRef = db.collection("businesses").document(businessId)
-
-        val businessData = mapOf(
-            "ownerUid" to authUser.uid,
-            "updatedAt" to System.currentTimeMillis()
-        )
-
-        val metadata = mapOf(
-            "dataHash" to currentLocalHash,
-            "updatedAt" to System.currentTimeMillis(),
-            "businessId" to businessId,
-            "ownerUid" to authUser.uid,
-            "schemaVersion" to 2
-        )
-
-        val batch = db.batch()
-        batch.set(businessDocRef, businessData, com.google.firebase.firestore.SetOptions.merge())
-        batch.set(metaRef, metadata)
-
-        for (ns in namespaces) {
-            val prefs = BusinessStorage.prefs(context, ns)
-            val nsMap = mutableMapOf<String, Any>()
-            for ((k, v) in prefs.all) {
-                if (k != null && v != null) {
-                    if (v is Set<*>) {
-                        nsMap[k] = v.filterNotNull().toList()
-                    } else {
-                        nsMap[k] = v
+        // Before writing, read the existing cloud namespaces and merge the two
+        // financial namespaces. This prevents one phone's new entries from
+        // blindly replacing entries already uploaded by another phone.
+        val backupDataRef = metaRef.collection("backupData")
+        backupDataRef.get()
+            .addOnSuccessListener { cloudSnapshot ->
+                try {
+                    val cloudByNamespace = cloudSnapshot.documents.associate { doc ->
+                        doc.id to (doc.get("data") as? Map<*, *> ?: emptyMap<Any, Any>())
                     }
+
+                    val db = FirebaseFirestore.getInstance()
+                    val businessDocRef = db.collection("businesses").document(businessId)
+                    val businessData = mapOf(
+                        "ownerUid" to authUser.uid,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+
+                    val mergedHash = calculateLocalHash(context)
+                    val metadata = mapOf(
+                        "dataHash" to mergedHash,
+                        "updatedAt" to System.currentTimeMillis(),
+                        "businessId" to businessId,
+                        "ownerUid" to authUser.uid,
+                        "schemaVersion" to 2
+                    )
+
+                    val batch = db.batch()
+                    batch.set(businessDocRef, businessData, com.google.firebase.firestore.SetOptions.merge())
+                    batch.set(metaRef, metadata)
+
+                    for (ns in namespaces) {
+                        val prefs = BusinessStorage.prefs(context, ns)
+                        val localMap = mutableMapOf<String, Any>()
+                        for ((k, v) in prefs.all) {
+                            if (k != null && v != null) {
+                                localMap[k] = if (v is Set<*>) v.filterNotNull().toList() else v
+                            }
+                        }
+
+                        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage") {
+                            val merged = mergeFinanceNamespace(ns, localMap, cloudByNamespace[ns].orEmpty())
+                            val editor = prefs.edit()
+                            for ((key, value) in merged) {
+                                when (value) {
+                                    is String -> editor.putString(key, value)
+                                    is Int -> editor.putInt(key, value)
+                                    is Long -> editor.putLong(key, value)
+                                    is Double -> editor.putFloat(key, value.toFloat())
+                                    is Float -> editor.putFloat(key, value)
+                                    is Boolean -> editor.putBoolean(key, value)
+                                    is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                                }
+                            }
+                            editor.apply()
+                            localMap.clear()
+                            localMap.putAll(merged)
+                        }
+
+                        val nsRef = metaRef.collection("backupData").document(ns)
+                        batch.set(nsRef, mapOf("data" to localMap))
+                    }
+
+                    val finalHash = calculateLocalHash(context)
+                    batch.set(metaRef, mapOf(
+                        "dataHash" to finalHash,
+                        "updatedAt" to System.currentTimeMillis(),
+                        "businessId" to businessId,
+                        "ownerUid" to authUser.uid,
+                        "schemaVersion" to 2
+                    ))
+                    batch.commit()
+                        .addOnSuccessListener {
+                            val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
+                            syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, finalHash).apply()
+                            onResult(true)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Push failed while writing merged backup batch", e)
+                            onResult(false)
+                        }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not safely merge finance/partner backup data", e)
+                    onResult(false)
                 }
             }
-
-            val nsRef = metaRef.collection("backupData").document(ns)
-            batch.set(nsRef, mapOf("data" to nsMap))
-        }
-
-        batch.commit()
-            .addOnSuccessListener {
-                val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, currentLocalHash).apply()
-                onResult(true)
-            }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Push failed while writing backup batch", e)
+                Log.e(TAG, "Could not read existing cloud backup before push", e)
+                // Do not fall back to a blind overwrite when cloud data cannot be read.
                 onResult(false)
             }
+    }
+
+    private fun mergeFinanceNamespace(
+        namespace: String,
+        local: Map<String, Any>,
+        cloud: Map<*, *>
+    ): Map<String, Any> {
+        val merged = LinkedHashMap<String, Any>()
+        local.forEach { (key, value) -> merged[key] = value }
+        cloud.forEach { (key, value) ->
+            if (key is String && value != null && !merged.containsKey(key)) merged[key] = value
+        }
+
+        val arrayKeys = when (namespace) {
+            "tamanna_enterprise_finance" -> listOf("expenses", "damages")
+            "tamanna_partner_storage" -> listOf("partners")
+            else -> emptyList()
+        }
+        for (key in arrayKeys) {
+            val localRaw = local[key] as? String ?: "[]"
+            val cloudRaw = cloud[key] as? String ?: "[]"
+            merged[key] = mergeJsonArrayById(localRaw, cloudRaw)
+        }
+        return merged
+    }
+
+    // Local records are retained; cloud records with the same ID take
+    // precedence so edits made on the owner phone propagate to the other phone.
+    private fun mergeJsonArrayById(localRaw: String, cloudRaw: String): String {
+        val records = LinkedHashMap<String, JSONObject>()
+        fun addAll(raw: String) {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                val id = obj.opt("id")?.toString()?.takeIf { it.isNotBlank() } ?: continue
+                records[id] = obj
+            }
+        }
+        addAll(localRaw)
+        addAll(cloudRaw)
+        val result = JSONArray()
+        records.values.forEach { result.put(it) }
+        return result.toString()
     }
 
     fun pullAllFromCloud(context: Context, metaRef: DocumentReference, cloudHash: String, onResult: (Boolean) -> Unit) {
@@ -314,8 +403,32 @@ object CloudSyncManager {
     private fun restoreNamespace(context: Context, ns: String, cloudData: Map<*, *>) {
         val prefs = BusinessStorage.prefs(context, ns)
         val editor = prefs.edit()
-        editor.clear()
 
+        // Finance and partner data are merged by stable record ID; never clear
+        // local records merely because a cloud snapshot is partial.
+        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage") {
+            val local = prefs.all.mapNotNull { (key, value) ->
+                if (key is String && value != null) key to value else null
+            }.toMap()
+            val merged = mergeFinanceNamespace(ns, local, cloudData)
+            for ((key, value) in merged) {
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Double -> editor.putFloat(key, value.toFloat())
+                    is Float -> editor.putFloat(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Number -> editor.putLong(key, value.toLong())
+                    is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+            editor.apply()
+            return
+        }
+
+        // Existing behavior for other namespaces remains unchanged in this focused fix.
+        editor.clear()
         for ((k, v) in cloudData) {
             if (k is String && v != null) {
                 try {
@@ -327,17 +440,13 @@ object CloudSyncManager {
                         is Float -> editor.putFloat(k, v)
                         is Boolean -> editor.putBoolean(k, v)
                         is Number -> editor.putLong(k, v.toLong())
-                        is List<*> -> {
-                            val stringSet = v.filterIsInstance<String>().toSet()
-                            editor.putStringSet(k, stringSet)
-                        }
+                        is List<*> -> editor.putStringSet(k, v.filterIsInstance<String>().toSet())
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing key $k in namespace $ns", e)
                 }
             }
         }
-
         editor.apply()
     }
 }
