@@ -337,7 +337,7 @@ object CloudSyncManager {
             val filtered = JSONArray()
             for (i in 0 until partners.length()) {
                 val partner = partners.optJSONObject(i) ?: continue
-                if (partner.opt("id")?.toString() !in deleted) filtered.put(partner)
+                if (!deleted.contains(partner.opt("id")?.toString().orEmpty())) filtered.put(partner)
             }
             merged["partners"] = filtered.toString()
         }
