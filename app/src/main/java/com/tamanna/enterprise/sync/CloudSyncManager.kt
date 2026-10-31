@@ -237,18 +237,8 @@ object CloudSyncManager {
                         "updatedAt" to System.currentTimeMillis()
                     )
 
-                    val mergedHash = calculateLocalHash(context)
-                    val metadata = mapOf(
-                        "dataHash" to mergedHash,
-                        "updatedAt" to System.currentTimeMillis(),
-                        "businessId" to businessId,
-                        "ownerUid" to authUser.uid,
-                        "schemaVersion" to 2
-                    )
-
                     val batch = db.batch()
                     batch.set(businessDocRef, businessData, com.google.firebase.firestore.SetOptions.merge())
-                    batch.set(metaRef, metadata)
 
                     for (ns in namespaces) {
                         val prefs = BusinessStorage.prefs(context, ns)
