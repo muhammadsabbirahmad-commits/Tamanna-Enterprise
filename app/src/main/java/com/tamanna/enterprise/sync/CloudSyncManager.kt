@@ -248,7 +248,24 @@ object CloudSyncManager {
                             }
                         }
 
-                        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage") {
+                        if (ns == "tamanna_enterprise_products") {
+                            val merged = mergeProductNamespace(localMap, cloudByNamespace[ns].orEmpty())
+                            val editor = prefs.edit()
+                            for ((key, value) in merged) {
+                                when (value) {
+                                    is String -> editor.putString(key, value)
+                                    is Int -> editor.putInt(key, value)
+                                    is Long -> editor.putLong(key, value)
+                                    is Double -> editor.putFloat(key, value.toFloat())
+                                    is Float -> editor.putFloat(key, value)
+                                    is Boolean -> editor.putBoolean(key, value)
+                                    is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                                }
+                            }
+                            editor.apply()
+                            localMap.clear()
+                            localMap.putAll(merged)
+                        } else if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage") {
                             val merged = mergeFinanceNamespace(ns, localMap, cloudByNamespace[ns].orEmpty())
                             val editor = prefs.edit()
                             for ((key, value) in merged) {
@@ -299,6 +316,50 @@ object CloudSyncManager {
                 // Do not fall back to a blind overwrite when cloud data cannot be read.
                 onResult(false)
             }
+    }
+
+    // Product records are merged by immutable product code. Never replace one
+    // device's product list with a partial cloud snapshot.
+    private fun mergeProductNamespace(
+        local: Map<String, Any>,
+        cloud: Map<*, *>
+    ): Map<String, Any> {
+        val merged = LinkedHashMap<String, Any>()
+        local.forEach { (key, value) -> merged[key] = value }
+        cloud.forEach { (key, value) ->
+            if (key is String && value != null && !merged.containsKey(key)) merged[key] = value
+        }
+
+        val localProducts = local["products"] as? String ?: "[]"
+        val cloudProducts = cloud["products"] as? String ?: "[]"
+        merged["products"] = mergeProductsByCode(localProducts, cloudProducts)
+
+        val localNext = (local["next_product_code"] as? Number)?.toLong()
+            ?: (local["next_product_code"] as? String)?.toLongOrNull() ?: 228622L
+        val cloudNext = (cloud["next_product_code"] as? Number)?.toLong()
+            ?: (cloud["next_product_code"] as? String)?.toLongOrNull() ?: 228622L
+        merged["next_product_code"] = maxOf(localNext, cloudNext, 228622L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        return merged
+    }
+
+    private fun mergeProductsByCode(localRaw: String, cloudRaw: String): String {
+        val products = LinkedHashMap<String, JSONObject>()
+        fun addAll(raw: String) {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val code = item.optString("code").trim().uppercase()
+                if (code.isBlank()) continue
+                // Keep the cloud copy for an identical code; distinct product
+                // codes from either phone are always retained.
+                products[code] = item
+            }
+        }
+        addAll(localRaw)
+        addAll(cloudRaw)
+        val result = JSONArray()
+        products.values.forEach { result.put(it) }
+        return result.toString()
     }
 
     private fun mergeFinanceNamespace(
@@ -428,6 +489,29 @@ object CloudSyncManager {
     private fun restoreNamespace(context: Context, ns: String, cloudData: Map<*, *>) {
         val prefs = BusinessStorage.prefs(context, ns)
         val editor = prefs.edit()
+
+        // Product records are merged by product code and never cleared by a
+        // partial cloud snapshot.
+        if (ns == "tamanna_enterprise_products") {
+            val local = prefs.all.mapNotNull { (key, value) ->
+                if (key is String && value != null) key to value else null
+            }.toMap()
+            val merged = mergeProductNamespace(local, cloudData)
+            for ((key, value) in merged) {
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Double -> editor.putFloat(key, value.toFloat())
+                    is Float -> editor.putFloat(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Number -> editor.putLong(key, value.toLong())
+                    is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+            editor.apply()
+            return
+        }
 
         // Finance and partner data are merged by stable record ID; never clear
         // local records merely because a cloud snapshot is partial.
