@@ -7,38 +7,25 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function currentAccess() {
-      return get(/databases/$(database)/documents/accessUsers/$(request.auth.uid));
-    }
-
-    function admin() {
+    function approvedUser() {
       return signedIn()
-        && currentAccess().data.approved == true
-        && currentAccess().data.blocked != true
-        && currentAccess().data.role == "ADMIN";
+        && exists(/databases/$(database)/documents/accessUsers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.approved == true
+        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.blocked != true
+        && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.role == "ADMIN";
     }
 
+    // Only the designated app owner may approve/revoke other Gmail accounts.
     function enterpriseAdmin() {
       return signedIn()
-        && (
-          (
-            exists(/databases/$(database)/documents/appConfig/admin)
-            && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
-            && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN"
-          )
-          ||
-          (
-            exists(/databases/$(database)/documents/accessUsers/$(request.auth.uid))
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.uid == request.auth.uid
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.role == "ADMIN"
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.approved == true
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.blocked != true
-          )
-        );
+        && exists(/databases/$(database)/documents/appConfig/admin)
+        && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN";
     }
 
     function isBusinessOwner(businessId) {
-      return signedIn()
+      return approvedUser()
         && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
     }
 
@@ -68,7 +55,7 @@ service cloud.firestore {
     }
 
     match /accessUsers/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || admin());
+      allow read: if signedIn() && (request.auth.uid == userId || enterpriseAdmin());
 
       allow create: if signedIn()
         && request.auth.uid == userId
@@ -82,7 +69,7 @@ service cloud.firestore {
           || get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
         );
 
-      allow update, delete: if admin();
+      allow update, delete: if enterpriseAdmin();
     }
 
     match /appConfig/admin {
