@@ -173,13 +173,17 @@ fun PartnerScreen() {
                         val allocated = dailyNet.sumOf { (day, net) ->
                             net * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                         }
+                        val lifetimeEarned = lifetimeNetByDay.entries.sumOf { (day, net) -> net * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
+                        val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
+                        val availableBalance = lifetimeEarned - withdrawnTotal
                         Card(Modifier.fillMaxWidth()) {
-                            Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(partner.name, style = MaterialTheme.typography.titleMedium)
-                                    Text("বর্তমান অংশ: %.2f%%".format(Locale.US, partner.profitPercentage), style = MaterialTheme.typography.bodySmall)
-                                }
-                                Text("৳ %.2f".format(Locale.US, allocated), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(partner.name, style = MaterialTheme.typography.titleMedium)
+                                Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, allocated))
+                                Text("সর্বমোট প্রাপ্য: ৳ %.2f".format(Locale.US, lifetimeEarned))
+                                Text("মোট উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))
+                                Text("অবশিষ্ট: ৳ %.2f".format(Locale.US, availableBalance), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                if (canWrite) OutlinedButton(onClick = { withdrawingPartner = partner }, enabled = availableBalance > 0.0) { Text("লভ্যাংশ উত্তোলন") }
                             }
                         }
                     }
