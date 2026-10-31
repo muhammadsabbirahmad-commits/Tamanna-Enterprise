@@ -21,6 +21,8 @@ object CloudSyncManager {
     private val namespaces = listOf(
         "tamanna_enterprise_settings",
         "tamanna_business_prefs",
+        "tamanna_enterprise_finance", // প্রতিষ্ঠানের খরচ ও ড্যামেজ
+        "tamanna_partner_storage", // অংশীদার ও লাভের শতাংশ
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
         "tamanna_transactions_prefs",
