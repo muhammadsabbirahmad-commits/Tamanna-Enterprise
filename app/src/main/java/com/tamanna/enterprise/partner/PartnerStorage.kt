@@ -17,6 +17,15 @@ data class Partner(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+data class PartnerProfitWithdrawal(
+    val id: String,
+    val partnerId: Long,
+    val amount: Double,
+    val date: String,
+    val note: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class PartnerRateSnapshot(
     val effectiveDate: String,
     val percentages: Map<Long, Double>
@@ -27,6 +36,7 @@ object PartnerStorage {
     private const val KEY_PARTNERS = "partners"
     private const val KEY_DELETED_PARTNERS = "deleted_partner_ids"
     private const val KEY_RATE_HISTORY = "partner_profit_rate_history"
+    private const val KEY_WITHDRAWALS = "partner_profit_withdrawals"
 
     private fun prefs(context: Context) = BusinessStorage.prefs(context, PREFS)
 
@@ -143,6 +153,44 @@ object PartnerStorage {
         val snapshot = history.lastOrNull { it.effectiveDate <= date }
         if (snapshot != null) return snapshot.percentages[partnerId] ?: 0.0
         return getPartners(context).firstOrNull { it.id == partnerId }?.profitPercentage ?: 0.0
+    }
+
+    fun getWithdrawals(context: Context): List<PartnerProfitWithdrawal> {
+        val raw = prefs(context).getString(KEY_WITHDRAWALS, "[]") ?: "[]"
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    add(PartnerProfitWithdrawal(
+                        id = item.optString("id"),
+                        partnerId = item.optLong("partnerId"),
+                        amount = item.optDouble("amount"),
+                        date = item.optString("date"),
+                        note = item.optString("note", ""),
+                        createdAt = item.optLong("createdAt")
+                    ))
+                }
+            }
+        }.getOrDefault(emptyList()).sortedWith(compareBy<PartnerProfitWithdrawal> { it.date }.thenBy { it.createdAt })
+    }
+
+    fun addWithdrawal(context: Context, partnerId: Long, amount: Double, date: String, note: String = ""): Boolean {
+        if (getPartners(context).none { it.id == partnerId }) return false
+        if (!amount.isFinite() || amount <= 0.0 || !isValidDate(date)) return false
+        val updated = getWithdrawals(context) + PartnerProfitWithdrawal(
+            java.util.UUID.randomUUID().toString(), partnerId, amount, date, note.trim()
+        )
+        return runCatching {
+            val array = JSONArray()
+            updated.forEach { item ->
+                array.put(JSONObject()
+                    .put("id", item.id).put("partnerId", item.partnerId)
+                    .put("amount", item.amount).put("date", item.date)
+                    .put("note", item.note).put("createdAt", item.createdAt))
+            }
+            prefs(context).edit().putString(KEY_WITHDRAWALS, array.toString()).commit()
+        }.getOrDefault(false)
     }
 
     fun deletePartner(context: Context, id: Long, effectiveDate: String): Boolean {
