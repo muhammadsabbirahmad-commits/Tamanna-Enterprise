@@ -240,6 +240,23 @@ fun PartnerScreen() {
             } else Toast.makeText(context, "সংরক্ষণ হয়নি। তারিখ ও মোট শতাংশ ১০০% যাচাই করুন।", Toast.LENGTH_LONG).show()
         })
     }
+
+    withdrawingPartner?.let { selected ->
+        val earned = lifetimeNetByDay.entries.sumOf { (day, net) -> net * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+        val balance = earned - withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount }
+        PartnerWithdrawalDialog(selected, balance, onDismiss = { withdrawingPartner = null }) { amount, date, note ->
+            val currentEarned = lifetimeNetByDay.entries.sumOf { (day, net) -> net * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+            val currentBalance = currentEarned - PartnerStorage.getWithdrawals(context).filter { it.partnerId == selected.id }.sumOf { it.amount }
+            if (amount > currentBalance + 0.0001) {
+                Toast.makeText(context, "অবশিষ্ট ব্যালান্সের বেশি উত্তোলন করা যাবে না।", Toast.LENGTH_LONG).show()
+            } else if (PartnerStorage.addWithdrawal(context, selected.id, amount, date, note)) {
+                ActivityLogStorage.addAndGetId(context, "পার্টনার লভ্যাংশ উত্তোলন", selected.name + " • ৳" + amount + " • " + date)
+                Toast.makeText(context, "উত্তোলন সংরক্ষিত হয়েছে।", Toast.LENGTH_SHORT).show()
+                refresh++
+                withdrawingPartner = null
+            } else Toast.makeText(context, "উত্তোলন সংরক্ষণ করা যায়নি।", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
 
 @Composable
@@ -343,6 +360,45 @@ private fun ProfitDistributionDialog(
                     else -> onSave(parsed, effectiveDate)
                 }
             }, enabled = partners.isNotEmpty()) { Text("১০০% সংরক্ষণ করুন") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
+    )
+}
+
+
+@Composable
+private fun PartnerWithdrawalDialog(
+    partner: Partner,
+    availableBalance: Double,
+    onDismiss: () -> Unit,
+    onSave: (Double, String, String) -> Unit
+) {
+    var amount by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf(partnerDate()) }
+    var note by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(partner.name + " — লভ্যাংশ উত্তোলন") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("উত্তোলনযোগ্য ব্যালান্স: ৳ %.2f".format(Locale.US, availableBalance))
+                OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }; error = "" }, label = { Text("উত্তোলনের পরিমাণ (৳)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(date, { date = it; error = "" }, label = { Text("উত্তোলনের তারিখ (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(note, { note = it }, label = { Text("বিবরণ (ঐচ্ছিক)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val value = amount.toDoubleOrNull()
+                when {
+                    value == null || !value.isFinite() || value <= 0 -> error = "সঠিক উত্তোলনের পরিমাণ লিখুন।"
+                    value > availableBalance + 0.0001 -> error = "অবশিষ্ট ব্যালান্সের বেশি উত্তোলন করা যাবে না।"
+                    date.length != 10 -> error = "সঠিক তারিখ লিখুন (YYYY-MM-DD)।"
+                    else -> onSave(value, date, note)
+                }
+            }) { Text("উত্তোলন সংরক্ষণ") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
     )
