@@ -164,6 +164,13 @@ service cloud.firestore {
       match /data/{document} {
         allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
         allow write: if isBusinessOwner(businessId);
+
+        // CloudSyncManager stores each SharedPreferences namespace below
+        // businesses/{businessId}/data/backup/backupData/{namespace}.
+        match /backupData/{namespace} {
+          allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
+          allow write: if isBusinessOwner(businessId);
+        }
       }
     }
 
