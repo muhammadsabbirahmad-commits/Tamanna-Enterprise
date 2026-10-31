@@ -38,26 +38,42 @@ class LoginActivity : ComponentActivity() {
                 val verifiedEmail = account.email?.trim()?.lowercase().orEmpty()
                 if (verifiedEmail.isBlank()) { failure?.invoke("Google Gmail ঠিকানা পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
-                // Owner/Admin login flow
+                // Stop listeners from a previously signed-in Gmail before switching data spaces.
+                CloudSyncManager.stopRealtimeSync()
+                CloudSyncManager.stopAutoSync()
+
+                // Admin approval grants app access only. Each approved Gmail receives
+                // its own private businessId and cannot read another Gmail's backup.
                 AccessRequestManager.requestOrCheck { ok, message, record ->
                     if (ok && record != null) {
-                        BusinessAccountStorage.setOwnerUid(this@LoginActivity, record.uid)
-                        SecurityStorage.upsertGoogleUser(
+                        BusinessAccountStorage.activateForUser(
                             this@LoginActivity,
-                            record.email,
-                            SecurityStorage.ROLE_ADMIN,
-                            true,
-                            record.uid
-                        )
-                        SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let {
-                            SecurityStorage.login(this@LoginActivity, it)
+                            currentUser.uid,
+                            verifiedEmail
+                        ) { accountReady, accountMessage ->
+                            if (accountReady) {
+                                SecurityStorage.upsertGoogleUser(
+                                    this@LoginActivity,
+                                    record.email,
+                                    SecurityStorage.ROLE_ADMIN,
+                                    true,
+                                    record.uid
+                                )
+                                SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let {
+                                    SecurityStorage.login(this@LoginActivity, it)
+                                }
+                                success?.invoke()
+                            } else {
+                                auth.signOut()
+                                failure?.invoke(accountMessage)
+                            }
+                            clear()
                         }
-                        success?.invoke()
                     } else {
                         auth.signOut()
                         failure?.invoke(message)
+                        clear()
                     }
-                    clear()
                 }
             }
         } catch (e: ApiException) { failure?.invoke("Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"); clear() }

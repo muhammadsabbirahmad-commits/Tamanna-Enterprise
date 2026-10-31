@@ -1,6 +1,8 @@
 package com.tamanna.enterprise.business
 
 import android.content.Context
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import java.util.UUID
 
 data class BusinessAccount(
@@ -86,6 +88,72 @@ object BusinessAccountStorage {
         val clean = businessId.trim()
         require(clean.isNotBlank()) { "businessId cannot be blank" }
         prefs(context).edit().putString(KEY_ID, clean).apply()
+    }
+
+
+    /**
+     * Assign each approved Firebase user a private business namespace.
+     * The original legacy namespace is retained only for the UID that owns
+     * the existing legacy-business Firestore document.
+     */
+    fun activateForUser(
+        context: Context,
+        ownerUid: String,
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = ownerUid.trim()
+        if (uid.isBlank()) {
+            onResult(false, "Gmail account identity পাওয়া যায়নি।")
+            return
+        }
+
+        val db = FirebaseFirestore.getInstance()
+
+        fun saveActiveAccount(businessId: String) {
+            prefs(context).edit()
+                .putString(KEY_ID, businessId)
+                .putString(KEY_NAME, "Tamanna Enterprise")
+                .putString(KEY_OWNER_UID, uid)
+                .putLong(KEY_CREATED_AT, System.currentTimeMillis())
+                .apply()
+            onResult(true, "")
+        }
+
+        fun provisionPrivateAccount() {
+            val privateBusinessId = "user-" + uid.replace(Regex("[^A-Za-z0-9_-]"), "_")
+            val targetRef = db.collection("businesses").document(privateBusinessId)
+            val data = hashMapOf(
+                "businessId" to privateBusinessId,
+                "businessName" to "Tamanna Enterprise",
+                "ownerUid" to uid,
+                "ownerEmail" to email.trim().lowercase(),
+                "createdAt" to System.currentTimeMillis(),
+                "schemaVersion" to 1
+            )
+            // A merge set creates a new private document, or updates only the
+            // same UID's existing document. Firestore rules reject another owner's document.
+            targetRef.set(data, SetOptions.merge())
+                .addOnSuccessListener { saveActiveAccount(privateBusinessId) }
+                .addOnFailureListener {
+                    onResult(false, "আপনার আলাদা হিসাবের জায়গা তৈরি/যাচাই করা যায়নি: ${it.localizedMessage ?: "আবার চেষ্টা করুন।"}")
+                }
+        }
+
+        // Only the original owner can read the legacy business document.
+        // Permission denied for any other Gmail is expected; it receives a
+        // separate UID-based business instead of pulling the legacy backup.
+        db.collection("businesses").document(LEGACY_BUSINESS_ID).get()
+            .addOnSuccessListener { legacyDoc ->
+                if (legacyDoc.exists() && legacyDoc.getString("ownerUid") == uid) {
+                    saveActiveAccount(LEGACY_BUSINESS_ID)
+                } else {
+                    provisionPrivateAccount()
+                }
+            }
+            .addOnFailureListener {
+                provisionPrivateAccount()
+            }
     }
 
     private fun generateBusinessId(): String =

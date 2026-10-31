@@ -7,17 +7,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function currentAccess() {
-      return get(/databases/$(database)/documents/accessUsers/$(request.auth.uid));
-    }
-
-    function admin() {
-      return signedIn()
-        && currentAccess().data.approved == true
-        && currentAccess().data.blocked != true
-        && currentAccess().data.role == "ADMIN";
-    }
-
+    // Only the designated app owner may approve/revoke other Gmail accounts.
     function enterpriseAdmin() {
       return signedIn()
         && (
@@ -26,8 +16,7 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
             && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN"
           )
-          ||
-          (
+          || (
             exists(/databases/$(database)/documents/accessUsers/$(request.auth.uid))
             && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.uid == request.auth.uid
             && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.role == "ADMIN"
@@ -37,8 +26,24 @@ service cloud.firestore {
         );
     }
 
-    function isBusinessOwner(businessId) {
+    function approvedUser() {
       return signedIn()
+        && (
+          enterpriseAdmin()
+          || (
+            exists(/databases/$(database)/documents/accessRequests/$(request.auth.uid))
+            && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.uid == request.auth.uid
+            && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.status == "ACTIVE"
+            && (
+              get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.expiresAt == 0
+              || get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.expiresAt > request.time.toMillis()
+            )
+          )
+        );
+    }
+
+    function isBusinessOwner(businessId) {
+      return approvedUser()
         && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
     }
 
@@ -68,7 +73,7 @@ service cloud.firestore {
     }
 
     match /accessUsers/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || admin());
+      allow read: if signedIn() && (request.auth.uid == userId || enterpriseAdmin());
 
       allow create: if signedIn()
         && request.auth.uid == userId
@@ -82,7 +87,7 @@ service cloud.firestore {
           || get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
         );
 
-      allow update, delete: if admin();
+      allow update, delete: if enterpriseAdmin();
     }
 
     match /appConfig/admin {
@@ -95,12 +100,12 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.email == request.auth.token.email;
 
-      allow update, delete: if admin();
+      allow update, delete: if enterpriseAdmin();
     }
 
     match /businesses/{businessId} {
       allow read: if isBusinessOwner(businessId);
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow create: if approvedUser() && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if isBusinessOwner(businessId);
 
       match /members/{memberId} {

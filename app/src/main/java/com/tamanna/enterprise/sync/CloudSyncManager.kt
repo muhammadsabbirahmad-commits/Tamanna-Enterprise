@@ -139,14 +139,19 @@ object CloudSyncManager {
             .document(businessId)
             .get()
             .addOnSuccessListener { businessDoc ->
-                val isLocalAdmin = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
+                val isApprovedAccount = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
                 val isFirestoreOwner = businessDoc.exists() &&
                     businessDoc.getString("ownerUid") == authUser.uid
-                onResult(ref, isLocalAdmin && isFirestoreOwner)
+                if (isApprovedAccount && isFirestoreOwner) {
+                    onResult(ref, true)
+                } else {
+                    // Never expose another Gmail's backup reference for read-only pulls.
+                    onResult(null, false)
+                }
             }
             .addOnFailureListener { error ->
-                Log.w(TAG, "Could not verify business owner; cloud push disabled.", error)
-                onResult(ref, false)
+                Log.w(TAG, "Could not verify business owner; cloud sync denied.", error)
+                onResult(null, false)
             }
     }
 
