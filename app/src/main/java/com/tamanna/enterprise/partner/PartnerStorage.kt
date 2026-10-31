@@ -4,6 +4,9 @@ import android.content.Context
 import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class Partner(
     val id: Long = System.currentTimeMillis(),
@@ -78,7 +81,10 @@ object PartnerStorage {
         effectiveDate: String
     ): Boolean {
         val partners = getPartners(context)
-        if (partners.isEmpty() || effectiveDate.length != 10) return false
+        if (partners.isEmpty() || !isValidDate(effectiveDate)) return false
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        // A new rate may start today or later, never rewrite a closed period.
+        if (effectiveDate < today) return false
         if (percentages.keys != partners.map { it.id }.toSet()) return false
         if (percentages.values.any { !it.isFinite() || it < 0.0 || it > 100.0 }) return false
         val total = percentages.values.sum()
@@ -155,6 +161,12 @@ object PartnerStorage {
         addDeletedId(context, id)
         return savePartners(context, remaining)
     }
+
+    private fun isValidDate(value: String): Boolean = runCatching {
+        val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
+        val parsed = format.parse(value) ?: return@runCatching false
+        format.format(parsed) == value
+    }.getOrDefault(false)
 
     private fun saveRateHistory(context: Context, history: List<PartnerRateSnapshot>): Boolean =
         runCatching {
