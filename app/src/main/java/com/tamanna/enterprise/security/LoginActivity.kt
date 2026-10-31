@@ -16,9 +16,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.tamanna.enterprise.dashboard.DashboardActivity
-import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.business.BusinessAccountStorage
-import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.sync.CloudSyncManager
 
 class LoginActivity : ComponentActivity() {
@@ -40,39 +38,26 @@ class LoginActivity : ComponentActivity() {
                 val verifiedEmail = account.email?.trim()?.lowercase().orEmpty()
                 if (verifiedEmail.isBlank()) { failure?.invoke("Google Gmail ঠিকানা পাওয়া যায়নি।"); clear(); return@addOnCompleteListener }
 
-                // ১. View Access ইউজারদের জন্য
-                ViewAccessManager.findForEmailAcrossBusinesses(verifiedEmail) { viewEntry ->
-                    if (viewEntry != null && viewEntry.businessId.isNotBlank()) {
-                        BusinessStorage.setActiveBusinessId(this@LoginActivity, viewEntry.businessId)
-                        BusinessAccountStorage.setOwnerUid(this@LoginActivity, viewEntry.ownerUid)
-
-                        val viewUser = SecurityStorage.upsertGoogleUser(
+                // Owner/Admin login flow
+                AccessRequestManager.requestOrCheck { ok, message, record ->
+                    if (ok && record != null) {
+                        BusinessAccountStorage.setOwnerUid(this@LoginActivity, record.uid)
+                        SecurityStorage.upsertGoogleUser(
                             this@LoginActivity,
-                            verifiedEmail,
-                            SecurityStorage.ROLE_VIEWER,
+                            record.email,
+                            SecurityStorage.ROLE_ADMIN,
                             true,
-                            currentUser.uid
+                            record.uid
                         )
-                        SecurityStorage.login(this@LoginActivity, viewUser)
-                        success?.invoke()
-                        clear()
-                    } else {
-                        // ২. Owner/Admin ফ্লো
-                        AccessRequestManager.requestOrCheck { ok, message, record ->
-                            if (ok && record != null) {
-                                // *** মূল ফিক্স: ক্লিয়ার স্টোরেজের পর Owner UID ফাঁকা হয়ে যায়, তাই ব্যাকআপ লোড করার আগে UID সেট করে নিতে হবে ***
-                                BusinessAccountStorage.setOwnerUid(this@LoginActivity, record.uid)
-
-                                SecurityStorage.upsertGoogleUser(this@LoginActivity, record.email, SecurityStorage.ROLE_ADMIN, true, record.uid)
-                                SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let { SecurityStorage.login(this@LoginActivity, it) }
-                                success?.invoke()
-                            } else {
-                                auth.signOut()
-                                failure?.invoke(message)
-                            }
-                            clear()
+                        SecurityStorage.findByGoogleEmail(this@LoginActivity, record.email)?.let {
+                            SecurityStorage.login(this@LoginActivity, it)
                         }
+                        success?.invoke()
+                    } else {
+                        auth.signOut()
+                        failure?.invoke(message)
                     }
+                    clear()
                 }
             }
         } catch (e: ApiException) { failure?.invoke("Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"); clear() }
