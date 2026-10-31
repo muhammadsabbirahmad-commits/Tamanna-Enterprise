@@ -8,6 +8,7 @@ on:
       - feat/partner-profit-withdrawals
       - feat/partner-profit-loss-allocation
       - feat/full-firestore-sync
+      - fix/per-gmail-private-business-data
   workflow_dispatch:
 
 permissions:
