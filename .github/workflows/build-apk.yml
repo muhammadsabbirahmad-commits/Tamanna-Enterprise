@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/safe-finance-partner-sync
   workflow_dispatch:
 
 permissions:
@@ -67,6 +68,7 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
 
       - name: Publish GitHub Release with APK
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
