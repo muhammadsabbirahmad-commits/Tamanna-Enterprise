@@ -367,7 +367,10 @@ object CloudSyncManager {
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
                 val id = obj.opt("id")?.toString()?.takeIf { it.isNotBlank() } ?: continue
-                records[id] = obj
+                val existing = records[id]
+                if (existing == null || obj.optLong("updatedAt", 0L) >= existing.optLong("updatedAt", 0L)) {
+                    records[id] = obj
+                }
             }
         }
         addAll(localRaw)
