@@ -19,6 +19,12 @@ object CloudSyncManager {
     private const val PREF_SYNC = "tamanna_sync_prefs"
     private const val KEY_LAST_LOCAL_HASH = "last_local_hash"
 
+    private fun lastHashKey(context: Context): String {
+        val businessId = BusinessStorage.getActiveBusinessId(context).trim()
+        val safeId = businessId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
+        return "${KEY_LAST_LOCAL_HASH}_$safeId"
+    }
+
     // বিক্রয় (sales) সহ সব প্রয়োজনীয় নেমস্পেস
     private val namespaces = listOf(
         "tamanna_enterprise_settings",
@@ -88,7 +94,7 @@ object CloudSyncManager {
 
                 val cloudHash = snapshot.getString("dataHash") ?: return@addSnapshotListener
                 val syncPrefs = context.applicationContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+                val lastSyncedHash = syncPrefs.getString(lastHashKey(context), "") ?: ""
 
                 if (cloudHash.isBlank() || cloudHash == lastSyncedHash) return@addSnapshotListener
 
@@ -156,7 +162,7 @@ object CloudSyncManager {
 
             val currentLocalHash = calculateLocalHash(appContext)
             val syncPrefs = appContext.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-            val lastSyncedHash = syncPrefs.getString(KEY_LAST_LOCAL_HASH, "") ?: ""
+            val lastSyncedHash = syncPrefs.getString(lastHashKey(context), "") ?: ""
             
             val isProductsEmpty = ProductStorage.getProducts(appContext).isEmpty()
 
@@ -276,7 +282,7 @@ object CloudSyncManager {
                     batch.commit()
                         .addOnSuccessListener {
                             val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                            syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, finalHash).apply()
+                            syncPrefs.edit().putString(lastHashKey(context), finalHash).apply()
                             onResult(true)
                         }
                         .addOnFailureListener { e ->
@@ -398,7 +404,7 @@ object CloudSyncManager {
                             }
 
                             val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
-                            syncPrefs.edit().putString(KEY_LAST_LOCAL_HASH, cloudHash).apply()
+                            syncPrefs.edit().putString(lastHashKey(context), cloudHash).apply()
                             onResult(true)
                         } catch (e: Exception) {
                             Log.e(TAG, "Exception during pullAllFromCloud processing", e)
