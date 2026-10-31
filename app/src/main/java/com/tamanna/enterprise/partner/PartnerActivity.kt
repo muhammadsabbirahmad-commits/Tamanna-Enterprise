@@ -88,7 +88,9 @@ fun PartnerScreen() {
             }
         }
     }
-    val periodNetProfit = dailyNet.sumOf { it.second }
+    val periodTotalProfit = dailyNet.sumOf { maxOf(it.second, 0.0) }
+    val periodTotalLoss = dailyNet.sumOf { kotlin.math.abs(minOf(it.second, 0.0)) }
+    val periodNetResult = periodTotalProfit - periodTotalLoss
     val allProfitDays = (salesByDay.keys + expensesByDay.keys + damagesByDay.keys).distinct().sorted()
     val lifetimeNetByDay = allProfitDays.associateWith { day ->
         val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
@@ -136,8 +138,8 @@ fun PartnerScreen() {
             }
 
             HorizontalDivider()
-            Text("পার্টনারভিত্তিক নিট লাভের হিসাব", style = MaterialTheme.typography.titleLarge)
-            Text("বিক্রয়মূল্য থেকে পণ্যের ক্রয়মূল্য, প্রতিষ্ঠানের খরচ ও ড্যামেজ বাদ দেওয়ার পরের লাভ এখানে বণ্টন করা হবে।")
+            Text("পার্টনারভিত্তিক লাভ-লোকসানের হিসাব", style = MaterialTheme.typography.titleLarge)
+            Text("বিক্রয়মূল্য থেকে পণ্যের ক্রয়মূল্য, প্রতিষ্ঠানের খরচ ও ড্যামেজ বাদ দিয়ে প্রতিদিনের নিট ফলাফল বের হবে। লাভ হলে লাভ এবং লোকসান হলে প্রত্যেক পার্টনারের নির্ধারিত শতাংশ অনুযায়ী লোকসান দেখানো হবে।")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = { fromDate = partnerDate(); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("আজ") }
                 OutlinedButton(onClick = { fromDate = partnerDate(1); toDate = partnerDate(1) }, modifier = Modifier.weight(1f)) { Text("গতকাল") }
@@ -161,36 +163,58 @@ fun PartnerScreen() {
             } else {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("এই সময়ের মোট নিট লাভ", style = MaterialTheme.typography.titleMedium)
-                        Text("৳ %.2f".format(Locale.US, periodNetProfit), style = MaterialTheme.typography.headlineSmall)
+                        Text("এই সময়ের ব্যবসার হিসাব", style = MaterialTheme.typography.titleMedium)
+                        Text("মোট লাভ: ৳ %.2f".format(Locale.US, periodTotalProfit))
+                        Text("মোট লোকসান: ৳ %.2f".format(Locale.US, periodTotalLoss), color = MaterialTheme.colorScheme.error)
+                        Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNetResult), style = MaterialTheme.typography.headlineSmall,
+                            color = if (periodNetResult < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                         Text("$fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 if (!distributionValid) {
-                    Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন।", color = MaterialTheme.colorScheme.error)
+                    Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ-লোকসান বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন.", color = MaterialTheme.colorScheme.error)
                 } else {
                     partners.forEach { partner ->
-                        val allocated = dailyNet.sumOf { (day, net) ->
-                            net * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                        val allocatedProfit = dailyNet.sumOf { (day, net) ->
+                            maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                         }
-                        val lifetimeEarned = lifetimeNetByDay.entries.sumOf { (day, net) -> net * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
+                        val allocatedLoss = dailyNet.sumOf { (day, net) ->
+                            kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                        }
+                        val lifetimeProfit = lifetimeNetByDay.entries.sumOf { (day, net) ->
+                            maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                        }
+                        val lifetimeLoss = lifetimeNetByDay.entries.sumOf { (day, net) ->
+                            kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                        }
                         val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
-                        val availableBalance = lifetimeEarned - withdrawnTotal
+                        val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal
+                        val periodPartnerNet = allocatedProfit - allocatedLoss
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(partner.name, style = MaterialTheme.typography.titleMedium)
-                                Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, allocated))
-                                Text("সর্বমোট প্রাপ্য: ৳ %.2f".format(Locale.US, lifetimeEarned))
+                                Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, allocatedProfit))
+                                Text("এই সময়ের লোকসান: ৳ %.2f".format(Locale.US, allocatedLoss), color = MaterialTheme.colorScheme.error)
+                                Text("এই সময়ের নিট ফলাফল: ৳ %.2f".format(Locale.US, periodPartnerNet),
+                                    color = if (periodPartnerNet < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                HorizontalDivider()
+                                Text("সর্বমোট লাভের অংশ: ৳ %.2f".format(Locale.US, lifetimeProfit))
+                                Text("সর্বমোট লোকসানের অংশ: ৳ %.2f".format(Locale.US, lifetimeLoss), color = MaterialTheme.colorScheme.error)
                                 Text("মোট উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))
-                                Text("অবশিষ্ট: ৳ %.2f".format(Locale.US, availableBalance), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                Text("অবশিষ্ট নিট পাওনা / (ঘাটতি): ৳ %.2f".format(Locale.US, availableBalance),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (availableBalance < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                                 if (canWrite) OutlinedButton(onClick = { withdrawingPartner = partner }, enabled = availableBalance > 0.0) { Text("লভ্যাংশ উত্তোলন") }
                             }
                         }
                     }
                 }
-                Text("দৈনিক নিট লাভ", style = MaterialTheme.typography.titleMedium)
+                Text("দৈনিক লাভ / লোকসান", style = MaterialTheme.typography.titleMedium)
                 dailyNet.asReversed().forEach { (day, net) ->
-                    Text("$day  •  ৳ %.2f".format(Locale.US, net), style = MaterialTheme.typography.bodyMedium)
+                    val label = if (net < 0.0) "লোকসান" else "লাভ"
+                    Text("$day  •  $label: ৳ %.2f".format(Locale.US, kotlin.math.abs(net)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (net < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
             }
             if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
@@ -242,11 +266,13 @@ fun PartnerScreen() {
     }
 
     withdrawingPartner?.let { selected ->
-        val earned = lifetimeNetByDay.entries.sumOf { (day, net) -> net * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-        val balance = earned - withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount }
+        val earnedProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+        val allocatedLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+        val balance = earnedProfit - allocatedLoss - withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount }
         PartnerWithdrawalDialog(selected, balance, onDismiss = { withdrawingPartner = null }) { amount, date, note ->
-            val currentEarned = lifetimeNetByDay.entries.sumOf { (day, net) -> net * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-            val currentBalance = currentEarned - PartnerStorage.getWithdrawals(context).filter { it.partnerId == selected.id }.sumOf { it.amount }
+            val currentProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+            val currentLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+            val currentBalance = currentProfit - currentLoss - PartnerStorage.getWithdrawals(context).filter { it.partnerId == selected.id }.sumOf { it.amount }
             if (amount > currentBalance + 0.0001) {
                 Toast.makeText(context, "অবশিষ্ট ব্যালান্সের বেশি উত্তোলন করা যাবে না।", Toast.LENGTH_LONG).show()
             } else if (PartnerStorage.addWithdrawal(context, selected.id, amount, date, note)) {

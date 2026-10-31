@@ -6,6 +6,8 @@ on:
       - main
       - fix/safe-finance-partner-sync
       - feat/partner-profit-withdrawals
+      - feat/partner-profit-loss-allocation
+      - feat/full-firestore-sync
   workflow_dispatch:
 
 permissions:

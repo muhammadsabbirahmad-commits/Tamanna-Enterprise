@@ -33,6 +33,8 @@ object CloudSyncManager {
         "tamanna_partner_storage", // অংশীদার ও লাভের শতাংশ
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
+        "tamanna_customer_due", // গ্রাহকের বাকি/জমা ও গ্রাহক তালিকা
+
         "tamanna_transactions_prefs",
         "tamanna_enterprise_products",
         "tamanna_enterprise_purchases",
@@ -435,8 +437,13 @@ object CloudSyncManager {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
                 val date = item.optString("effectiveDate").takeIf { it.length == 10 } ?: continue
-                // Cloud entries win for the same effective date, matching partner edit sync behavior.
-                byDate[date] = item
+                // The most recently edited snapshot wins on both devices.
+                val existing = byDate[date]
+                if (existing == null ||
+                    item.optLong("updatedAt", 0L) >= existing.optLong("updatedAt", 0L)
+                ) {
+                    byDate[date] = item
+                }
             }
         }
         addAll(localRaw)
