@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.business
 
 import android.content.Context
+import com.google.firebase.firestore.FirebaseFirestore
 import java.util.UUID
 
 data class BusinessAccount(
@@ -86,6 +87,84 @@ object BusinessAccountStorage {
         val clean = businessId.trim()
         require(clean.isNotBlank()) { "businessId cannot be blank" }
         prefs(context).edit().putString(KEY_ID, clean).apply()
+    }
+
+
+    /**
+     * Assign each approved Firebase user a private business namespace.
+     * The original legacy namespace is retained only for the UID that owns
+     * the existing legacy-business Firestore document.
+     */
+    fun activateForUser(
+        context: Context,
+        ownerUid: String,
+        email: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val uid = ownerUid.trim()
+        if (uid.isBlank()) {
+            onResult(false, "Gmail account identity পাওয়া যায়নি।")
+            return
+        }
+
+        val db = FirebaseFirestore.getInstance()
+        val legacyRef = db.collection("businesses").document(LEGACY_BUSINESS_ID)
+        legacyRef.get()
+            .addOnSuccessListener { legacyDoc ->
+                val legacyOwner = legacyDoc.getString("ownerUid").orEmpty()
+                val targetId = if (legacyDoc.exists() && legacyOwner == uid) {
+                    LEGACY_BUSINESS_ID
+                } else {
+                    "user-" + uid.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                }
+                val targetRef = db.collection("businesses").document(targetId)
+
+                fun activate() {
+                    prefs(context).edit()
+                        .putString(KEY_ID, targetId)
+                        .putString(KEY_NAME, "Tamanna Enterprise")
+                        .putString(KEY_OWNER_UID, uid)
+                        .putLong(KEY_CREATED_AT, System.currentTimeMillis())
+                        .apply()
+                    onResult(true, "")
+                }
+
+                if (targetId == LEGACY_BUSINESS_ID) {
+                    activate()
+                    return@addOnSuccessListener
+                }
+
+                targetRef.get()
+                    .addOnSuccessListener { existing ->
+                        if (existing.exists()) {
+                            if (existing.getString("ownerUid") != uid) {
+                                onResult(false, "এই Gmail-এর ব্যবসার পরিচয় যাচাই করা যায়নি।")
+                            } else {
+                                activate()
+                            }
+                        } else {
+                            val data = hashMapOf(
+                                "businessId" to targetId,
+                                "businessName" to "Tamanna Enterprise",
+                                "ownerUid" to uid,
+                                "ownerEmail" to email.trim().lowercase(),
+                                "createdAt" to System.currentTimeMillis(),
+                                "schemaVersion" to 1
+                            )
+                            targetRef.set(data)
+                                .addOnSuccessListener { activate() }
+                                .addOnFailureListener {
+                                    onResult(false, "আপনার আলাদা হিসাবের জায়গা তৈরি করা যায়নি: ${it.localizedMessage ?: "আবার চেষ্টা করুন।"}")
+                                }
+                        }
+                    }
+                    .addOnFailureListener {
+                        onResult(false, "আপনার ব্যবসার পরিচয় যাচাই করা যায়নি: ${it.localizedMessage ?: "আবার চেষ্টা করুন।"}")
+                    }
+            }
+            .addOnFailureListener {
+                onResult(false, "পুরোনো হিসাবের মালিকানা যাচাই করা যায়নি: ${it.localizedMessage ?: "ইন্টারনেট পরীক্ষা করুন।"}")
+            }
     }
 
     private fun generateBusinessId(): String =
