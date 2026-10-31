@@ -33,6 +33,8 @@ object CloudSyncManager {
         "tamanna_partner_storage", // অংশীদার ও লাভের শতাংশ
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
+        "tamanna_customer_due", // গ্রাহকের বাকি/জমা ও গ্রাহক তালিকা
+
         "tamanna_transactions_prefs",
         "tamanna_enterprise_products",
         "tamanna_enterprise_purchases",
