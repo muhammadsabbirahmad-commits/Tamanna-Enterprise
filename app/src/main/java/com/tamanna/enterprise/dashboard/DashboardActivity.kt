@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.finance.FinanceActivity
 import com.tamanna.enterprise.partner.PartnerActivity
 import com.tamanna.enterprise.due.CustomerDueActivity
@@ -118,10 +117,9 @@ class DashboardActivity : ComponentActivity() {
         // ১. আগে লোকাল ডাটা দিয়ে দ্রুত UI রেন্ডার করা
         renderDashboardUI()
 
-        // ২. Business ID মিসিং থাকলে Admin বা Viewer হিসেবে আইডি রিকভারি
+        // ২. Business ID মিসিং থাকলে Owner ID দিয়ে রিকভারি
         if (currentBusinessId.isBlank() && firebaseUser != null) {
             val uid = firebaseUser.uid
-            val userEmail = firebaseUser.email.orEmpty()
 
             FirebaseFirestore.getInstance().collection("businesses")
                 .whereEqualTo("ownerUid", uid)
@@ -134,13 +132,10 @@ class DashboardActivity : ComponentActivity() {
                             if (isDataSynced) renderDashboardUI()
                         }
                     } else {
-                        // যদি Owner না হয়, তবে Viewer চেক
-                        ViewAccessManager.findForEmailAcrossBusinesses(userEmail) { viewEntry ->
-                            val bId = viewEntry?.businessId ?: uid
-                            BusinessStorage.setActiveBusinessId(context, bId)
-                            CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
-                                if (isDataSynced) renderDashboardUI()
-                            }
+                        // Use the signed-in account UID when no owned business document is found.
+                        BusinessStorage.setActiveBusinessId(context, uid)
+                        CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                            if (isDataSynced) renderDashboardUI()
                         }
                     }
                 }
