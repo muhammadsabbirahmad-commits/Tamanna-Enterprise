@@ -28,7 +28,8 @@ data class PartnerProfitWithdrawal(
 
 data class PartnerRateSnapshot(
     val effectiveDate: String,
-    val percentages: Map<Long, Double>
+    val percentages: Map<Long, Double>,
+    val updatedAt: Long = 0L
 )
 
 object PartnerStorage {
@@ -111,14 +112,14 @@ object PartnerStorage {
             existing.add(PartnerRateSnapshot("0001-01-01", partners.associate { it.id to it.profitPercentage }))
         }
         existing.removeAll { it.effectiveDate == effectiveDate }
-        existing.add(PartnerRateSnapshot(effectiveDate, percentages.toMap()))
+        existing.add(PartnerRateSnapshot(effectiveDate, percentages.toMap(), now))
         val normalized = existing.sortedBy { it.effectiveDate }
         return runCatching {
             val history = JSONArray()
             normalized.forEach { snapshot ->
                 val rates = JSONObject()
                 snapshot.percentages.forEach { (id, pct) -> rates.put(id.toString(), pct) }
-                history.put(JSONObject().put("effectiveDate", snapshot.effectiveDate).put("percentages", rates))
+                history.put(JSONObject().put("effectiveDate", snapshot.effectiveDate).put("percentages", rates).put("updatedAt", snapshot.updatedAt))
             }
             val partnerArray = partnerArray(updatedPartners)
             prefs(context).edit()
@@ -142,7 +143,7 @@ object PartnerStorage {
                         val key = keys.next()
                         key.toLongOrNull()?.let { values[it] = rates.optDouble(key, 0.0) }
                     }
-                    add(PartnerRateSnapshot(item.optString("effectiveDate"), values))
+                    add(PartnerRateSnapshot(item.optString("effectiveDate"), values, item.optLong("updatedAt", 0L)))
                 }
             }.sortedBy { it.effectiveDate }
         }.getOrDefault(emptyList())
@@ -222,7 +223,7 @@ object PartnerStorage {
             history.sortedBy { it.effectiveDate }.forEach { snapshot ->
                 val rates = JSONObject()
                 snapshot.percentages.forEach { (id, pct) -> rates.put(id.toString(), pct) }
-                array.put(JSONObject().put("effectiveDate", snapshot.effectiveDate).put("percentages", rates))
+                array.put(JSONObject().put("effectiveDate", snapshot.effectiveDate).put("percentages", rates).put("updatedAt", snapshot.updatedAt))
             }
             prefs(context).edit().putString(KEY_RATE_HISTORY, array.toString()).commit()
         }.getOrDefault(false)
