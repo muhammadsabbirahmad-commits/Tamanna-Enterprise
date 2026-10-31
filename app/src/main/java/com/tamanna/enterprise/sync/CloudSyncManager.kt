@@ -124,14 +124,28 @@ object CloudSyncManager {
             return
         }
 
-        val isOwner = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
         val ref = FirebaseFirestore.getInstance()
             .collection("businesses")
             .document(businessId)
             .collection("data")
             .document("backup")
 
-        onResult(ref, isOwner)
+        // Firestore backup writes are restricted to the actual business owner.
+        // A local ADMIN label alone is not sufficient to grant cloud-write access.
+        FirebaseFirestore.getInstance()
+            .collection("businesses")
+            .document(businessId)
+            .get()
+            .addOnSuccessListener { businessDoc ->
+                val isLocalAdmin = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
+                val isFirestoreOwner = businessDoc.exists() &&
+                    businessDoc.getString("ownerUid") == authUser.uid
+                onResult(ref, isLocalAdmin && isFirestoreOwner)
+            }
+            .addOnFailureListener { error ->
+                Log.w(TAG, "Could not verify business owner; cloud push disabled.", error)
+                onResult(ref, false)
+            }
     }
 
     fun calculateLocalHash(context: Context): String {
@@ -350,9 +364,14 @@ object CloudSyncManager {
                 val item = array.optJSONObject(i) ?: continue
                 val code = item.optString("code").trim().uppercase()
                 if (code.isBlank()) continue
-                // Keep the cloud copy for an identical code; distinct product
-                // codes from either phone are always retained.
-                products[code] = item
+                // Keep the newest edit for an identical code. Older records
+                // without updatedAt fall back to createdAt for backward compatibility.
+                val itemTime = item.optLong("updatedAt", item.optLong("createdAt", 0L))
+                val existing = products[code]
+                val existingTime = existing?.optLong("updatedAt", existing.optLong("createdAt", 0L)) ?: Long.MIN_VALUE
+                if (existing == null || itemTime >= existingTime) {
+                    products[code] = item
+                }
             }
         }
         addAll(localRaw)
