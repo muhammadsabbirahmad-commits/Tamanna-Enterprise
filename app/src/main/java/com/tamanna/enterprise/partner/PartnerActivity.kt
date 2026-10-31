@@ -54,10 +54,12 @@ fun PartnerScreen() {
     val sales = remember(refresh) { SalesStorage.getSales(context) }
     val expenses = remember(refresh) { ExpenseStorage.getExpenses(context) }
     val damages = remember(refresh) { ExpenseStorage.getDamages(context) }
+    val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingPartner by remember { mutableStateOf<Partner?>(null) }
     var showDistributionDialog by remember { mutableStateOf(false) }
+    var withdrawingPartner by remember { mutableStateOf<Partner?>(null) }
     var fromDate by remember { mutableStateOf(partnerDate()) }
     var toDate by remember { mutableStateOf(partnerDate()) }
     var message by remember { mutableStateOf("") }
@@ -87,6 +89,13 @@ fun PartnerScreen() {
         }
     }
     val periodNetProfit = dailyNet.sumOf { it.second }
+    val allProfitDays = (salesByDay.keys + expensesByDay.keys + damagesByDay.keys).distinct().sorted()
+    val lifetimeNetByDay = allProfitDays.associateWith { day ->
+        val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+        val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
+        val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
+        gross - expense - damage
+    }
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
     val distributionValid = kotlin.math.abs(totalPercentage - 100.0) <= 0.0001
