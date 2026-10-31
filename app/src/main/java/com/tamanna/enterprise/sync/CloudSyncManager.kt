@@ -394,7 +394,7 @@ object CloudSyncManager {
 
         val arrayKeys = when (namespace) {
             "tamanna_enterprise_finance" -> listOf("expenses", "damages")
-            "tamanna_partner_storage" -> listOf("partners")
+            "tamanna_partner_storage" -> listOf("partners", "partner_profit_withdrawals")
             else -> emptyList()
         }
         for (key in arrayKeys) {
