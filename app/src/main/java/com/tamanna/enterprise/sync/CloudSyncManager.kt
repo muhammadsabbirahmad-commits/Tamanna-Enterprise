@@ -231,14 +231,7 @@ object CloudSyncManager {
                     }
 
                     val db = FirebaseFirestore.getInstance()
-                    val businessDocRef = db.collection("businesses").document(businessId)
-                    val businessData = mapOf(
-                        "ownerUid" to authUser.uid,
-                        "updatedAt" to System.currentTimeMillis()
-                    )
-
                     val batch = db.batch()
-                    batch.set(businessDocRef, businessData, com.google.firebase.firestore.SetOptions.merge())
 
                     for (ns in namespaces) {
                         val prefs = BusinessStorage.prefs(context, ns)
@@ -323,7 +316,40 @@ object CloudSyncManager {
             val cloudRaw = cloud[key] as? String ?: "[]"
             merged[key] = mergeJsonArrayById(localRaw, cloudRaw)
         }
+
+        if (namespace == "tamanna_partner_storage") {
+            val deletedRaw = mergeJsonIdArray(
+                local["deleted_partner_ids"] as? String ?: "[]",
+                cloud["deleted_partner_ids"] as? String ?: "[]"
+            )
+            merged["deleted_partner_ids"] = deletedRaw
+            val deleted = runCatching {
+                val ids = JSONArray(deletedRaw)
+                buildSet { for (i in 0 until ids.length()) add(ids.getLong(i).toString()) }
+            }.getOrDefault(emptySet())
+            val partners = JSONArray(merged["partners"] as? String ?: "[]")
+            val filtered = JSONArray()
+            for (i in 0 until partners.length()) {
+                val partner = partners.optJSONObject(i) ?: continue
+                if (partner.opt("id")?.toString() !in deleted) filtered.put(partner)
+            }
+            merged["partners"] = filtered.toString()
+        }
         return merged
+    }
+
+    private fun mergeJsonIdArray(localRaw: String, cloudRaw: String): String {
+        val ids = LinkedHashSet<String>()
+        for (raw in listOf(localRaw, cloudRaw)) {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val value = array.opt(i)?.toString() ?: continue
+                if (value.isNotBlank()) ids.add(value)
+            }
+        }
+        val result = JSONArray()
+        ids.forEach { id -> result.put(id.toLongOrNull() ?: id) }
+        return result.toString()
     }
 
     // Local records are retained; cloud records with the same ID take
