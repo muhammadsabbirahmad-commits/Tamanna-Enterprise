@@ -42,15 +42,6 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
     }
 
-    function hasViewAccess(businessId) {
-      return signedIn()
-        && request.auth.token.email_verified == true
-        && request.auth.token.email != null
-        && exists(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower()))
-        && get(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower())).data.email == request.auth.token.email.lower()
-        && get(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower())).data.businessId == businessId
-        && get(/databases/$(database)/documents/businesses/$(businessId)/viewAccess/$(request.auth.token.email.lower())).data.active == true;
-    }
 
     match /accessRequests/{userId} {
       allow get: if signedIn() && request.auth.uid == userId;
@@ -107,45 +98,13 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
-    // Collection-group lookup used by Gmail View Access login.
-    // It only exposes an active record belonging to the signed-in Gmail.
-    match /{path=**}/viewAccess/{emailKey} {
-      allow read: if signedIn()
-        && request.auth.token.email_verified == true
-        && request.auth.token.email != null
-        && emailKey == request.auth.token.email.lower()
-        && resource.data.email == request.auth.token.email.lower()
-        && resource.data.active == true;
-    }
-
     match /businesses/{businessId} {
-      allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
+      allow read: if isBusinessOwner(businessId);
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update, delete: if isBusinessOwner(businessId);
 
-      match /viewAccess/{emailKey} {
-        allow read: if isBusinessOwner(businessId)
-          || (
-            signedIn()
-            && request.auth.token.email_verified == true
-            && request.auth.token.email != null
-            && emailKey == request.auth.token.email.lower()
-            && resource.data.email == request.auth.token.email.lower()
-            && resource.data.active == true
-          );
-
-        allow create, update: if isBusinessOwner(businessId)
-          && request.resource.data.email == emailKey
-          && request.resource.data.email == request.resource.data.email.lower()
-          && request.resource.data.businessId == businessId
-          && request.resource.data.ownerUid == request.auth.uid
-          && request.resource.data.active == true;
-
-        allow delete: if isBusinessOwner(businessId);
-      }
-
       match /members/{memberId} {
-        allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
+        allow read: if isBusinessOwner(businessId);
 
         allow create, update: if signedIn()
           && memberId == request.auth.uid
@@ -162,8 +121,15 @@ service cloud.firestore {
       }
 
       match /data/{document} {
-        allow read: if isBusinessOwner(businessId) || hasViewAccess(businessId);
+        allow read: if isBusinessOwner(businessId);
         allow write: if isBusinessOwner(businessId);
+
+        // CloudSyncManager stores each SharedPreferences namespace below
+        // businesses/{businessId}/data/backup/backupData/{namespace}.
+        match /backupData/{namespace} {
+          allow read: if isBusinessOwner(businessId);
+          allow write: if isBusinessOwner(businessId);
+        }
       }
     }
 

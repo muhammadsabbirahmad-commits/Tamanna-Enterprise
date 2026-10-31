@@ -11,7 +11,8 @@ data class Product(
     val purchasePrice: Double,
     val salePrice: Double,
     val stockQuantity: Int,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 object ProductStorage {
@@ -38,7 +39,8 @@ object ProductStorage {
                             item.getDouble("purchasePrice"),
                             item.getDouble("salePrice"),
                             item.getInt("stockQuantity"),
-                            item.optLong("createdAt", i.toLong())
+                            item.optLong("createdAt", i.toLong()),
+                            item.optLong("updatedAt", item.optLong("createdAt", i.toLong()))
                         )
                     )
                 }
@@ -83,7 +85,8 @@ object ProductStorage {
 
         val updated = products + product.copy(
             code = normalizedCode,
-            createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis()
+            createdAt = if (product.createdAt > 0) product.createdAt else System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
         )
 
         // Save the product first. The sequence is advanced only after the product
@@ -113,7 +116,7 @@ object ProductStorage {
         val updated = products.map {
             if (it.code.equals(product.code, ignoreCase = true)) {
                 found = true
-                product.copy(code = it.code, createdAt = it.createdAt)
+                product.copy(code = it.code, createdAt = it.createdAt, updatedAt = System.currentTimeMillis())
             } else {
                 it
             }
@@ -129,7 +132,7 @@ object ProductStorage {
         val updated = products.map {
             if (it.code.equals(code, ignoreCase = true)) {
                 found = true
-                it.copy(stockQuantity = newStock)
+                it.copy(stockQuantity = newStock, updatedAt = System.currentTimeMillis())
             } else {
                 it
             }
@@ -169,6 +172,7 @@ object ProductStorage {
                     put("salePrice", it.salePrice)
                     put("stockQuantity", it.stockQuantity)
                     put("createdAt", it.createdAt)
+                    put("updatedAt", it.updatedAt)
                 }
             )
         }

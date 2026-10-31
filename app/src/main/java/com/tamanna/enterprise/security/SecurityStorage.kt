@@ -18,7 +18,6 @@ data class AppUser(
 object SecurityStorage {
     const val ROLE_ADMIN = "ADMIN"
     const val ROLE_PARTNER = "PARTNER"
-    const val ROLE_VIEWER = "VIEWER"
 
     private const val PREFS = "tamanna_enterprise_security"
     private const val KEY_USERS = "users"
@@ -139,7 +138,13 @@ object SecurityStorage {
     fun logout(context: Context) { prefs(context).edit().remove(KEY_CURRENT_USER).apply() }
     fun getCurrentUser(context: Context): AppUser? {
         val id = prefs(context).getString(KEY_CURRENT_USER, null) ?: return null
-        return getUsers(context).firstOrNull { it.id == id }
+        val user = getUsers(context).firstOrNull { it.id == id }
+        // End any legacy read-only session after View Access has been removed.
+        if (user?.role == "VIEWER") {
+            logout(context)
+            return null
+        }
+        return user
     }
 
     fun isLoggedIn(context: Context) = getCurrentUser(context) != null
@@ -185,7 +190,6 @@ object SecurityStorage {
     fun roleLabel(role: String): String = when (role) {
         ROLE_ADMIN -> "অ্যাডমিন"
         ROLE_PARTNER -> "পার্টনার"
-        ROLE_VIEWER -> "ভিউয়ার"
         else -> role
     }
 }

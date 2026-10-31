@@ -32,7 +32,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import com.tamanna.enterprise.MainActivity
 import com.tamanna.enterprise.business.BusinessStorage
-import com.tamanna.enterprise.business.ViewAccessManager
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.sync.CloudSyncManager
@@ -122,26 +120,8 @@ private fun SettingsScreen(
     val isPinSet = remember(pinMessage) { SecurityStorage.isAdminPinSet(context) }
     var isPinFreeEntry by remember { mutableStateOf(SecurityStorage.isPinFreeEntryEnabled(context)) }
 
-    // Sync & View Access states
+    // Sync state
     var isSyncing by remember { mutableStateOf(false) }
-    var viewAccessEmail by remember { mutableStateOf("") }
-    var viewAccessList by remember { mutableStateOf(emptyList<String>()) }
-    var viewAccessLoading by remember { mutableStateOf(false) }
-    val businessId = remember { BusinessStorage.getActiveBusinessId(context) }
-
-    fun refreshViewAccess() {
-        viewAccessLoading = true
-        ViewAccessManager.listForBusiness(businessId) { entries ->
-            viewAccessList = entries.map { it.email }
-            viewAccessLoading = false
-        }
-    }
-
-    // স্ক্রিনে আসার সাথে সাথেই লিস্ট অটোমেটিক রিফ্রেশ হবে
-    LaunchedEffect(businessId) {
-        refreshViewAccess()
-    }
-
     TamannaTheme(selectedTheme) {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -211,87 +191,6 @@ private fun SettingsScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                if (currentUser?.role == SecurityStorage.ROLE_ADMIN) {
-                    Text("View Access", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "অনুমোদিত Gmail এখানে যোগ করলে সেই Gmail এই ব্যবসার তথ্য শুধু দেখতে পারবে।",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = viewAccessEmail,
-                            onValueChange = { viewAccessEmail = it },
-                            label = { Text("Gmail") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Button(
-                            onClick = {
-                                ViewAccessManager.addOrUpdate(
-                                    businessId = businessId,
-                                    email = viewAccessEmail
-                                ) { success, message ->
-                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                    if (success) {
-                                        viewAccessEmail = ""
-                                        refreshViewAccess()
-                                        CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
-                                    }
-                                }
-                            },
-                            enabled = viewAccessEmail.isNotBlank() && !viewAccessLoading
-                        ) {
-                            Text("যোগ")
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-                    if (viewAccessLoading) {
-                        Text("View Access তালিকা লোড হচ্ছে...", style = MaterialTheme.typography.bodySmall)
-                    } else if (viewAccessList.isEmpty()) {
-                        Text("কোনো Gmail এখনো যোগ করা হয়নি।", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        viewAccessList.forEach { email ->
-                            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(email, modifier = Modifier.weight(1f))
-                                    OutlinedButton(
-                                        onClick = {
-                                            ViewAccessManager.remove(businessId, email) { success, message ->
-                                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                                if (success) {
-                                                    refreshViewAccess()
-                                                    CloudSyncManager.smartSync(context, isAuto = true) { _, _ -> }
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Text("সরান")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-                    Button(
-                        onClick = { refreshViewAccess() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("View Access রিফ্রেশ")
-                    }
-                }
 
                 Spacer(Modifier.height(20.dp))
 
