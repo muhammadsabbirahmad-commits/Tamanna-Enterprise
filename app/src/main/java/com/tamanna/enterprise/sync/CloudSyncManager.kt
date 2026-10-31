@@ -404,6 +404,10 @@ object CloudSyncManager {
         }
 
         if (namespace == "tamanna_partner_storage") {
+            merged["partner_profit_rate_history"] = mergePartnerRateHistory(
+                local["partner_profit_rate_history"] as? String ?: "[]",
+                cloud["partner_profit_rate_history"] as? String ?: "[]"
+            )
             val deletedRaw = mergeJsonIdArray(
                 local["deleted_partner_ids"] as? String ?: "[]",
                 cloud["deleted_partner_ids"] as? String ?: "[]"
@@ -422,6 +426,24 @@ object CloudSyncManager {
             merged["partners"] = filtered.toString()
         }
         return merged
+    }
+
+    private fun mergePartnerRateHistory(localRaw: String, cloudRaw: String): String {
+        val byDate = LinkedHashMap<String, JSONObject>()
+        fun addAll(raw: String) {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val date = item.optString("effectiveDate").takeIf { it.length == 10 } ?: continue
+                // Cloud entries win for the same effective date, matching partner edit sync behavior.
+                byDate[date] = item
+            }
+        }
+        addAll(localRaw)
+        addAll(cloudRaw)
+        val result = JSONArray()
+        byDate.toSortedMap().values.forEach { result.put(it) }
+        return result.toString()
     }
 
     private fun mergeJsonIdArray(localRaw: String, cloudRaw: String): String {
