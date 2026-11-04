@@ -235,7 +235,7 @@ object PartnerStorage {
         items.forEach { item ->
             array.put(JSONObject().put("id", item.id).put("partnerId", item.partnerId)
                 .put("amount", item.amount).put("date", item.date).put("note", item.note)
-                .put("createdAt", item.createdAt).put("approximateDate", item.approximateDate))
+                .put("createdAt", item.createdAt).put("updatedAt", item.createdAt).put("approximateDate", item.approximateDate))
         }
         prefs(context).edit().putString(KEY_CAPITAL_CONTRIBUTIONS, array.toString()).commit()
     }.getOrDefault(false)
