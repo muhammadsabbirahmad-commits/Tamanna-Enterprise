@@ -140,13 +140,14 @@ class LoginActivity : ComponentActivity() {
                 val continueWithApprovedSession: () -> Unit = {
                     resumeExistingSession { ok, resumeMessage ->
                         if (ok) {
-                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { _, _ ->
-                                loading = false
-                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
-                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                startActivity(intent)
-                                finish()
-                            }
+                            // Open the dashboard immediately after server approval.
+                            // DashboardActivity starts sync in the background; do not block startup on it.
+                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { _, _ -> }
+                            loading = false
+                            val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
+                            finish()
                         } else {
                             loading = false
                             message = resumeMessage
@@ -196,16 +197,15 @@ class LoginActivity : ComponentActivity() {
                     Button(onClick = {
                         message = ""
                         loading = true
-                        success = { 
-                            message = "ক্লাউড থেকে ব্যাকআপ ডেটা সিঙ্ক হচ্ছে, অপেক্ষা করুন..."
-                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { syncMsg, isSynced ->
-                                loading = false
-                                setResult(RESULT_OK)
-                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
-                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                startActivity(intent)
-                                finish()
-                            }
+                        success = {
+                            // Login and Admin approval are complete; sync continues without delaying entry.
+                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { _, _ -> }
+                            loading = false
+                            setResult(RESULT_OK)
+                            val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
+                            finish()
                         }
                         failure = { loading = false; message = it }
                         startLogin()
