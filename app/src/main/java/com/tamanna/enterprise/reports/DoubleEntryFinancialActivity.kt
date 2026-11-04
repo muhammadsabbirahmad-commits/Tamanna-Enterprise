@@ -285,9 +285,13 @@ private fun DoubleEntryFinancialScreen() {
     var accounts by remember(refresh) { mutableStateOf(CashAccountStorage.getAccounts(context)) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<ManualCashAccount?>(null) }
+    var showCapitalizationDialog by remember { mutableStateOf(false) }
+    var capitalizationMessage by remember { mutableStateOf("") }
     val totalManualCash = accounts.sumOf { it.balance.coerceAtLeast(0.0) }
     val validRange = validLedgerDate(fromDate) && validLedgerDate(toDate) && fromDate <= toDate
     val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
+    val remainingDividend = summary.netProfit - summary.withdrawalTotal
+    val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
     val totalDebit = summary.rows.sumOf { it.amount }
     val totalCredit = summary.rows.sumOf { it.amount }
     val debitRows = summary.rows
@@ -336,9 +340,16 @@ private fun DoubleEntryFinancialScreen() {
                     SummaryLine("মোট ক্রেডিট", totalCredit)
                     SummaryLine("আপনার কাছে আছে (যোগ করা ক্যাশ/ব্যাংক)", totalManualCash)
                     SummaryLine("নির্বাচিত সময়ের নিট লাভ", summary.netProfit)
-                    val remainingDividend = summary.netProfit - summary.withdrawalTotal
                     SummaryLine(if (remainingDividend >= 0.0) "অতিরিক্ত অবশিষ্ট লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
                     Text("অবশিষ্ট লভ্যাংশ = নির্বাচিত সময়ের নিট লাভ − একই সময়ের পার্টনার উত্তোলন। এটি চূড়ান্ত বণ্টনের আগে ব্যবসায় রেখে দেওয়া লাভের হিসাব।", style = MaterialTheme.typography.bodySmall)
+                    if (alreadyCapitalized) {
+                        Text("এই তারিখের হিসাবের লভ্যাংশ ইতিমধ্যে মূলধনে যোগ করা হয়েছে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Button(onClick = { showCapitalizationDialog = true }, enabled = validRange && remainingDividend > 0.004, modifier = Modifier.fillMaxWidth()) {
+                            Text("অবশিষ্ট লভ্যাংশ পার্টনারদের মূলধনে যোগ করুন")
+                        }
+                    }
+                    if (capitalizationMessage.isNotBlank()) Text(capitalizationMessage, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -432,6 +443,26 @@ private fun DoubleEntryFinancialScreen() {
                 }) { Text("সংরক্ষণ") }
             },
             dismissButton = { TextButton(onClick = { showAccountDialog = false }) { Text("বাতিল") } }
+        )
+    }
+
+
+    if (showCapitalizationDialog) {
+        AlertDialog(
+            onDismissRequest = { showCapitalizationDialog = false },
+            title = { Text("লভ্যাংশ মূলধনে যোগ করবেন?") },
+            text = {
+                Text("নির্বাচিত সময়ের অবশিষ্ট লভ্যাংশ ${money(remainingDividend)} পার্টনারদের সংরক্ষিত লাভের শতাংশ অনুযায়ী ভাগ হয়ে প্রত্যেকের মূলধনে যোগ হবে। ক্যাশ/ব্যাংকের ব্যালেন্স পরিবর্তন হবে না। একই সময়ের হিসাব দ্বিতীয়বার যোগ করা যাবে না।")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val success = PartnerStorage.capitalizeRemainingProfit(context, fromDate, toDate, remainingDividend)
+                    capitalizationMessage = if (success) "লভ্যাংশ শতাংশ অনুযায়ী পার্টনারদের মূলধনে যোগ হয়েছে।" else "লভ্যাংশ যোগ করা যায়নি। পার্টনারদের লাভের শতাংশ মোট ১০০% কি না এবং এই সময়ের হিসাব আগে যোগ হয়েছে কি না যাচাই করুন।"
+                    showCapitalizationDialog = false
+                    refresh++
+                }) { Text("হ্যাঁ, মূলধনে যোগ করুন") }
+            },
+            dismissButton = { TextButton(onClick = { showCapitalizationDialog = false }) { Text("বাতিল") } }
         )
     }
 
