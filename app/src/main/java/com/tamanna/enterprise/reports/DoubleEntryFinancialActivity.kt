@@ -334,9 +334,11 @@ private fun DoubleEntryFinancialScreen() {
                     Text("ডেবিট–ক্রেডিট সমাধানের পর ফলাফল", style = MaterialTheme.typography.titleMedium)
                     SummaryLine("মোট ডেবিট", totalDebit)
                     SummaryLine("মোট ক্রেডিট", totalCredit)
-                    SummaryLine("আপনার যোগ করা ক্যাশ/ব্যাংকে আছে", totalManualCash)
-                    SummaryLine(if (summary.netProfit >= 0.0) "অতিরিক্ত লভ্যাংশ / নিট লাভ" else "নিট ক্ষতি", kotlin.math.abs(summary.netProfit))
-                    Text("লভ্যাংশটি নির্বাচিত সময়ের বিক্রয়, বিক্রীত পণ্যের ক্রয়মূল্য, খরচ ও ড্যামেজের ভিত্তিতে। এটি এখনো পার্টনারদের মধ্যে বণ্টিত/উত্তোলনযোগ্য চূড়ান্ত ব্যালান্স নয়।", style = MaterialTheme.typography.bodySmall)
+                    SummaryLine("আপনার কাছে আছে (যোগ করা ক্যাশ/ব্যাংক)", totalManualCash)
+                    SummaryLine("নির্বাচিত সময়ের নিট লাভ", summary.netProfit)
+                    val remainingDividend = summary.netProfit - summary.withdrawalTotal
+                    SummaryLine(if (remainingDividend >= 0.0) "অতিরিক্ত অবশিষ্ট লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
+                    Text("অবশিষ্ট লভ্যাংশ = নির্বাচিত সময়ের নিট লাভ − একই সময়ের পার্টনার উত্তোলন। এটি চূড়ান্ত বণ্টনের আগে ব্যবসায় রেখে দেওয়া লাভের হিসাব।", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
