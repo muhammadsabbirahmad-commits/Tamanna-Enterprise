@@ -30,8 +30,7 @@ object AccessRequestManager {
             .apply()
     }
 
-    private fun clearCachedApproval() {
-        val context = FirebaseApp.getInstance().applicationContext
+    fun clearCachedApproval(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
@@ -64,7 +63,7 @@ object AccessRequestManager {
             val notifications = doc.getBoolean("notificationsEnabled") == true
             val now = System.currentTimeMillis()
             if (status == STATUS_ACTIVE && expiresAt > 0L && expiresAt <= now) { onResult(false, "আপনার অনুমোদনের মেয়াদ শেষ হয়েছে। Admin-এর কাছ থেকে Extend/Reactivate করতে হবে।", AccessRecord(uid, email, STATUS_EXPIRED, startAt, expiresAt, notifications)); return@addOnSuccessListener }
-            if (status == STATUS_ACTIVE && (expiresAt <= 0L || expiresAt > now)) cacheApproved(uid, email, expiresAt) else clearCachedApproval()
+            if (status == STATUS_ACTIVE && (expiresAt <= 0L || expiresAt > now)) cacheApproved(uid, email, expiresAt) else clearCachedApproval(FirebaseApp.getInstance().applicationContext)
             val message = when (status) {
                 STATUS_PENDING -> "আপনার Gmail অনুমোদনের অপেক্ষায় আছে।"
                 STATUS_REJECTED -> "Admin আপনার অনুরোধটি অনুমোদন করেননি।"
