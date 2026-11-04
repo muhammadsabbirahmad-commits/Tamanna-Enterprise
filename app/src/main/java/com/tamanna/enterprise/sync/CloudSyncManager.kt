@@ -581,7 +581,7 @@ object CloudSyncManager {
 
         // Finance and partner data are merged by stable record ID; never clear
         // local records merely because a cloud snapshot is partial.
-        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage") {
+        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts") {
             val local = prefs.all.mapNotNull { (key, value) ->
                 if (key is String && value != null) key to value else null
             }.toMap()
