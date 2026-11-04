@@ -77,35 +77,40 @@ object PartnerStorage {
     }
 
     fun addPartner(context: Context, partner: Partner): Boolean {
-        getCapitalContributions(context) // Migrate any existing partners before adding this new one.
+        getCapitalContributions(context) // Migrate existing partners before adding this new one.
         if (partner.name.isBlank() || partner.shareAmount < 0 || partner.profitPercentage != 0.0) return false
-        val list = getPartners(context).toMutableList()
-        if (list.any { it.id == partner.id }) return false
+        val existing = getPartners(context)
+        if (existing.any { it.id == partner.id }) return false
         clearDeletedId(context, partner.id)
-        list.add(0, partner)
-        val saved = savePartners(context, list)
-        if (!saved) return false
-        if (partner.shareAmount > 0.0) recordCapitalContribution(context, partner.id, partner.shareAmount, todayDate(), "প্রাথমিক মূলধন জমা")
-        return true
+        val updatedPartners = listOf(partner) + existing
+        val contributions = getCapitalContributions(context).toMutableList()
+        if (partner.shareAmount > 0.0) contributions += PartnerCapitalContribution(
+            java.util.UUID.randomUUID().toString(), partner.id, partner.shareAmount,
+            todayDate(), "প্রাথমিক মূলধন জমা"
+        )
+        return saveCapitalAndPartners(context, contributions, updatedPartners)
     }
 
     fun updatePartner(context: Context, partner: Partner): Boolean {
-        getCapitalContributions(context) // Preserve the old capital baseline before calculating an increase.
+        getCapitalContributions(context) // Preserve old capital before calculating an increase.
         if (partner.name.isBlank() || partner.shareAmount < 0) return false
-        val list = getPartners(context)
-        if (list.none { it.id == partner.id }) return false
-        val previous = list.first { it.id == partner.id }
-        val updated = list.map {
+        val existing = getPartners(context)
+        val previous = existing.firstOrNull { it.id == partner.id } ?: return false
+        // Capital reductions need a separately recorded capital-return transaction.
+        if (partner.shareAmount + 0.004 < previous.shareAmount) return false
+        val updatedPartners = existing.map {
             if (it.id == partner.id) partner.copy(
                 profitPercentage = it.profitPercentage,
                 updatedAt = System.currentTimeMillis()
             ) else it
         }
-        val saved = savePartners(context, updated)
-        if (!saved) return false
+        val contributions = getCapitalContributions(context).toMutableList()
         val addedCapital = partner.shareAmount - previous.shareAmount
-        if (addedCapital > 0.004) recordCapitalContribution(context, partner.id, addedCapital, todayDate(), "পার্টনারের অতিরিক্ত মূলধন")
-        return true
+        if (addedCapital > 0.004) contributions += PartnerCapitalContribution(
+            java.util.UUID.randomUUID().toString(), partner.id, addedCapital,
+            todayDate(), "পার্টনারের অতিরিক্ত মূলধন"
+        )
+        return saveCapitalAndPartners(context, contributions, updatedPartners)
     }
 
     fun saveProfitDistribution(
@@ -212,33 +217,39 @@ object PartnerStorage {
     }
 
     fun addCapitalContribution(context: Context, partnerId: Long, amount: Double, date: String, note: String = ""): Boolean {
-        if (getPartners(context).none { it.id == partnerId }) return false
         if (!amount.isFinite() || amount <= 0.0 || !isValidDate(date)) return false
-        if (!recordCapitalContribution(context, partnerId, amount, date, note)) return false
-        val updatedPartners = getPartners(context).map { partner ->
+        val partners = getPartners(context)
+        if (partners.none { it.id == partnerId }) return false
+        val updatedPartners = partners.map { partner ->
             if (partner.id == partnerId) partner.copy(shareAmount = partner.shareAmount + amount, updatedAt = System.currentTimeMillis()) else partner
         }
-        return savePartners(context, updatedPartners)
-    }
-
-    private fun recordCapitalContribution(context: Context, partnerId: Long, amount: Double, date: String, note: String): Boolean {
-        if (!amount.isFinite() || amount <= 0.0 || !isValidDate(date)) return false
-        val current = getCapitalContributions(context)
-        val contribution = PartnerCapitalContribution(
+        val contributions = getCapitalContributions(context) + PartnerCapitalContribution(
             java.util.UUID.randomUUID().toString(), partnerId, amount, date, note.trim()
         )
-        return saveCapitalContributions(context, current + contribution)
+        return saveCapitalAndPartners(context, contributions, updatedPartners)
     }
 
-    private fun saveCapitalContributions(context: Context, items: List<PartnerCapitalContribution>): Boolean = runCatching {
-        val array = JSONArray()
+    private fun saveCapitalContributions(context: Context, items: List<PartnerCapitalContribution>): Boolean =
+        runCatching { prefs(context).edit().putString(KEY_CAPITAL_CONTRIBUTIONS, capitalArray(items).toString()).commit() }.getOrDefault(false)
+
+    private fun saveCapitalAndPartners(
+        context: Context,
+        contributions: List<PartnerCapitalContribution>,
+        partners: List<Partner>
+    ): Boolean = runCatching {
+        prefs(context).edit()
+            .putString(KEY_CAPITAL_CONTRIBUTIONS, capitalArray(contributions).toString())
+            .putString(KEY_PARTNERS, partnerArray(partners).toString())
+            .commit()
+    }.getOrDefault(false)
+
+    private fun capitalArray(items: List<PartnerCapitalContribution>) = JSONArray().apply {
         items.forEach { item ->
-            array.put(JSONObject().put("id", item.id).put("partnerId", item.partnerId)
+            put(JSONObject().put("id", item.id).put("partnerId", item.partnerId)
                 .put("amount", item.amount).put("date", item.date).put("note", item.note)
                 .put("createdAt", item.createdAt).put("updatedAt", item.createdAt).put("approximateDate", item.approximateDate))
         }
-        prefs(context).edit().putString(KEY_CAPITAL_CONTRIBUTIONS, array.toString()).commit()
-    }.getOrDefault(false)
+    }
 
     private fun todayDate(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
