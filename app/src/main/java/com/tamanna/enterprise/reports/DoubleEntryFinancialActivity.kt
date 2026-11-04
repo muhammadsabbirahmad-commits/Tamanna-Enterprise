@@ -84,7 +84,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val inRange: (String) -> Boolean = { dateKey(it) >= fromDate && dateKey(it) <= toDate }
     val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
     val sales = SalesStorage.getSales(context).filter { inRange(it.date) }
-    val transactions = SalesTransactionStorage.getTransactions(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
+    val transactions = SalesTransactionStorage.getTransactions(context).filter { inRange(it.date) }
     val expenses = ExpenseStorage.getExpenses(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val damages = ExpenseStorage.getDamages(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val supplierEntries = SupplierDueStorage.getEntries(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
@@ -352,7 +352,7 @@ private fun DoubleEntryFinancialScreen() {
 
             Text("ব্যবসার সারসংক্ষেপ", style = MaterialTheme.typography.titleLarge)
             SummaryLine("মোট পণ্য ক্রয়", summary.purchaseTotal)
-            SummaryLine("বর্তমান স্টক মূল্য (ক্রয়মূল্যে)", summary.stockValue, "${summary.stockUnits} ইউনিট • ২০ অক্টোবরের পরের নেট স্টক")
+            SummaryLine("বর্তমান স্টক মূল্য (ক্রয়মূল্যে)", summary.stockValue, "${summary.stockUnits} ইউনিট • নির্বাচিত সময়ের নেট স্টক")
             SummaryLine("মোট বিক্রয় (রিটার্ন বাদে)", summary.salesTotal)
             SummaryLine("বিক্রয় থেকে মোট আদায়", summary.collectionTotal)
             SummaryLine("ক্রেতার কাছে পাওনা", summary.receivable)
