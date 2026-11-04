@@ -26,6 +26,17 @@ data class PartnerProfitWithdrawal(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+
+data class PartnerCapitalContribution(
+    val id: String,
+    val partnerId: Long,
+    val amount: Double,
+    val date: String,
+    val note: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val approximateDate: Boolean = false
+)
+
 data class PartnerRateSnapshot(
     val effectiveDate: String,
     val percentages: Map<Long, Double>,
@@ -38,6 +49,7 @@ object PartnerStorage {
     private const val KEY_DELETED_PARTNERS = "deleted_partner_ids"
     private const val KEY_RATE_HISTORY = "partner_profit_rate_history"
     private const val KEY_WITHDRAWALS = "partner_profit_withdrawals"
+    private const val KEY_CAPITAL_CONTRIBUTIONS = "partner_capital_contributions"
 
     private fun prefs(context: Context) = BusinessStorage.prefs(context, PREFS)
 
@@ -70,20 +82,28 @@ object PartnerStorage {
         if (list.any { it.id == partner.id }) return false
         clearDeletedId(context, partner.id)
         list.add(0, partner)
-        return savePartners(context, list)
+        val saved = savePartners(context, list)
+        if (!saved) return false
+        if (partner.shareAmount > 0.0) addCapitalContribution(context, partner.id, partner.shareAmount, todayDate(), "প্রাথমিক মূলধন জমা")
+        return true
     }
 
     fun updatePartner(context: Context, partner: Partner): Boolean {
         if (partner.name.isBlank() || partner.shareAmount < 0) return false
         val list = getPartners(context)
         if (list.none { it.id == partner.id }) return false
+        val previous = list.first { it.id == partner.id }
         val updated = list.map {
             if (it.id == partner.id) partner.copy(
                 profitPercentage = it.profitPercentage,
                 updatedAt = System.currentTimeMillis()
             ) else it
         }
-        return savePartners(context, updated)
+        val saved = savePartners(context, updated)
+        if (!saved) return false
+        val addedCapital = partner.shareAmount - previous.shareAmount
+        if (addedCapital > 0.004) addCapitalContribution(context, partner.id, addedCapital, todayDate(), "পার্টনারের অতিরিক্ত মূলধন")
+        return true
     }
 
     fun saveProfitDistribution(
@@ -155,6 +175,69 @@ object PartnerStorage {
         if (snapshot != null) return snapshot.percentages[partnerId] ?: 0.0
         return getPartners(context).firstOrNull { it.id == partnerId }?.profitPercentage ?: 0.0
     }
+
+
+    fun getCapitalContributions(context: Context): List<PartnerCapitalContribution> {
+        val raw = prefs(context).getString(KEY_CAPITAL_CONTRIBUTIONS, null)
+        if (raw.isNullOrBlank()) {
+            // Existing installations have only a current shareAmount. Preserve it as a
+            // clearly marked legacy estimate; never pretend its exact deposit date is known.
+            val legacy = getPartners(context).filter { it.shareAmount > 0.0 }.map { partner ->
+                PartnerCapitalContribution(
+                    id = "legacy-${partner.id}", partnerId = partner.id,
+                    amount = partner.shareAmount, date = dateFromTimestamp(partner.id),
+                    note = "পুরোনো রেকর্ড: জমার প্রকৃত তারিখ সংরক্ষিত ছিল না",
+                    createdAt = partner.id, approximateDate = true
+                )
+            }
+            if (legacy.isNotEmpty()) saveCapitalContributions(context, legacy)
+            return legacy
+        }
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    add(PartnerCapitalContribution(
+                        id = item.optString("id"), partnerId = item.optLong("partnerId"),
+                        amount = item.optDouble("amount"), date = item.optString("date"),
+                        note = item.optString("note", ""), createdAt = item.optLong("createdAt"),
+                        approximateDate = item.optBoolean("approximateDate", false)
+                    ))
+                }
+            }
+        }.getOrDefault(emptyList()).sortedWith(compareBy<PartnerCapitalContribution> { it.date }.thenBy { it.createdAt })
+    }
+
+    fun addCapitalContribution(context: Context, partnerId: Long, amount: Double, date: String, note: String = ""): Boolean {
+        if (getPartners(context).none { it.id == partnerId }) return false
+        if (!amount.isFinite() || amount <= 0.0 || !isValidDate(date)) return false
+        val current = getCapitalContributions(context)
+        val contribution = PartnerCapitalContribution(
+            java.util.UUID.randomUUID().toString(), partnerId, amount, date, note.trim()
+        )
+        val saved = saveCapitalContributions(context, current + contribution)
+        if (!saved) return false
+        val updatedPartners = getPartners(context).map { partner ->
+            if (partner.id == partnerId) partner.copy(shareAmount = partner.shareAmount + amount, updatedAt = System.currentTimeMillis()) else partner
+        }
+        return savePartners(context, updatedPartners)
+    }
+
+    private fun saveCapitalContributions(context: Context, items: List<PartnerCapitalContribution>): Boolean = runCatching {
+        val array = JSONArray()
+        items.forEach { item ->
+            array.put(JSONObject().put("id", item.id).put("partnerId", item.partnerId)
+                .put("amount", item.amount).put("date", item.date).put("note", item.note)
+                .put("createdAt", item.createdAt).put("approximateDate", item.approximateDate))
+        }
+        prefs(context).edit().putString(KEY_CAPITAL_CONTRIBUTIONS, array.toString()).commit()
+    }.getOrDefault(false)
+
+    private fun todayDate(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    private fun dateFromTimestamp(timestamp: Long): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(timestamp))
 
     fun getWithdrawals(context: Context): List<PartnerProfitWithdrawal> {
         val raw = prefs(context).getString(KEY_WITHDRAWALS, "[]") ?: "[]"
