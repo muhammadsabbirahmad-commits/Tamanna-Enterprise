@@ -85,16 +85,17 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
     val sales = SalesStorage.getSales(context).filter { inRange(it.date) }
     val transactions = SalesTransactionStorage.getTransactions(context).filter { inRange(it.date) }
-    val expenses = ExpenseStorage.getExpenses(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
-    val damages = ExpenseStorage.getDamages(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
-    val supplierEntries = SupplierDueStorage.getEntries(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
-    val customerEntries = CustomerDueStorage.getEntries(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
+    val expenses = ExpenseStorage.getExpenses(context).filter { inRange(it.date) }
+    val damages = ExpenseStorage.getDamages(context).filter { inRange(it.date) }
+    val supplierEntries = SupplierDueStorage.getEntries(context).filter { inRange(it.date) }
+    val customerEntries = CustomerDueStorage.getEntries(context).filter { inRange(it.date) }
     val periodTransactionIds = transactions.map { it.transactionId }.toSet()
     val returns = SaleReturnStorage.getReturns(context).filter { inRange(it.date) && it.transactionId in periodTransactionIds }
     val returnLines = SaleReturnStorage.getLines(context).filter { line ->
         returns.any { it.returnId == line.returnId }
     }
-    val withdrawals = PartnerStorage.getWithdrawals(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
+    val withdrawals = PartnerStorage.getWithdrawals(context).filter { inRange(it.date) }
+    val capitalContributions = PartnerStorage.getCapitalContributions(context).filter { inRange(it.date) }
 
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
