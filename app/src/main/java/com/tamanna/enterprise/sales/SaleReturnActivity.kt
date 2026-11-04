@@ -223,6 +223,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 ) error("স্টক অপর্যাপ্ত বা সীমা অতিক্রম করছে: " + product.name)
                             }
                             var paymentId = 0L
+                            var extraDueId = 0L
                             var activityLogId = 0L
                             try {
                                 currentProducts.forEach { (code, product) ->
@@ -256,11 +257,11 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                     )
                                     if (!exchangeSaved) error("এক্সচেঞ্জ রেকর্ড সংরক্ষণ করা যায়নি")
                                     if (exchangeDifference > 0.0 && tx.customer.isNotBlank()) {
-                                        val extraDue = CustomerDueStorage.addSaleDue(
+                                        extraDueId = CustomerDueStorage.addSaleDue(
                                             context, tx.customer, tx.mobile, exchangeDifference,
                                             "এক্সচেঞ্জ: $exchangeId ($transactionId)"
                                         )
-                                        if (extraDue <= 0L) error("এক্সচেঞ্জের অতিরিক্ত টাকা সংরক্ষণ করা যায়নি")
+                                        if (extraDueId <= 0L) error("এক্সচেঞ্জের অতিরিক্ত টাকা সংরক্ষণ করা যায়নি")
                                     }
                                 }
                                 activityLogId = ActivityLogStorage.addAndGetId(
@@ -271,6 +272,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                             } catch (e: Exception) {
                                 if (activityLogId > 0L) ActivityLogStorage.removeById(context, activityLogId)
                                 if (paymentId > 0L) CustomerDueStorage.removePaymentById(context, paymentId)
+                                if (extraDueId > 0L) CustomerDueStorage.removeSaleDueById(context, extraDueId)
                                 SaleReturnStorage.getExchanges(context)
                                     .filter { it.returnId == returnId }
                                     .forEach { SaleReturnStorage.removeExchange(context, it.exchangeId) }
