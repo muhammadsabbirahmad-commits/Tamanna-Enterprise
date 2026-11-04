@@ -54,7 +54,7 @@ object CloudSyncManager {
 
     fun isAutoSyncEnabled(): Boolean = isAutoSyncRunning
 
-    fun startAutoSync(context: Context, intervalMillis: Long = 30000L) {
+    fun startAutoSync(context: Context, intervalMillis: Long = 5000L) {
         if (isAutoSyncRunning) return
         isAutoSyncRunning = true
 
@@ -301,6 +301,17 @@ object CloudSyncManager {
                                 }
                             }
                             editor.apply()
+                            localMap.clear()
+                            localMap.putAll(merged)
+                        } else {
+                            // Keep cloud-only preference keys for every namespace.
+                            // Previously these were dropped whenever a device pushed
+                            // its local snapshot, even if that device never had those keys.
+                            val merged = LinkedHashMap<String, Any>()
+                            cloudByNamespace[ns].orEmpty().forEach { (key, value) ->
+                                if (key is String && value != null) merged[key] = value
+                            }
+                            merged.putAll(localMap)
                             localMap.clear()
                             localMap.putAll(merged)
                         }
@@ -589,8 +600,8 @@ object CloudSyncManager {
             return
         }
 
-        // Existing behavior for other namespaces remains unchanged in this focused fix.
-        editor.clear()
+        // Preserve local keys absent from a partial or older cloud snapshot.
+        // Clearing the namespace here could erase valid local business data.
         for ((k, v) in cloudData) {
             if (k is String && v != null) {
                 try {

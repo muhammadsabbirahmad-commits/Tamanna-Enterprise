@@ -40,10 +40,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.tamanna.enterprise.MainActivity
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.security.SecurityStorage
+import com.tamanna.enterprise.security.AccessRequestManager
 import com.tamanna.enterprise.sync.CloudSyncManager
 
 object SettingsStorage {
@@ -209,13 +212,19 @@ private fun SettingsScreen(
                             
                             Button(
                                 onClick = {
+                                    val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                        .requestIdToken(context.getString(com.tamanna.enterprise.R.string.default_web_client_id))
+                                        .requestEmail()
+                                        .build()
                                     FirebaseAuth.getInstance().signOut()
-                                    SecurityStorage.logout(context)
-                                    
-                                    val intent = Intent(context, MainActivity::class.java)
-                                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                    context.startActivity(intent)
-                                    (context as? ComponentActivity)?.finish()
+                                    AccessRequestManager.clearCachedApproval(context)
+                                    GoogleSignIn.getClient(context, options).signOut().addOnCompleteListener {
+                                        SecurityStorage.logout(context)
+                                        val intent = Intent(context, MainActivity::class.java)
+                                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                        context.startActivity(intent)
+                                        (context as? ComponentActivity)?.finish()
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
