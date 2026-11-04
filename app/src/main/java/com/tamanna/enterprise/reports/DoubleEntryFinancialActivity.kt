@@ -61,6 +61,7 @@ private data class LedgerSummary(
     val expenseTotal: Double,
     val damageTotal: Double,
     val withdrawalTotal: Double,
+    val totalCapital: Double,
     val netProfit: Double,
     val cashIn: Double,
     val cashOut: Double,
@@ -231,6 +232,7 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
     val expenseTotal = expenses.sumOf { it.amount.coerceAtLeast(0.0) }
     val damageTotal = damages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
     val withdrawalTotal = withdrawals.sumOf { it.amount.coerceAtLeast(0.0) }
+    val totalCapital = PartnerStorage.getPartners(context).sumOf { it.shareAmount.coerceAtLeast(0.0) }
     val cogs = sales.sumOf { sale ->
         val returned = returnLines.filter { it.transactionId == sale.transactionId && it.productCode.equals(sale.productCode, true) }.sumOf { it.quantity }
         (sale.quantity - returned).coerceAtLeast(0) * sale.purchasePrice
@@ -284,7 +286,7 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
     return LedgerSummary(
         rows.sortedWith(compareBy<LedgerRow> { it.date }.thenBy { it.description }),
         purchaseTotal, stockValue, stockUnits, salesTotal, collectionTotal, receivable,
-        supplierPayable, expenseTotal, damageTotal, withdrawalTotal, netProfit,
+        supplierPayable, expenseTotal, damageTotal, withdrawalTotal, totalCapital, netProfit,
         cashIn, cashOut, stockWarnings, warnings
     )
 }
@@ -350,8 +352,8 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("নথিভুক্ত নিট নগদ", summary.cashIn - summary.cashOut)
             Text("এটি হাতে থাকা প্রকৃত নগদ নয়। ২০ অক্টোবরের আগের নগদ ও তারিখসহ পার্টনার মূলধন জমার রেকর্ড না থাকায় প্রকৃত ক্যাশ ব্যালেন্স নিশ্চিত করা যাচ্ছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 
-            Text("মূলধন", style = MaterialTheme.typography.titleLarge)
-            Text("পার্টনারের বর্তমান মূলধনের তথ্য আছে, কিন্তু মূলধন জমার তারিখ সংরক্ষিত নেই। তাই ২০ অক্টোবরের আগের মূলধন ভুল করে এই সময়ের হিসাবে যোগ করা হয়নি।", style = MaterialTheme.typography.bodySmall)
+            Text("পার্টনারদের মূলধন", style = MaterialTheme.typography.titleLarge)
+            SummaryLine("পার্টনারদের মোট জমাকৃত মূলধন", summary.totalCapital, "বর্তমানে পার্টনারদের হিসাবে থাকা মোট বিনিয়োগ; সময়কাল-নির্ভর ডেবিট–ক্রেডিট যোগফলের বাইরে দেখানো")
 
             if (summary.stockWarnings.isNotEmpty()) {
                 Text("স্টক যাচাইয়ের সতর্কতা", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
