@@ -31,6 +31,7 @@ import com.tamanna.enterprise.purchase.SupplierDueActivity
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.reports.ReportsActivity
 import com.tamanna.enterprise.reports.FinancialDashboardActivity
+import com.tamanna.enterprise.reports.DoubleEntryFinancialActivity
 import com.tamanna.enterprise.reports.FinancialCalendarActivity
 import com.tamanna.enterprise.profit.ProfitActivity
 import com.tamanna.enterprise.stock.StockActivity
@@ -103,6 +104,7 @@ class DashboardActivity : ComponentActivity() {
                         onStockAlertClick = { if (loggedIn) startActivity(Intent(context, StockAlertActivity::class.java)) },
                         onReportsClick = { if (loggedIn) startActivity(Intent(context, ReportsActivity::class.java)) },
                         onFinancialDashboardClick = { if (loggedIn) startActivity(Intent(context, FinancialDashboardActivity::class.java)) },
+                        onDoubleEntryClick = { if (loggedIn) startActivity(Intent(context, DoubleEntryFinancialActivity::class.java)) },
                         onFinancialCalendarClick = { if (loggedIn) startActivity(Intent(context, FinancialCalendarActivity::class.java)) },
                         onProfitClick = { if (loggedIn) startActivity(Intent(context, ProfitActivity::class.java)) },
                         onScannerClick = { if (loggedIn) startActivity(Intent(context, SalesScanActivity::class.java)) },
@@ -190,6 +192,7 @@ fun DashboardScreen(
     onStockAlertClick: () -> Unit,
     onReportsClick: () -> Unit,
     onFinancialDashboardClick: () -> Unit,
+    onDoubleEntryClick: () -> Unit,
     onProfitClick: () -> Unit,
     onScannerClick: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -283,6 +286,7 @@ fun DashboardScreen(
                 Spacer(Modifier.height(12.dp))
 
                 val menuItems = listOf(
+                    "⚖️" to ("পূর্ণাঙ্গ হিসাব (Debit & Credit)" to onDoubleEntryClick),
                     "📦" to ("পণ্য" to onProductClick),
                     "🛒" to ("ক্রয়" to onPurchaseClick),
                     "🧾" to ("বিক্রয়" to onSalesClick),
