@@ -54,7 +54,7 @@ object CloudSyncManager {
 
     fun isAutoSyncEnabled(): Boolean = isAutoSyncRunning
 
-    fun startAutoSync(context: Context, intervalMillis: Long = 30000L) {
+    fun startAutoSync(context: Context, intervalMillis: Long = 5000L) {
         if (isAutoSyncRunning) return
         isAutoSyncRunning = true
 
@@ -589,8 +589,8 @@ object CloudSyncManager {
             return
         }
 
-        // Existing behavior for other namespaces remains unchanged in this focused fix.
-        editor.clear()
+        // Preserve local keys absent from a partial or older cloud snapshot.
+        // Clearing the namespace here could erase valid local business data.
         for ((k, v) in cloudData) {
             if (k is String && v != null) {
                 try {
