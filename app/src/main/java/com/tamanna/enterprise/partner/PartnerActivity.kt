@@ -41,8 +41,45 @@ private fun partnerDate(daysAgo: Int = 0): String {
     return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(calendar.time)
 }
 
-private fun normalizePartnerDate(value: String): String =
-    value.trim().take(10)
+private fun parsePartnerDate(value: String): java.util.Date? = runCatching {
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
+    val parsed = format.parse(value.trim()) ?: return@runCatching null
+    parsed.takeIf { format.format(it) == value.trim() }
+}.getOrNull()
+
+private fun isValidPartnerDate(value: String): Boolean = parsePartnerDate(value) != null
+
+private fun normalizePartnerDate(value: String): String {
+    val date = value.trim().substringBefore('T').substringBefore(' ')
+    return date.takeIf(::isValidPartnerDate).orEmpty()
+}
+
+private fun partnerDateRange(fromDate: String, toDate: String): List<String> {
+    val start = parsePartnerDate(fromDate) ?: return emptyList()
+    val end = parsePartnerDate(toDate) ?: return emptyList()
+    if (start.after(end)) return emptyList()
+    val calendar = Calendar.getInstance().apply {
+        time = start
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val endCalendar = Calendar.getInstance().apply {
+        time = end
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    return buildList {
+        while (!calendar.after(endCalendar)) {
+            add(format.format(calendar.time))
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,32 +97,38 @@ fun PartnerScreen() {
     var editingPartner by remember { mutableStateOf<Partner?>(null) }
     var showDistributionDialog by remember { mutableStateOf(false) }
     var withdrawingPartner by remember { mutableStateOf<Partner?>(null) }
-    var fromDate by remember { mutableStateOf(partnerDate()) }
+    var fromDate by remember { mutableStateOf(partnerDate(29)) }
     var toDate by remember { mutableStateOf(partnerDate()) }
     var message by remember { mutableStateOf("") }
 
-    val validRange = fromDate.length == 10 && toDate.length == 10 && fromDate <= toDate
-    val salesByDay = sales.groupBy { normalizePartnerDate(it.date) }
-    val expensesByDay = expenses.groupBy { normalizePartnerDate(it.date) }
-    val damagesByDay = damages.groupBy { normalizePartnerDate(it.date) }
+    val validRange = isValidPartnerDate(fromDate) &&
+        isValidPartnerDate(toDate) && fromDate <= toDate
+    val salesByDay = sales.mapNotNull { sale ->
+        normalizePartnerDate(sale.date).takeIf { it.isNotBlank() }?.let { it to sale }
+    }.groupBy({ it.first }, { it.second })
+    val expensesByDay = expenses.mapNotNull { expense ->
+        normalizePartnerDate(expense.date).takeIf { it.isNotBlank() }?.let { it to expense }
+    }.groupBy({ it.first }, { it.second })
+    val damagesByDay = damages.mapNotNull { damage ->
+        normalizePartnerDate(damage.date).takeIf { it.isNotBlank() }?.let { it to damage }
+    }.groupBy({ it.first }, { it.second })
+
     val dailyNet = remember(refresh, fromDate, toDate) {
-        if (!validRange) emptyList() else {
-            val days = mutableListOf<String>()
-            val calendar = Calendar.getInstance()
-            runCatching {
-                calendar.time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(fromDate)!!
-                val end = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(toDate)!!
-                while (!calendar.time.after(end)) {
-                    days.add(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(calendar.time))
-                    calendar.add(Calendar.DAY_OF_YEAR, 1)
-                }
-            }
-            days.map { day ->
-                val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
-                val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
-                val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
-                day to (gross - expense - damage)
-            }
+        if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day ->
+            val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+            val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
+            val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
+            day to (gross - expense - damage)
+        }
+    }
+    val last30FromDate = remember { partnerDate(29) }
+    val last30ToDate = remember { partnerDate() }
+    val last30DailyNet = remember(refresh, last30FromDate, last30ToDate) {
+        partnerDateRange(last30FromDate, last30ToDate).map { day ->
+            val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
+            val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
+            val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
+            day to (gross - expense - damage)
         }
     }
     val periodTotalProfit = dailyNet.sumOf { maxOf(it.second, 0.0) }
@@ -134,7 +177,15 @@ fun PartnerScreen() {
             Text("পার্টনারদের তালিকা", style = MaterialTheme.typography.titleLarge)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
             partners.forEach { partner ->
-                PartnerCard(partner, canWrite) { if (canWrite) editingPartner = partner }
+                val profit30 = last30DailyNet.sumOf { (day, net) ->
+                    maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                }
+                val loss30 = last30DailyNet.sumOf { (day, net) ->
+                    kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                }
+                PartnerCard(partner, canWrite, profit30, loss30) {
+                    if (canWrite) editingPartner = partner
+                }
             }
 
             HorizontalDivider()
@@ -286,17 +337,37 @@ fun PartnerScreen() {
 }
 
 @Composable
-fun PartnerCard(partner: Partner, canWrite: Boolean, onClick: () -> Unit) {
+fun PartnerCard(
+    partner: Partner,
+    canWrite: Boolean,
+    last30Profit: Double,
+    last30Loss: Double,
+    onClick: () -> Unit
+) {
     Card(Modifier.fillMaxWidth().clickable(enabled = canWrite, onClick = onClick)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(partner.name, style = MaterialTheme.typography.titleMedium)
-                if (canWrite) Text("সম্পাদনা ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(partner.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("৩০ দিনে লাভ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Text("৳ %.2f".format(Locale.US, last30Profit), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("৩০ দিনে ঘাটতি", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        Text("৳ %.2f".format(Locale.US, last30Loss), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
             HorizontalDivider()
             Text("বিনিয়োগ / মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
             Text("লাভের হার: %.2f%%".format(Locale.US, partner.profitPercentage), color = MaterialTheme.colorScheme.primary)
             if (partner.note.isNotBlank()) Text("নোট: ${partner.note}", style = MaterialTheme.typography.bodySmall)
+            if (canWrite) Text("সম্পাদনা ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
