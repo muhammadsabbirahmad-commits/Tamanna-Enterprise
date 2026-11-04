@@ -121,8 +121,8 @@ fun PartnerScreen() {
             day to (gross - expense - damage)
         }
     }
-    val last30FromDate = remember { partnerDate(29) }
-    val last30ToDate = remember { partnerDate() }
+    val last30FromDate = partnerDate(29)
+    val last30ToDate = partnerDate()
     val last30DailyNet = remember(refresh, last30FromDate, last30ToDate) {
         partnerDateRange(last30FromDate, last30ToDate).map { day ->
             val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
@@ -208,6 +208,13 @@ fun PartnerScreen() {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(fromDate, { fromDate = it }, label = { Text("শুরু (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
                 OutlinedTextField(toDate, { toDate = it }, label = { Text("শেষ (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
+            }
+            Button(
+                onClick = { refresh++ },
+                enabled = validRange,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("তারিখ অনুযায়ী হিসাব রিফ্রেশ করুন")
             }
             if (!validRange) {
                 Text("সঠিক তারিখের পরিসর দিন।", color = MaterialTheme.colorScheme.error)
