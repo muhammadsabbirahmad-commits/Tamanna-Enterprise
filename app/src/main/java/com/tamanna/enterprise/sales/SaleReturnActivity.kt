@@ -56,7 +56,20 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
     val originalLines = remember(transactionId) { SalesStorage.getSales(context).filter { it.transactionId == transactionId } }
     val returned = remember(transactionId) { SaleReturnStorage.getReturnedQuantities(context, transactionId) }
     val rows = remember(originalLines, returned) {
-        originalLines.map { ReturnRow(it, returned[it.productCode] ?: 0, (it.quantity - (returned[it.productCode] ?: 0)).coerceAtLeast(0)) }
+        // One row per product code, even if legacy invoices contain duplicate sale lines.
+        originalLines.groupBy { it.productCode.trim().lowercase(Locale.ROOT) }.map { (code, salesForCode) ->
+            val totalSold = salesForCode.sumOf { it.quantity.coerceAtLeast(0) }
+            val totalReturned = returned[code] ?: returned.entries
+                .firstOrNull { it.key.equals(code, ignoreCase = true) }?.value ?: 0
+            val weightedPrice = if (totalSold > 0) {
+                salesForCode.sumOf { it.quantity.coerceAtLeast(0) * it.salePrice } / totalSold
+            } else 0.0
+            val combinedSale = salesForCode.first().copy(
+                quantity = totalSold,
+                salePrice = weightedPrice
+            )
+            ReturnRow(combinedSale, totalReturned, (totalSold - totalReturned).coerceAtLeast(0))
+        }
     }
     val quantities = remember(rows) { mutableStateListOf<Int>().also { list -> rows.forEach { list.add(0) } } }
     var refundMethod by remember { mutableStateOf("Cash") }
@@ -87,6 +100,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(10.dp)) {
                                 Text(row.sale.productName, style = MaterialTheme.typography.titleMedium)
+                                Text("কোড: ${row.sale.productCode}")
                                 Text("বিক্রি: ${row.sale.quantity} • আগে রিটার্ন: ${row.returned} • ফেরতযোগ্য: ${row.remaining}")
                                 OutlinedTextField(
                                     value = quantities[index].toString(),
