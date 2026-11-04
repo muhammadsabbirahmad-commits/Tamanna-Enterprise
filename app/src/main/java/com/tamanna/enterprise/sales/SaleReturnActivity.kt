@@ -73,7 +73,17 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
     }
     val quantities = remember(rows) { mutableStateListOf<Int>().also { list -> rows.forEach { list.add(0) } } }
     var refundMethod by remember { mutableStateOf("Cash") }
+    var replacementCode by remember { mutableStateOf("") }
+    var replacementQuantity by remember { mutableStateOf("1") }
+    var replacementPrice by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
+    val products = remember { ProductStorage.getProducts(context) }
+    val replacementProduct = products.firstOrNull {
+        it.code.equals(replacementCode.trim(), true) ||
+            (replacementCode.isNotBlank() && it.name.contains(replacementCode.trim(), true))
+    }
+    val replacementQty = replacementQuantity.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    val replacementUnitPrice = replacementPrice.toDoubleOrNull() ?: replacementProduct?.salePrice ?: 0.0
 
     val grossReturn = rows.indices.sumOf { quantities[it] * rows[it].sale.salePrice }
     val discountRate = if ((tx?.subtotal ?: 0.0) > 0.0) (tx!!.discount / tx.subtotal).coerceIn(0.0, 1.0) else 0.0
@@ -82,6 +92,8 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
     val remainingOriginalDue = ((tx?.due ?: 0.0) - previousDueReduction).coerceAtLeast(0.0)
     val dueReduction = returnAmount.coerceAtMost(remainingOriginalDue)
     val refundAmount = (returnAmount - dueReduction).coerceAtLeast(0.0)
+    val exchangeTotal = replacementUnitPrice * replacementQty
+    val exchangeDifference = exchangeTotal - returnAmount
 
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -116,6 +128,38 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                 Text("রিটার্নের সমন্বয়যোগ্য মোট: ৳ " + money(returnAmount))
                 Text("বাকি থেকে কমবে: ৳ " + money(dueReduction))
                 Text("ফেরত দেওয়ার টাকা: ৳ " + money(refundAmount))
+                androidx.compose.material3.HorizontalDivider()
+                Text("বিকল্প পণ্য দিয়ে এক্সচেঞ্জ (ঐচ্ছিক)", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    value = replacementCode,
+                    onValueChange = { replacementCode = it; replacementPrice = "" },
+                    label = { Text("নতুন পণ্যের নাম বা কোড") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
+                if (replacementCode.isNotBlank()) {
+                    if (replacementProduct == null) {
+                        Text("এই নামে/কোডে কোনো পণ্য পাওয়া যায়নি।")
+                    } else {
+                        Text(replacementProduct.name + " • " + replacementProduct.code + " • স্টক: " + replacementProduct.stockQuantity)
+                        OutlinedTextField(
+                            value = replacementQuantity,
+                            onValueChange = { replacementQuantity = it.filter(Char::isDigit) },
+                            label = { Text("নতুন পণ্যের পরিমাণ") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = replacementPrice.ifBlank { replacementProduct.salePrice.toString() },
+                            onValueChange = { replacementPrice = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                            label = { Text("নতুন পণ্যের ইউনিট মূল্য") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            if (exchangeDifference > 0.0) "ক্রেতার কাছ থেকে অতিরিক্ত পাবেন: ৳ " + money(exchangeDifference)
+                            else if (exchangeDifference < 0.0) "ক্রেতাকে ফেরত দিতে হবে: ৳ " + money(-exchangeDifference)
+                            else "দামের কোনো পার্থক্য নেই।"
+                        )
+                    }
+                }
                 Text("ফেরত দেওয়ার মাধ্যম", style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("Cash", "bKash", "Bank").forEach { method ->
@@ -135,6 +179,15 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 message = "কমপক্ষে একটি পণ্যের ফেরত পরিমাণ দিন."
                                 return@Button
                             }
+                            if (replacementCode.isNotBlank() && (
+                                    replacementProduct == null || replacementQty <= 0 ||
+                                        replacementUnitPrice < 0.0 ||
+                                        replacementQty > (replacementProduct?.stockQuantity ?: 0)
+                                )
+                            ) {
+                                message = "বিকল্প পণ্যের কোড, পরিমাণ, মূল্য ও বর্তমান স্টক যাচাই করুন।"
+                                return@Button
+                            }
                             val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                             val returnId = "RT-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
                             val lines = rows.indices.mapNotNull { i ->
@@ -147,29 +200,36 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 message = "রিটার্নের পরিমাণ কেনা পরিমাণের বেশি হতে পারবে না। বিক্রয় ও আগের রিটার্ন আবার যাচাই করুন।"
                                 return@Button
                             }
-                            // Re-read every affected product immediately before changing stock.
+                            // Re-read every affected product and calculate one net stock delta per code.
                             val latestProducts = ProductStorage.getProducts(context)
-                            val currentProducts = lines.associate { line ->
-                                line.productCode.lowercase(Locale.getDefault()) to
-                                    (latestProducts.firstOrNull { it.code.equals(line.productCode, true) }
-                                        ?: error("পণ্য পাওয়া যায়নি: " + line.productCode))
+                            val stockDeltas = mutableMapOf<String, Int>()
+                            lines.forEach { line ->
+                                val key = line.productCode.trim().lowercase(Locale.ROOT)
+                                stockDeltas[key] = (stockDeltas[key] ?: 0) + line.quantity
                             }
-                            currentProducts.values.forEach { product ->
-                                val returnQty = lines.filter { it.productCode.equals(product.code, true) }.sumOf { it.quantity }
-                                if (returnQty > Int.MAX_VALUE - product.stockQuantity) {
-                                    error("Stock সীমা অতিক্রম করছে: " + product.name)
-                                }
+                            if (replacementProduct != null && replacementQty > 0) {
+                                val key = replacementProduct.code.trim().lowercase(Locale.ROOT)
+                                stockDeltas[key] = (stockDeltas[key] ?: 0) - replacementQty
+                            }
+                            val currentProducts = stockDeltas.mapValues { (code, _) ->
+                                latestProducts.firstOrNull { it.code.equals(code, true) }
+                                    ?: error("পণ্য পাওয়া যায়নি: $code")
                             }
                             val itemStocks = currentProducts.values.associate { it.code to it.stockQuantity }
+                            currentProducts.forEach { (code, product) ->
+                                val delta = stockDeltas[code] ?: 0
+                                if (product.stockQuantity + delta < 0 ||
+                                    product.stockQuantity + delta > Int.MAX_VALUE
+                                ) error("স্টক অপর্যাপ্ত বা সীমা অতিক্রম করছে: " + product.name)
+                            }
                             var paymentId = 0L
                             var activityLogId = 0L
                             try {
-                                lines.groupBy { it.productCode.lowercase(Locale.getDefault()) }.forEach { (_, groupedLines) ->
-                                    val product = currentProducts[groupedLines.first().productCode.lowercase(Locale.getDefault())]
-                                        ?: error("পণ্য পাওয়া যায়নি: " + groupedLines.first().productCode)
-                                    val totalQty = groupedLines.sumOf { it.quantity }
-                                    val stockUpdated = ProductStorage.updateStock(context, product.code, product.stockQuantity + totalQty)
-                                    if (!stockUpdated) error("স্টক আপডেট করা যায়নি: " + product.code)
+                                currentProducts.forEach { (code, product) ->
+                                    val newStock = product.stockQuantity + (stockDeltas[code] ?: 0)
+                                    if (!ProductStorage.updateStock(context, product.code, newStock)) {
+                                        error("স্টক আপডেট করা যায়নি: " + product.code)
+                                    }
                                 }
                                 val returnSaved = SaleReturnStorage.addReturn(
                                     context,
@@ -184,6 +244,25 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                     )
                                     if (paymentId <= 0L) error("রিটার্নের বাকি সমন্বয় সংরক্ষণ করা যায়নি")
                                 }
+                                if (replacementProduct != null && replacementQty > 0) {
+                                    val exchangeId = "EX-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
+                                    val exchangeSaved = SaleReturnStorage.addExchange(
+                                        context,
+                                        SaleExchange(
+                                            exchangeId, returnId, transactionId, now,
+                                            replacementProduct.code, replacementProduct.name,
+                                            replacementQty, replacementUnitPrice, returnAmount, exchangeDifference
+                                        )
+                                    )
+                                    if (!exchangeSaved) error("এক্সচেঞ্জ রেকর্ড সংরক্ষণ করা যায়নি")
+                                    if (exchangeDifference > 0.0 && tx.customer.isNotBlank()) {
+                                        val extraDue = CustomerDueStorage.addSaleDue(
+                                            context, tx.customer, tx.mobile, exchangeDifference,
+                                            "এক্সচেঞ্জ: $exchangeId ($transactionId)"
+                                        )
+                                        if (extraDue <= 0L) error("এক্সচেঞ্জের অতিরিক্ত টাকা সংরক্ষণ করা যায়নি")
+                                    }
+                                }
                                 activityLogId = ActivityLogStorage.addAndGetId(
                                     context, "বিক্রয় রিটার্ন", "$returnId • $transactionId • ৳" + money(returnAmount)
                                 )
@@ -192,6 +271,9 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                             } catch (e: Exception) {
                                 if (activityLogId > 0L) ActivityLogStorage.removeById(context, activityLogId)
                                 if (paymentId > 0L) CustomerDueStorage.removePaymentById(context, paymentId)
+                                SaleReturnStorage.getExchanges(context)
+                                    .filter { it.returnId == returnId }
+                                    .forEach { SaleReturnStorage.removeExchange(context, it.exchangeId) }
                                 itemStocks.forEach { (code, stock) -> ProductStorage.updateStock(context, code, stock) }
                                 SaleReturnStorage.removeReturn(context, returnId)
                                 message = "রিটার্ন সংরক্ষণ ব্যর্থ হয়েছে। কোনো পরিবর্তন রাখা হয়নি."
