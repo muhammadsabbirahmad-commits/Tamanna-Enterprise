@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -25,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -57,6 +60,7 @@ private fun SalesScreen(onNewSale: () -> Unit) {
     val context = LocalContext.current
     val canWrite = SecurityStorage.canWrite(context)
     var selectedGroup by remember { mutableStateOf<SaleGroup?>(null) }
+    var editingGroup by remember { mutableStateOf<SaleGroup?>(null) }
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var appliedStart by remember { mutableStateOf("") }
@@ -206,6 +210,10 @@ private fun SalesScreen(onNewSale: () -> Unit) {
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (tx != null && SecurityStorage.canWrite(context)) {
+                        TextButton(
+                            enabled = SaleReturnStorage.getReturnedQuantities(context, group.transactionId).values.sum() == 0,
+                            onClick = { editingGroup = group; selectedGroup = null }
+                        ) { Text("এডিট") }
                         TextButton(onClick = {
                             selectedGroup = null
                             context.startActivity(
@@ -243,6 +251,128 @@ private fun SalesScreen(onNewSale: () -> Unit) {
             }
         )
     }
+
+    editingGroup?.let { group ->
+        SaleInvoiceEditDialog(
+            group = group,
+            onDismiss = { editingGroup = null },
+            onSave = { updatedLines, updatedTx ->
+                val currentLines = SalesStorage.getSales(context).filter { it.transactionId == group.transactionId }
+                val productMap = ProductStorage.getProducts(context).associateBy { it.code.lowercase(Locale.ROOT) }
+                val deltas = (currentLines.map { it.productCode.lowercase(Locale.ROOT) } +
+                    updatedLines.map { it.productCode.lowercase(Locale.ROOT) }).toSet().associateWith { code ->
+                    (currentLines.filter { it.productCode.equals(code, true) }.sumOf { it.quantity }) -
+                        (updatedLines.filter { it.productCode.equals(code, true) }.sumOf { it.quantity })
+                }
+                val touched = deltas.filterValues { it != 0 }.mapValues { (code, _) ->
+                    productMap[code] ?: throw IllegalStateException("পণ্য পাওয়া যায়নি: $code")
+                }
+                val oldStocks = touched.values.associate { it.code to it.stockQuantity }
+                try {
+                    touched.forEach { (code, product) ->
+                        val newStock = product.stockQuantity + (deltas[code] ?: 0)
+                        if (newStock < 0) throw IllegalStateException("স্টক অপর্যাপ্ত: " + product.name)
+                    }
+                    touched.forEach { (code, product) ->
+                        if (!ProductStorage.updateStock(context, product.code, product.stockQuantity + (deltas[code] ?: 0))) {
+                            throw IllegalStateException("স্টক আপডেট ব্যর্থ: " + product.name)
+                        }
+                    }
+                    if (!SalesStorage.replaceTransactionSales(context, group.transactionId, updatedLines) ||
+                        !SalesTransactionStorage.updateTransaction(context, updatedTx)
+                    ) throw IllegalStateException("ইনভয়েস সংরক্ষণ ব্যর্থ")
+                    editingGroup = null
+                } catch (e: Exception) {
+                    oldStocks.forEach { (code, stock) -> ProductStorage.updateStock(context, code, stock) }
+                    throw e
+                }
+            }
+        )
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun SaleInvoiceEditDialog(
+    group: SaleGroup,
+    onDismiss: () -> Unit,
+    onSave: (List<Sale>, SaleTransaction) -> Unit
+) {
+    val context = LocalContext.current
+    val tx = group.transaction ?: return
+    val original = remember(group.transactionId) { SalesStorage.getSales(context).filter { it.transactionId == group.transactionId } }
+    val quantities = remember(group.transactionId) { mutableStateMapOf<Long, String>().apply { original.forEach { put(it.id, it.quantity.toString()) } } }
+    val prices = remember(group.transactionId) { mutableStateMapOf<Long, String>().apply { original.forEach { put(it.id, it.salePrice.toString()) } } }
+    var customer by remember(group.transactionId) { mutableStateOf(tx.customer) }
+    var mobile by remember(group.transactionId) { mutableStateOf(tx.mobile) }
+    var discount by remember(group.transactionId) { mutableStateOf(tx.discount.toString()) }
+    var paid by remember(group.transactionId) { mutableStateOf(tx.paid.toString()) }
+    var error by remember { mutableStateOf("") }
+
+    val newLines = original.mapNotNull { line ->
+        val qty = quantities[line.id]?.toIntOrNull() ?: 0
+        val price = prices[line.id]?.toDoubleOrNull() ?: -1.0
+        if (qty <= 0) null else line.copy(
+            quantity = qty, salePrice = price,
+            customer = customer.trim() + if (mobile.isBlank()) "" else " • " + mobile.trim()
+        )
+    }
+    val subtotal = newLines.sumOf { it.quantity * (prices[it.id]?.toDoubleOrNull() ?: it.salePrice) }
+    val discountValue = discount.toDoubleOrNull() ?: 0.0
+    val total = subtotal - discountValue
+    val paidValue = paid.toDoubleOrNull() ?: 0.0
+    val due = total - paidValue
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ইনভয়েস এডিট • " + group.transactionId) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("পণ্যের পরিমাণ ০ করলে সেই পণ্য ইনভয়েস থেকে বাদ যাবে।")
+                original.forEach { line ->
+                    Text(line.productName + " • " + line.productCode)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = quantities[line.id].orEmpty(),
+                            onValueChange = { quantities[line.id] = it.filter(Char::isDigit) },
+                            label = { Text("পরিমাণ") }, modifier = Modifier.weight(1f), singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = prices[line.id].orEmpty(),
+                            onValueChange = { prices[line.id] = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                            label = { Text("ইউনিট দাম") }, modifier = Modifier.weight(1f), singleLine = true
+                        )
+                    }
+                }
+                OutlinedTextField(customer, { customer = it }, label = { Text("ক্রেতার নাম") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(mobile, { mobile = it.filter(Char::isDigit) }, label = { Text("মোবাইল") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(discount, { discount = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("ছাড়") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(paid, { paid = it.filter { ch -> ch.isDigit() || ch == '.' } }, label = { Text("জমা") }, modifier = Modifier.fillMaxWidth())
+                Text("সাবটোটাল: ৳ " + saleMoney(subtotal) + " • মোট: ৳ " + saleMoney(total))
+                Text("জমা: ৳ " + saleMoney(paidValue) + " • বাকি: ৳ " + saleMoney(due))
+                if (tx.due > 0.0) Text("নোট: আগের বকেয়া থাকা ইনভয়েস নিরাপদ হিসাবের জন্য এডিট করা যাবে না।")
+                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                error = ""
+                if (tx.due > 0.0) { error = "আগের বকেয়া নিষ্পত্তি না হওয়া পর্যন্ত এই ইনভয়েস এডিট করা যাবে না।"; return@TextButton }
+                if (newLines.isEmpty() || newLines.any { it.salePrice < 0.0 } ||
+                    discountValue < 0.0 || total < 0.0 || paidValue < 0.0 || paidValue > total
+                ) { error = "পণ্যের পরিমাণ, দাম, ছাড় ও জমার তথ্য যাচাই করুন।"; return@TextButton }
+                val changed = newLines.map { it.copy(salePrice = prices[it.id]?.toDoubleOrNull() ?: it.salePrice) }
+                onSave(changed, tx.copy(
+                    customer = customer.trim(), mobile = mobile.trim(),
+                    subtotal = subtotal, discount = discountValue, total = total,
+                    paid = paidValue, due = due
+                ))
+            }) { Text("সংরক্ষণ") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
+    )
 }
 
 private fun isValidSaleDate(value: String): Boolean = try {
