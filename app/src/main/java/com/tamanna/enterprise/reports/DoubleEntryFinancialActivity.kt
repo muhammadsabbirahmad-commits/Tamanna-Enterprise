@@ -102,7 +102,15 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     capitalContributions.forEach { contribution ->
         val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name ?: "পুরোনো/মুছে ফেলা পার্টনার"
-        rows += LedgerRow(contribution.date, "পার্টনার মূলধন জমা • $partnerName", "নগদ/ব্যাংক", "পার্টনার মূলধন", contribution.amount, contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else "")
+        val isRetainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+        rows += LedgerRow(
+            contribution.date,
+            if (isRetainedProfit) "অবণ্টিত লভ্যাংশ মূলধনে স্থানান্তর • $partnerName" else "পার্টনার মূলধন জমা • $partnerName",
+            if (isRetainedProfit) "অবণ্টিত লভ্যাংশ" else "নগদ/ব্যাংক",
+            "পার্টনার মূলধন",
+            contribution.amount,
+            contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else ""
+        )
         if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
     }
 
