@@ -46,6 +46,7 @@
         <activity android:name=".search.GlobalSearchActivity" android:exported="false" />
         <activity android:name=".reports.FinancialCalendarActivity" android:exported="false" />
         <activity android:name=".reports.FinancialDashboardActivity" android:exported="false" />
+        <activity android:name=".reports.DoubleEntryFinancialActivity" android:exported="false" />
         <activity android:name=".finance.FinanceActivity" android:exported="false" />
         <activity android:name=".security.LoginActivity" android:exported="false" />
         <activity android:name=".security.ActivityLogActivity" android:exported="false" />
