@@ -307,6 +307,10 @@ private fun DoubleEntryFinancialScreen() {
     var selectedSide by remember { mutableStateOf<String?>(null) }
     var fromDate by remember { mutableStateOf(monthStartIso()) }
     var toDate by remember { mutableStateOf(todayIso()) }
+    var accounts by remember(refresh) { mutableStateOf(CashAccountStorage.getAccounts(context)) }
+    var showAccountDialog by remember { mutableStateOf(false) }
+    var editingAccount by remember { mutableStateOf<ManualCashAccount?>(null) }
+    val totalManualCash = accounts.sumOf { it.balance.coerceAtLeast(0.0) }
     val validRange = validLedgerDate(fromDate) && validLedgerDate(toDate) && fromDate <= toDate
     val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
     val totalDebit = summary.rows.sumOf { it.amount }
@@ -368,6 +372,34 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("নথিভুক্ত নিট নগদ", summary.cashIn - summary.cashOut)
             Text("এটি নথিভুক্ত লেনদেনের নগদ প্রবাহ। প্রারম্ভিক ক্যাশ/ব্যাংক ব্যালেন্স যোগ না করা পর্যন্ত হাতে থাকা প্রকৃত ক্যাশ নিশ্চিত হবে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 
+            Text("ক্যাশ ও ব্যাংক হিসাব", style = MaterialTheme.typography.titleLarge)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("আপনার যোগ করা ক্যাশ/ব্যাংক অ্যাকাউন্ট", style = MaterialTheme.typography.titleMedium)
+                    if (accounts.isEmpty()) Text("এখনও কোনো অতিরিক্ত ক্যাশ বা ব্যাংক হিসাব যোগ করা হয়নি।", style = MaterialTheme.typography.bodySmall)
+                    accounts.forEach { account ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(account.name, style = MaterialTheme.typography.bodyMedium)
+                                Text(money(account.balance), style = MaterialTheme.typography.titleMedium)
+                            }
+                            TextButton(onClick = { editingAccount = account; showAccountDialog = true }) { Text("সম্পাদনা") }
+                            TextButton(onClick = {
+                                CashAccountStorage.deleteAccount(context, account.id)
+                                accounts = CashAccountStorage.getAccounts(context)
+                                refresh++
+                            }) { Text("বাদ") }
+                        }
+                        HorizontalDivider()
+                    }
+                    OutlinedButton(onClick = { editingAccount = null; showAccountDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("＋ নতুন ক্যাশ/ব্যাংক হিসাব যোগ করুন")
+                    }
+                    SummaryLine("আপনার যোগ করা হিসাবগুলোর মোট ব্যালেন্স", totalManualCash)
+                    Text("এই ব্যালেন্সগুলো অ্যাপের ভেতরে হাতে যোগ ও সম্পাদনা করা হয়। একই টাকা যেন অ্যাপের অন্য ক্যাশ ব্যালেন্সে আবার যোগ না হয়, তা খেয়াল রাখবেন।", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
             Text("পার্টনারদের মূলধন", style = MaterialTheme.typography.titleLarge)
             SummaryLine("পার্টনারদের মোট জমাকৃত মূলধন", summary.totalCapital, "বর্তমান মোট মূলধন; নির্বাচিত সময়ে জমা হওয়া মূলধন ডেবিট–ক্রেডিট তালিকায় আলাদাভাবে আছে")
 
@@ -381,6 +413,39 @@ private fun DoubleEntryFinancialScreen() {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showAccountDialog) {
+        var name by remember(editingAccount) { mutableStateOf(editingAccount?.name.orEmpty()) }
+        var balance by remember(editingAccount) { mutableStateOf(editingAccount?.balance?.toString().orEmpty()) }
+        var error by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAccountDialog = false },
+            title = { Text(if (editingAccount == null) "নতুন ক্যাশ/ব্যাংক হিসাব" else "হিসাব সম্পাদনা") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it; error = "" }, label = { Text("হিসাবের নাম") }, singleLine = true)
+                    OutlinedTextField(balance, { balance = it.filter { ch -> ch.isDigit() || ch == '.' }; error = "" }, label = { Text("বর্তমান ব্যালেন্স (৳)") }, singleLine = true)
+                    if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val amount = balance.toDoubleOrNull()
+                    if (name.isBlank()) error = "হিসাবের নাম লিখুন।"
+                    else if (amount == null || !amount.isFinite() || amount < 0.0) error = "সঠিক ব্যালেন্স লিখুন।"
+                    else {
+                        val account = ManualCashAccount(editingAccount?.id ?: java.util.UUID.randomUUID().toString(), name.trim(), amount)
+                        if (CashAccountStorage.saveAccount(context, account)) {
+                            accounts = CashAccountStorage.getAccounts(context)
+                            refresh++
+                            showAccountDialog = false
+                        } else error = "হিসাব সংরক্ষণ করা যায়নি।"
+                    }
+                }) { Text("সংরক্ষণ") }
+            },
+            dismissButton = { TextButton(onClick = { showAccountDialog = false }) { Text("বাতিল") } }
+        )
     }
 
     selectedSide?.let { side ->
