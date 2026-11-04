@@ -110,6 +110,17 @@ object BusinessAccountStorage {
 
         val db = FirebaseFirestore.getInstance()
 
+        fun cachedAccountForThisUser(): Boolean {
+            val cachedOwner = prefs(context).getString(KEY_OWNER_UID, "").orEmpty()
+            val cachedId = prefs(context).getString(KEY_ID, "").orEmpty().trim()
+            return cachedOwner == uid && cachedId.isNotBlank()
+        }
+
+        fun useCachedAccountIfOwned(errorMessage: String) {
+            if (cachedAccountForThisUser()) onResult(true, "")
+            else onResult(false, errorMessage)
+        }
+
         fun saveActiveAccount(businessId: String) {
             prefs(context).edit()
                 .putString(KEY_ID, businessId)
@@ -136,7 +147,7 @@ object BusinessAccountStorage {
             targetRef.set(data, SetOptions.merge())
                 .addOnSuccessListener { saveActiveAccount(privateBusinessId) }
                 .addOnFailureListener {
-                    onResult(false, "আপনার আলাদা হিসাবের জায়গা তৈরি/যাচাই করা যায়নি: ${it.localizedMessage ?: "আবার চেষ্টা করুন।"}")
+                    useCachedAccountIfOwned("আপনার আলাদা হিসাবের জায়গা তৈরি/যাচাই করা যায়নি। প্রথমবার অ্যাকাউন্ট চালু করতে Internet প্রয়োজন।")
                 }
         }
 
@@ -152,7 +163,8 @@ object BusinessAccountStorage {
                 }
             }
             .addOnFailureListener {
-                provisionPrivateAccount()
+                // Reuse only the business namespace previously assigned to this exact Firebase UID.
+                useCachedAccountIfOwned("প্রথমবার Gmail অনুমোদন ও ব্যবসার হিসাব চালু করতে Internet প্রয়োজন।")
             }
     }
 
