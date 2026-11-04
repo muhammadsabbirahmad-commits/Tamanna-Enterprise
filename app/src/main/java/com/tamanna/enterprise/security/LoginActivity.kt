@@ -64,13 +64,13 @@ class LoginActivity : ComponentActivity() {
                                 }
                                 success?.invoke()
                             } else {
-                                auth.signOut()
+                                // Keep Firebase identity on provisioning/network errors; the server gate still blocks app access.
                                 failure?.invoke(accountMessage)
                             }
                             clear()
                         }
                     } else {
-                        auth.signOut()
+                        // A failed status lookup is not proof of revocation. Keep Gmail signed in for retry.
                         failure?.invoke(message)
                         clear()
                     }
