@@ -9,7 +9,8 @@ import java.util.UUID
 data class ManualCashAccount(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val balance: Double
+    val balance: Double,
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 object CashAccountStorage {
@@ -23,7 +24,7 @@ object CashAccountStorage {
             buildList {
                 for (i in 0 until array.length()) {
                     val item = array.getJSONObject(i)
-                    add(ManualCashAccount(item.optString("id"), item.optString("name"), item.optDouble("balance")))
+                    add(ManualCashAccount(item.optString("id"), item.optString("name"), item.optDouble("balance"), item.optLong("updatedAt", 0L)))
                 }
             }
         }.getOrDefault(emptyList())
@@ -42,7 +43,7 @@ object CashAccountStorage {
 
     private fun save(context: Context, items: List<ManualCashAccount>): Boolean = runCatching {
         val array = JSONArray()
-        items.forEach { array.put(JSONObject().put("id", it.id).put("name", it.name).put("balance", it.balance)) }
+        items.forEach { array.put(JSONObject().put("id", it.id).put("name", it.name).put("balance", it.balance).put("updatedAt", it.updatedAt)) }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY_ACCOUNTS, array.toString()).commit()
     }.getOrDefault(false)
 }
