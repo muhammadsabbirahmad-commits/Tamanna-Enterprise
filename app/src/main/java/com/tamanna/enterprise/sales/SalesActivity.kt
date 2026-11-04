@@ -33,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tamanna.enterprise.product.ProductStorage
+import android.widget.Toast
 import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -282,9 +284,12 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                         !SalesTransactionStorage.updateTransaction(context, updatedTx)
                     ) throw IllegalStateException("ইনভয়েস সংরক্ষণ ব্যর্থ")
                     editingGroup = null
+                    Toast.makeText(context, "ইনভয়েস আপডেট হয়েছে।", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
+                    SalesStorage.replaceTransactionSales(context, group.transactionId, currentLines)
+                    group.transaction?.let { SalesTransactionStorage.updateTransaction(context, it) }
                     oldStocks.forEach { (code, stock) -> ProductStorage.updateStock(context, code, stock) }
-                    throw e
+                    Toast.makeText(context, e.message ?: "ইনভয়েস আপডেট করা যায়নি।", Toast.LENGTH_LONG).show()
                 }
             }
         )
