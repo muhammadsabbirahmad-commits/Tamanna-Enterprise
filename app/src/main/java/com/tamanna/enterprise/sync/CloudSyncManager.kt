@@ -31,6 +31,7 @@ object CloudSyncManager {
         "tamanna_business_prefs",
         "tamanna_enterprise_finance", // প্রতিষ্ঠানের খরচ ও ড্যামেজ
         "tamanna_partner_storage", // অংশীদার ও লাভের শতাংশ
+        "tamanna_manual_cash_accounts", // হাতে যোগ করা ক্যাশ ও ব্যাংক হিসাব
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
         "tamanna_customer_due", // গ্রাহকের বাকি/জমা ও গ্রাহক তালিকা
@@ -286,7 +287,7 @@ object CloudSyncManager {
                             editor.apply()
                             localMap.clear()
                             localMap.putAll(merged)
-                        } else if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage") {
+                        } else if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts") {
                             val merged = mergeFinanceNamespace(ns, localMap, cloudByNamespace[ns].orEmpty())
                             val editor = prefs.edit()
                             for ((key, value) in merged) {
@@ -412,7 +413,8 @@ object CloudSyncManager {
 
         val arrayKeys = when (namespace) {
             "tamanna_enterprise_finance" -> listOf("expenses", "damages")
-            "tamanna_partner_storage" -> listOf("partners", "partner_profit_withdrawals")
+            "tamanna_partner_storage" -> listOf("partners", "partner_profit_withdrawals", "partner_capital_contributions")
+            "tamanna_manual_cash_accounts" -> listOf("accounts")
             else -> emptyList()
         }
         for (key in arrayKeys) {
