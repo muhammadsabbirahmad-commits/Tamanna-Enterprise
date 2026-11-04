@@ -11,6 +11,7 @@ on:
       - fix/per-gmail-private-business-data
       - fix/stable-login-realtime-sync
       - fix/fast-dashboard-startup
+      - fix/partner-last-30-days-date-range
   workflow_dispatch:
 
 permissions:

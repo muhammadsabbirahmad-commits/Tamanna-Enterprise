@@ -4,6 +4,7 @@ import android.content.Context
 import com.tamanna.enterprise.business.BusinessStorage
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 data class SaleReturn(
     val returnId: String,
@@ -24,10 +25,79 @@ data class SaleReturnLine(
     val unitPrice: Double
 )
 
+data class SaleExchange(
+    val exchangeId: String,
+    val returnId: String,
+    val transactionId: String,
+    val date: String,
+    val productCode: String,
+    val productName: String,
+    val quantity: Int,
+    val unitPrice: Double,
+    val returnedValue: Double,
+    val difference: Double
+)
+
 object SaleReturnStorage {
     private const val PREFS = "tamanna_enterprise_sale_returns"
     private const val KEY_RETURNS = "returns"
     private const val KEY_LINES = "lines"
+    private const val KEY_EXCHANGES = "exchanges"
+
+    fun getExchanges(context: Context): List<SaleExchange> {
+        val raw = BusinessStorage.prefs(context, PREFS).getString(KEY_EXCHANGES, "[]") ?: "[]"
+        val a = JSONArray(raw)
+        return buildList {
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                add(SaleExchange(
+                    o.getString("exchangeId"), o.getString("returnId"), o.getString("transactionId"),
+                    o.getString("date"), o.getString("productCode"), o.getString("productName"),
+                    o.getInt("quantity"), o.getDouble("unitPrice"), o.getDouble("returnedValue"),
+                    o.getDouble("difference")
+                ))
+            }
+        }
+    }
+
+    fun addExchange(context: Context, exchange: SaleExchange): Boolean {
+        if (exchange.exchangeId.isBlank() || exchange.returnId.isBlank() ||
+            exchange.quantity <= 0 || exchange.unitPrice < 0.0 ||
+            !exchange.unitPrice.isFinite() || !exchange.returnedValue.isFinite() ||
+            !exchange.difference.isFinite() ||
+            getExchanges(context).any { it.exchangeId == exchange.exchangeId }
+        ) return false
+        val all = getExchanges(context) + exchange
+        val a = JSONArray()
+        all.forEach { e ->
+            a.put(JSONObject().apply {
+                put("exchangeId", e.exchangeId); put("returnId", e.returnId)
+                put("transactionId", e.transactionId); put("date", e.date)
+                put("productCode", e.productCode); put("productName", e.productName)
+                put("quantity", e.quantity); put("unitPrice", e.unitPrice)
+                put("returnedValue", e.returnedValue); put("difference", e.difference)
+            })
+        }
+        val prefs = BusinessStorage.prefs(context, PREFS)
+        val json = a.toString()
+        prefs.edit().putString(KEY_EXCHANGES, json).apply()
+        return prefs.getString(KEY_EXCHANGES, "[]") == json
+    }
+
+    fun removeExchange(context: Context, exchangeId: String): Boolean {
+        val a = JSONArray()
+        getExchanges(context).filterNot { it.exchangeId == exchangeId }.forEach { e ->
+            a.put(JSONObject().apply {
+                put("exchangeId", e.exchangeId); put("returnId", e.returnId)
+                put("transactionId", e.transactionId); put("date", e.date)
+                put("productCode", e.productCode); put("productName", e.productName)
+                put("quantity", e.quantity); put("unitPrice", e.unitPrice)
+                put("returnedValue", e.returnedValue); put("difference", e.difference)
+            })
+        }
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY_EXCHANGES, a.toString()).apply()
+        return getExchanges(context).none { it.exchangeId == exchangeId }
+    }
 
     fun getReturns(context: Context): List<SaleReturn> {
         val raw = BusinessStorage.prefs(context, PREFS)
@@ -68,7 +138,7 @@ object SaleReturnStorage {
 
     fun getReturnedQuantities(context: Context, transactionId: String): Map<String, Int> =
         getLines(context).filter { it.transactionId == transactionId }
-            .groupBy { it.productCode }
+            .groupBy { it.productCode.trim().lowercase(Locale.ROOT) }
             .mapValues { (_, lines) -> lines.sumOf { it.quantity } }
 
     fun getReturnedAmount(context: Context, transactionId: String): Double =
@@ -77,12 +147,62 @@ object SaleReturnStorage {
     fun getDueReduction(context: Context, transactionId: String): Double =
         getReturns(context).filter { it.transactionId == transactionId }.sumOf { it.dueReduction }
 
+    /**
+     * Rechecks the original sold quantities against every previously saved return.
+     * The check is performed again inside addReturn, not only by the UI, so a
+     * stale screen or a modified request cannot return more than was purchased.
+     */
+    fun canAddReturn(
+        context: Context,
+        transactionId: String,
+        lines: List<SaleReturnLine>,
+        replacingReturnId: String? = null
+    ): Boolean {
+        if (transactionId.isBlank() || lines.isEmpty()) return false
+        if (lines.any {
+                it.transactionId != transactionId ||
+                    it.quantity <= 0 ||
+                    it.productCode.isBlank() ||
+                    !it.unitPrice.isFinite() ||
+                    it.unitPrice < 0.0
+            }
+        ) return false
+
+        val soldByCode = SalesStorage.getSales(context)
+            .filter { it.transactionId == transactionId }
+            .groupBy { it.productCode.trim().lowercase(Locale.ROOT) }
+            .mapValues { (_, sales) -> sales.sumOf { it.quantity.coerceAtLeast(0) } }
+        if (soldByCode.isEmpty()) return false
+
+        val alreadyReturned = getLines(context)
+            .filter { it.transactionId == transactionId && it.returnId != replacingReturnId }
+            .groupBy { it.productCode.trim().lowercase(Locale.ROOT) }
+            .mapValues { (_, returnedLines) -> returnedLines.sumOf { it.quantity } }
+
+        val requested = lines.groupBy { it.productCode.trim().lowercase(Locale.ROOT) }
+            .mapValues { (_, requestedLines) -> requestedLines.sumOf { it.quantity } }
+
+        return requested.all { (code, quantity) ->
+            val sold = soldByCode[code] ?: return@all false
+            val previous = alreadyReturned[code] ?: 0
+            previous >= 0 && quantity <= sold - previous
+        }
+    }
+
+    @Synchronized
     fun addReturn(context: Context, item: SaleReturn, lines: List<SaleReturnLine>): Boolean {
-        val returns = getReturns(context).toMutableList()
-        returns.removeAll { it.returnId == item.returnId }
-        returns.add(item)
-        val oldLines = getLines(context).filterNot { it.returnId == item.returnId }
-        save(context, returns, oldLines + lines)
+        // Return IDs are append-only; an existing record must never be silently replaced.
+        if (getReturns(context).any { it.returnId == item.returnId }) return false
+        if (item.returnId.isBlank() || item.transactionId.isBlank() ||
+            !item.amount.isFinite() || item.amount < 0.0 ||
+            !item.dueReduction.isFinite() || item.dueReduction < 0.0 ||
+            !item.refundAmount.isFinite() || item.refundAmount < 0.0 ||
+            !canAddReturn(context, item.transactionId, lines)
+        ) return false
+
+        val returns = getReturns(context) + item
+        val allLines = getLines(context) + lines
+        save(context, returns, allLines)
         return getReturns(context).any { it.returnId == item.returnId } &&
             getLines(context).count { it.returnId == item.returnId } == lines.size
     }

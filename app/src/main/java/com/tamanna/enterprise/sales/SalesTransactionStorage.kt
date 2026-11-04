@@ -74,6 +74,19 @@ object SalesTransactionStorage {
             .apply()
     }
 
+    fun updateTransaction(context: Context, transaction: SaleTransaction): Boolean {
+        if (transaction.transactionId.isBlank() || transaction.subtotal < 0.0 ||
+            transaction.discount < 0.0 || transaction.total < 0.0 ||
+            transaction.paid < 0.0 || transaction.due < 0.0
+        ) return false
+        val all = getTransactions(context)
+        if (all.none { it.transactionId == transaction.transactionId }) return false
+        saveTransactions(context, all.map {
+            if (it.transactionId == transaction.transactionId) transaction else it
+        })
+        return getTransaction(context, transaction.transactionId) == transaction
+    }
+
     fun getTransaction(context: Context, transactionId: String): SaleTransaction? =
         getTransactions(context).firstOrNull { it.transactionId == transactionId }
 

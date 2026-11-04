@@ -77,6 +77,24 @@ object SalesStorage {
         }
     }
 
+    fun replaceTransactionSales(context: Context, transactionId: String, replacements: List<Sale>): Boolean {
+        if (transactionId.isBlank() || replacements.isEmpty() ||
+            replacements.any { it.transactionId != transactionId || it.quantity <= 0 || it.salePrice < 0.0 || it.purchasePrice < 0.0 }
+        ) return false
+        val current = getSales(context)
+        val oldIds = current.filter { it.transactionId == transactionId }.map { it.id }.toSet()
+        if (oldIds.isEmpty()) return false
+        val kept = current.filterNot { it.transactionId == transactionId }
+        val normalized = replacements.mapIndexed { index, sale ->
+            val preferredId = sale.id
+            val uniqueId = if (preferredId !in kept.map { it.id }.toSet() && replacements.count { it.id == preferredId } == 1) preferredId
+                else (System.currentTimeMillis() + index)
+            sale.copy(id = uniqueId)
+        }
+        saveSales(context, kept + normalized)
+        return getSales(context).filter { it.transactionId == transactionId }.size == replacements.size
+    }
+
     fun removeByTransaction(context: Context, transactionId: String) {
         saveSales(context, getSales(context).filterNot { it.transactionId == transactionId })
     }
