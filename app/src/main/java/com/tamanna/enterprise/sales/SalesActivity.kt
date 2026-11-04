@@ -207,6 +207,10 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                     }
                     val returned = SaleReturnStorage.getReturnedAmount(context, group.transactionId)
                     if (returned > 0.0) Text("এ পর্যন্ত রিটার্ন: ৳ " + saleMoney(returned))
+                    SaleReturnStorage.getExchanges(context).filter { it.transactionId == group.transactionId }.forEach { exchange ->
+                        Text("এক্সচেঞ্জ: ${exchange.productName} (${exchange.productCode}) × ${exchange.quantity} • ৳ " + saleMoney(exchange.unitPrice * exchange.quantity))
+                        Text("দামের পার্থক্য: ৳ " + saleMoney(exchange.difference))
+                    }
                 }
             },
             confirmButton = {
@@ -266,9 +270,12 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                     (currentLines.filter { it.productCode.equals(code, true) }.sumOf { it.quantity }) -
                         (updatedLines.filter { it.productCode.equals(code, true) }.sumOf { it.quantity })
                 }
-                val touched = deltas.filterValues { it != 0 }.mapValues { (code, _) ->
-                    productMap[code] ?: throw IllegalStateException("পণ্য পাওয়া যায়নি: $code")
+                val missingCode = deltas.filterValues { it != 0 }.keys.firstOrNull { productMap[it] == null }
+                if (missingCode != null) {
+                    Toast.makeText(context, "পণ্য পাওয়া যায়নি: $missingCode", Toast.LENGTH_LONG).show()
+                    return@SaleInvoiceEditDialog
                 }
+                val touched = deltas.filterValues { it != 0 }.mapValues { (code, _) -> productMap[code]!! }
                 val oldStocks = touched.values.associate { it.code to it.stockQuantity }
                 try {
                     touched.forEach { (code, product) ->
