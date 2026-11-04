@@ -25,10 +25,79 @@ data class SaleReturnLine(
     val unitPrice: Double
 )
 
+data class SaleExchange(
+    val exchangeId: String,
+    val returnId: String,
+    val transactionId: String,
+    val date: String,
+    val productCode: String,
+    val productName: String,
+    val quantity: Int,
+    val unitPrice: Double,
+    val returnedValue: Double,
+    val difference: Double
+)
+
 object SaleReturnStorage {
     private const val PREFS = "tamanna_enterprise_sale_returns"
     private const val KEY_RETURNS = "returns"
     private const val KEY_LINES = "lines"
+    private const val KEY_EXCHANGES = "exchanges"
+
+    fun getExchanges(context: Context): List<SaleExchange> {
+        val raw = BusinessStorage.prefs(context, PREFS).getString(KEY_EXCHANGES, "[]") ?: "[]"
+        val a = JSONArray(raw)
+        return buildList {
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                add(SaleExchange(
+                    o.getString("exchangeId"), o.getString("returnId"), o.getString("transactionId"),
+                    o.getString("date"), o.getString("productCode"), o.getString("productName"),
+                    o.getInt("quantity"), o.getDouble("unitPrice"), o.getDouble("returnedValue"),
+                    o.getDouble("difference")
+                ))
+            }
+        }
+    }
+
+    fun addExchange(context: Context, exchange: SaleExchange): Boolean {
+        if (exchange.exchangeId.isBlank() || exchange.returnId.isBlank() ||
+            exchange.quantity <= 0 || exchange.unitPrice < 0.0 ||
+            !exchange.unitPrice.isFinite() || !exchange.returnedValue.isFinite() ||
+            !exchange.difference.isFinite() ||
+            getExchanges(context).any { it.exchangeId == exchange.exchangeId }
+        ) return false
+        val all = getExchanges(context) + exchange
+        val a = JSONArray()
+        all.forEach { e ->
+            a.put(JSONObject().apply {
+                put("exchangeId", e.exchangeId); put("returnId", e.returnId)
+                put("transactionId", e.transactionId); put("date", e.date)
+                put("productCode", e.productCode); put("productName", e.productName)
+                put("quantity", e.quantity); put("unitPrice", e.unitPrice)
+                put("returnedValue", e.returnedValue); put("difference", e.difference)
+            })
+        }
+        val prefs = BusinessStorage.prefs(context, PREFS)
+        val json = a.toString()
+        prefs.edit().putString(KEY_EXCHANGES, json).apply()
+        return prefs.getString(KEY_EXCHANGES, "[]") == json
+    }
+
+    fun removeExchange(context: Context, exchangeId: String): Boolean {
+        val a = JSONArray()
+        getExchanges(context).filterNot { it.exchangeId == exchangeId }.forEach { e ->
+            a.put(JSONObject().apply {
+                put("exchangeId", e.exchangeId); put("returnId", e.returnId)
+                put("transactionId", e.transactionId); put("date", e.date)
+                put("productCode", e.productCode); put("productName", e.productName)
+                put("quantity", e.quantity); put("unitPrice", e.unitPrice)
+                put("returnedValue", e.returnedValue); put("difference", e.difference)
+            })
+        }
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY_EXCHANGES, a.toString()).apply()
+        return getExchanges(context).none { it.exchangeId == exchangeId }
+    }
 
     fun getReturns(context: Context): List<SaleReturn> {
         val raw = BusinessStorage.prefs(context, PREFS)
