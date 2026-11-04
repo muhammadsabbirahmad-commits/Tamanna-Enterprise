@@ -136,8 +136,8 @@ class LoginActivity : ComponentActivity() {
             // If Firebase already has a Gmail session, recover the app session
             // automatically instead of showing a misleading fresh-login screen.
             LaunchedEffect(Unit) {
-                if (auth.currentUser != null) {
-                    loading = true
+                loading = true
+                val continueWithApprovedSession: () -> Unit = {
                     resumeExistingSession { ok, resumeMessage ->
                         if (ok) {
                             CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { _, _ ->
@@ -152,6 +152,35 @@ class LoginActivity : ComponentActivity() {
                             message = resumeMessage
                         }
                     }
+                }
+
+                if (auth.currentUser != null) {
+                    continueWithApprovedSession()
+                } else {
+                    // Firebase session may have been lost while Google Sign-In is
+                    // still available on the device. Restore it silently where possible.
+                    val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
+                        .requestEmail()
+                        .build()
+                    GoogleSignIn.getClient(this@LoginActivity, options).silentSignIn()
+                        .addOnCompleteListener(this@LoginActivity) { task ->
+                            val account = if (task.isSuccessful) task.result else null
+                            val token = account?.idToken
+                            if (token.isNullOrBlank()) {
+                                loading = false
+                                message = "আগের Gmail সেশন স্বয়ংক্রিয়ভাবে ফিরিয়ে আনা যায়নি। Gmail দিয়ে Login করুন।"
+                            } else {
+                                auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
+                                    .addOnCompleteListener(this@LoginActivity) { authTask ->
+                                        if (authTask.isSuccessful) continueWithApprovedSession()
+                                        else {
+                                            loading = false
+                                            message = "Gmail সেশন পুনরুদ্ধার করা যায়নি। আবার Login করুন।"
+                                        }
+                                    }
+                            }
+                        }
                 }
             }
 
