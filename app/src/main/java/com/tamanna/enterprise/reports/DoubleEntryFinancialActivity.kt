@@ -355,6 +355,17 @@ private fun DoubleEntryFinancialScreen() {
                 }
             }
 
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("ডেবিট–ক্রেডিট সমাধানের পর ফলাফল", style = MaterialTheme.typography.titleMedium)
+                    SummaryLine("মোট ডেবিট", totalDebit)
+                    SummaryLine("মোট ক্রেডিট", totalCredit)
+                    SummaryLine("আপনার যোগ করা ক্যাশ/ব্যাংকে আছে", totalManualCash)
+                    SummaryLine(if (summary.netProfit >= 0.0) "অতিরিক্ত লভ্যাংশ / নিট লাভ" else "নিট ক্ষতি", kotlin.math.abs(summary.netProfit))
+                    Text("লভ্যাংশটি নির্বাচিত সময়ের বিক্রয়, বিক্রীত পণ্যের ক্রয়মূল্য, খরচ ও ড্যামেজের ভিত্তিতে। এটি এখনো পার্টনারদের মধ্যে বণ্টিত/উত্তোলনযোগ্য চূড়ান্ত ব্যালান্স নয়।", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
             Text("ব্যবসার সারসংক্ষেপ", style = MaterialTheme.typography.titleLarge)
             SummaryLine("মোট পণ্য ক্রয়", summary.purchaseTotal)
             SummaryLine("বর্তমান স্টক মূল্য (ক্রয়মূল্যে)", summary.stockValue, "${summary.stockUnits} ইউনিট • নির্বাচিত সময়ের নেট স্টক")
@@ -365,7 +376,6 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("মোট প্রতিষ্ঠানের খরচ", summary.expenseTotal)
             SummaryLine("ড্যামেজ/নষ্টের ক্ষতি", summary.damageTotal)
             SummaryLine("পার্টনারের উত্তোলন", summary.withdrawalTotal)
-            SummaryLine("নিট লাভ/ক্ষতি", summary.netProfit)
 
             Text("নগদ প্রবাহ", style = MaterialTheme.typography.titleLarge)
             SummaryLine("নথিভুক্ত নগদ এসেছে", summary.cashIn)
