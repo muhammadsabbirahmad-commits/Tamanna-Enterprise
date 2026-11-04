@@ -181,11 +181,15 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                             }
                             if (replacementCode.isNotBlank() && (
                                     replacementProduct == null || replacementQty <= 0 ||
-                                        replacementUnitPrice < 0.0 ||
+                                        replacementUnitPrice < 0.0 || !replacementUnitPrice.isFinite() ||
                                         replacementQty > (replacementProduct?.stockQuantity ?: 0)
                                 )
                             ) {
                                 message = "বিকল্প পণ্যের কোড, পরিমাণ, মূল্য ও বর্তমান স্টক যাচাই করুন।"
+                                return@Button
+                            }
+                            if (replacementProduct != null && exchangeDifference > 0.0 && tx.customer.isBlank()) {
+                                message = "অতিরিক্ত টাকা বকেয়া রাখতে ক্রেতার নাম প্রয়োজন।"
                                 return@Button
                             }
                             val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
@@ -234,7 +238,11 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 }
                                 val returnSaved = SaleReturnStorage.addReturn(
                                     context,
-                                    SaleReturn(returnId, transactionId, now, returnAmount, dueReduction, refundAmount, refundMethod),
+                                    SaleReturn(
+                                        returnId, transactionId, now, returnAmount, dueReduction,
+                                        if (replacementProduct != null) (-exchangeDifference).coerceAtLeast(0.0) else refundAmount,
+                                        refundMethod
+                                    ),
                                     lines
                                 )
                                 if (!returnSaved) error("রিটার্ন রেকর্ড সংরক্ষণ করা যায়নি")
