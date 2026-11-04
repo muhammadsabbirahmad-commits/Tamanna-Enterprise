@@ -375,6 +375,10 @@ private fun SaleInvoiceEditDialog(
                 if (newLines.isEmpty() || newLines.any { it.salePrice < 0.0 } ||
                     discountValue < 0.0 || total < 0.0 || paidValue < 0.0 || paidValue > total
                 ) { error = "পণ্যের পরিমাণ, দাম, ছাড় ও জমার তথ্য যাচাই করুন।"; return@TextButton }
+                if (due > 0.0001) {
+                    error = "এডিটের পর নতুন বাকি তৈরি করা যাবে না। বাকি শূন্য রেখে ইনভয়েস সংরক্ষণ করুন।"
+                    return@TextButton
+                }
                 val changed = newLines.map { it.copy(salePrice = prices[it.id]?.toDoubleOrNull() ?: it.salePrice) }
                 onSave(changed, tx.copy(
                     customer = customer.trim(), mobile = mobile.trim(),
