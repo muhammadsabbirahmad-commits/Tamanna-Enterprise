@@ -1,6 +1,8 @@
 package com.tamanna.enterprise.business
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.util.UUID
@@ -25,6 +27,13 @@ object BusinessAccountStorage {
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun hasInternet(context: Context): Boolean {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     fun get(context: Context): BusinessAccount {
         // ডেটা না থাকলে যেন ক্র্যাশ না করে তাই আগে থেকেই নিশ্চিত করা হচ্ছে
@@ -119,6 +128,11 @@ object BusinessAccountStorage {
         fun useCachedAccountIfOwned(errorMessage: String) {
             if (cachedAccountForThisUser()) onResult(true, "")
             else onResult(false, errorMessage)
+        }
+
+        if (!hasInternet(context)) {
+            useCachedAccountIfOwned("এই Gmail-এর ব্যবসার হিসাব আগে অনলাইনে চালু করা হয়নি। প্রথমবার চালু করতে Internet প্রয়োজন।")
+            return
         }
 
         fun saveActiveAccount(businessId: String) {
