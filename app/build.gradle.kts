@@ -70,7 +70,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    implementation("com.google.firebase:firebase-auth:23.2.1")
+    implementation("com.google.firebase:firebase-auth:24.0.1")
     implementation("com.google.firebase:firebase-firestore:25.1.4")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
 
