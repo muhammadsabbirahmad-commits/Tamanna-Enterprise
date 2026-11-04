@@ -112,14 +112,16 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
                 else if (groupTotal > 0.0) (dueForGroup * gross / groupTotal).coerceAtMost(gross) else 0.0
             allocatedDue += due
             val paid = (gross - due).coerceAtLeast(0.0)
-            if (gross > 0.0) {
-                rows += LedgerRow(
-                    dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}",
-                    "স্টক/ইনভেন্টরি", if (due > 0.004 && paid > 0.004) "নগদ ও সরবরাহকারী বাকি"
-                    else if (due > 0.004) "সরবরাহকারী বাকি" else "নগদ",
-                    gross, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; পরিশোধিত আনুমানিক ${money(paid)}, বাকি ${money(due)}"
-                )
-            }
+            if (paid > 0.004) rows += LedgerRow(
+                dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}",
+                "স্টক/ইনভেন্টরি", "নগদ", paid,
+                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; ক্রয়ের মোট ${money(gross)}"
+            )
+            if (due > 0.004) rows += LedgerRow(
+                dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}",
+                "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due,
+                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}"
+            )
         }
     }
 
@@ -132,10 +134,13 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
         if (kotlin.math.abs((tx.paid + tx.due) - gross) > 0.02) {
             warnings += "বিক্রয় ${tx.transactionId}: মোট, জমা ও বাকি টাকার মধ্যে অমিল আছে।"
         }
-        rows += LedgerRow(
-            dateKey(tx.date), "বিক্রয় • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
-            if (due > 0.004 && paid > 0.004) "নগদ ও ক্রেতার পাওনা" else if (due > 0.004) "ক্রেতার পাওনা" else "নগদ",
-            "বিক্রয় আয়", gross, "ইনভয়েস: ${tx.transactionId}; জমা ${money(paid)}, বাকি ${money(due)}"
+        if (paid > 0.004) rows += LedgerRow(
+            dateKey(tx.date), "বিক্রয় আদায় • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
+            "নগদ", "বিক্রয় আয়", paid, "ইনভয়েস: ${tx.transactionId}"
+        )
+        if (due > 0.004) rows += LedgerRow(
+            dateKey(tx.date), "বিক্রয় বাকি • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
+            "ক্রেতার পাওনা", "বিক্রয় আয়", due, "ইনভয়েস: ${tx.transactionId}"
         )
     }
     val transactionIds = transactions.map { it.transactionId }.toSet()
