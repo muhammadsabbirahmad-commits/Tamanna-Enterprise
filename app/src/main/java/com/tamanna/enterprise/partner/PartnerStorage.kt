@@ -187,11 +187,16 @@ object PartnerStorage {
 
 
     fun isProfitPeriodCapitalized(context: Context, fromDate: String, toDate: String): Boolean {
-        val periodId = "$fromDate..$toDate"
+        if (!isValidDate(fromDate) || !isValidDate(toDate) || fromDate > toDate) return false
         val raw = prefs(context).getString(KEY_CAPITALIZED_PROFIT_PERIODS, "[]") ?: "[]"
         return runCatching {
             val array = JSONArray(raw)
-            (0 until array.length()).any { array.optJSONObject(it)?.optString("id") == periodId }
+            (0 until array.length()).any { index ->
+                val item = array.optJSONObject(index) ?: return@any false
+                val oldFrom = item.optString("fromDate")
+                val oldTo = item.optString("toDate")
+                oldFrom.isNotBlank() && oldTo.isNotBlank() && oldFrom <= toDate && oldTo >= fromDate
+            }
         }.getOrDefault(false)
     }
 
