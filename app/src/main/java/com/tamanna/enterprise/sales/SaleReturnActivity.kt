@@ -90,7 +90,8 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
     val returnAmount = grossReturn * (1.0 - discountRate)
     val previousDueReduction = SaleReturnStorage.getDueReduction(context, transactionId)
     val remainingOriginalDue = ((tx?.due ?: 0.0) - previousDueReduction).coerceAtLeast(0.0)
-    val dueReduction = returnAmount.coerceAtMost(remainingOriginalDue)
+    // A customer-ledger due can only be reduced when the invoice has a named customer.
+    val dueReduction = if (!tx?.customer.isNullOrBlank()) returnAmount.coerceAtMost(remainingOriginalDue) else 0.0
     val refundAmount = (returnAmount - dueReduction).coerceAtLeast(0.0)
     val exchangeTotal = replacementUnitPrice * replacementQty
     val exchangeDifference = exchangeTotal - returnAmount
