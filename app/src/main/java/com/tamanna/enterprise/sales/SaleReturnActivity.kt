@@ -127,8 +127,13 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 val q = quantities[i]
                                 if (q <= 0) null else SaleReturnLine(returnId, transactionId, rows[i].sale.productCode, rows[i].sale.productName, q, rows[i].sale.salePrice)
                             }
-                            // Re-read every affected product immediately before changing stock so the return
-                            // cannot use a stale quantity from the screen.
+                            // Validate against the latest saved sales and return history before touching stock.
+                            // This is the final guard: total returned quantity can never exceed sold quantity.
+                            if (!SaleReturnStorage.canAddReturn(context, transactionId, lines)) {
+                                message = "রিটার্নের পরিমাণ কেনা পরিমাণের বেশি হতে পারবে না। বিক্রয় ও আগের রিটার্ন আবার যাচাই করুন।"
+                                return@Button
+                            }
+                            // Re-read every affected product immediately before changing stock.
                             val latestProducts = ProductStorage.getProducts(context)
                             val currentProducts = lines.associate { line ->
                                 line.productCode.lowercase(Locale.getDefault()) to
@@ -166,7 +171,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                     if (paymentId <= 0L) error("রিটার্নের বাকি সমন্বয় সংরক্ষণ করা যায়নি")
                                 }
                                 activityLogId = ActivityLogStorage.addAndGetId(
-                                    context, "বিক্রয় রিটার্ন", "$" + "{returnId} • " + "$" + "{transactionId} • ৳" + money(returnAmount)
+                                    context, "বিক্রয় রিটার্ন", "$returnId • $transactionId • ৳" + money(returnAmount)
                                 )
                                 if (activityLogId <= 0L) error("রিটার্নের Activity Log সংরক্ষণ করা যায়নি")
                                 onDone()
