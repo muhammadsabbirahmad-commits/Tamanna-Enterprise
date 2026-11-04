@@ -251,38 +251,12 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }
     val netProfit = salesTotal - cogs - expenseTotal - damageTotal
 
-    // Reconstruct only stock movements dated on/after the requested start date.
+    // Current stock is read from the live product inventory, not reconstructed from only the selected period.
+    // Historical stock snapshots are not stored by the app, so this value is explicitly labelled as current.
     val stockWarnings = mutableListOf<String>()
-    val stockByCode = mutableMapOf<String, Int>()
-    val costByCode = mutableMapOf<String, Double>()
-    purchases.forEach {
-        stockByCode[it.productCode] = (stockByCode[it.productCode] ?: 0) + it.quantity
-        costByCode[it.productCode] = (costByCode[it.productCode] ?: 0.0) + it.quantity * it.purchasePrice
-    }
-    sales.forEach {
-        stockByCode[it.productCode] = (stockByCode[it.productCode] ?: 0) - it.quantity
-    }
-    returnLines.forEach {
-        stockByCode[it.productCode] = (stockByCode[it.productCode] ?: 0) + it.quantity
-    }
-    damages.forEach {
-        stockByCode[it.productCode] = (stockByCode[it.productCode] ?: 0) - it.quantity
-    }
-    val currentProducts = ProductStorage.getProducts(context).associateBy { it.code.lowercase(Locale.ROOT) }
-    val stockValue = stockByCode.entries.sumOf { (code, quantity) ->
-        if (quantity < 0) {
-            stockWarnings += "$code: নির্বাচিত সময়ের ক্রয় দিয়ে বিক্রয়/ক্ষতি পূরণ হচ্ছে না ($quantity ইউনিট)।"
-            0.0
-        } else {
-            val unitCost = currentProducts[code.lowercase(Locale.ROOT)]?.purchasePrice
-                ?: run {
-                    val units = purchases.filter { it.productCode.equals(code, true) }.sumOf { it.quantity }
-                    if (units > 0) costByCode[code]?.div(units) ?: 0.0 else 0.0
-                }
-            quantity * unitCost
-        }
-    }
-    val stockUnits = stockByCode.values.sumOf { it.coerceAtLeast(0) }
+    val currentProducts = ProductStorage.getProducts(context)
+    val stockValue = currentProducts.sumOf { it.stockQuantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0) }
+    val stockUnits = currentProducts.sumOf { it.stockQuantity.coerceAtLeast(0) }
 
     // Cash movement is partial until manually entered opening cash/bank balances are reconciled.
     val purchaseDue = supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) }
@@ -368,7 +342,7 @@ private fun DoubleEntryFinancialScreen() {
 
             Text("ব্যবসার সারসংক্ষেপ", style = MaterialTheme.typography.titleLarge)
             SummaryLine("মোট পণ্য ক্রয়", summary.purchaseTotal)
-            SummaryLine("বর্তমান স্টক মূল্য (ক্রয়মূল্যে)", summary.stockValue, "${summary.stockUnits} ইউনিট • নির্বাচিত সময়ের নেট স্টক")
+            SummaryLine("অ্যাপে বর্তমানে থাকা স্টকের মূল্য (ক্রয়মূল্যে)", summary.stockValue, "${summary.stockUnits} ইউনিট • বর্তমান স্টক; পুরোনো তারিখের স্টক-স্ন্যাপশট নেই")
             SummaryLine("মোট বিক্রয় (রিটার্ন বাদে)", summary.salesTotal)
             SummaryLine("বিক্রয় থেকে মোট আদায়", summary.collectionTotal)
             SummaryLine("ক্রেতার কাছে পাওনা", summary.receivable)
