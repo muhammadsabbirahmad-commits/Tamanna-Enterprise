@@ -95,6 +95,7 @@ fun PartnerScreen() {
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingPartner by remember { mutableStateOf<Partner?>(null) }
+    var addingCapitalFor by remember { mutableStateOf<Partner?>(null) }
     var showDistributionDialog by remember { mutableStateOf(false) }
     var withdrawingPartner by remember { mutableStateOf<Partner?>(null) }
     var fromDate by remember { mutableStateOf(partnerDate(29)) }
@@ -183,7 +184,7 @@ fun PartnerScreen() {
                 val loss30 = last30DailyNet.sumOf { (day, net) ->
                     kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
-                PartnerCard(partner, canWrite, profit30, loss30) {
+                PartnerCard(partner, canWrite, profit30, loss30, onAddCapital = { addingCapitalFor = partner }) {
                     if (canWrite) editingPartner = partner
                 }
             }
@@ -291,6 +292,17 @@ fun PartnerScreen() {
         })
     }
 
+    addingCapitalFor?.let { selected ->
+        CapitalContributionDialog(selected, onDismiss = { addingCapitalFor = null }) { amount, date, note ->
+            if (PartnerStorage.addCapitalContribution(context, selected.id, amount, date, note)) {
+                ActivityLogStorage.addAndGetId(context, "পার্টনারের মূলধন জমা", selected.name + " • ৳" + amount + " • " + date)
+                Toast.makeText(context, "মূলধন জমা সংরক্ষণ হয়েছে।", Toast.LENGTH_SHORT).show()
+                refresh++
+                addingCapitalFor = null
+            } else Toast.makeText(context, "মূলধন জমা সংরক্ষণ করা যায়নি।", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     editingPartner?.let { selected ->
         AddEditPartnerDialog(selected, onDismiss = { editingPartner = null }, onSaved = { updated ->
             if (PartnerStorage.updatePartner(context, updated)) {
@@ -349,6 +361,7 @@ fun PartnerCard(
     canWrite: Boolean,
     last30Profit: Double,
     last30Loss: Double,
+    onAddCapital: () -> Unit,
     onClick: () -> Unit
 ) {
     Card(Modifier.fillMaxWidth().clickable(enabled = canWrite, onClick = onClick)) {
@@ -374,7 +387,10 @@ fun PartnerCard(
             Text("বিনিয়োগ / মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
             Text("লাভের হার: %.2f%%".format(Locale.US, partner.profitPercentage), color = MaterialTheme.colorScheme.primary)
             if (partner.note.isNotBlank()) Text("নোট: ${partner.note}", style = MaterialTheme.typography.bodySmall)
-            if (canWrite) Text("সম্পাদনা ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            if (canWrite) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onAddCapital) { Text("＋ মূলধন জমা") }
+                Text("সম্পাদনা ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.CenterVertically))
+            }
         }
     }
 }
@@ -420,6 +436,41 @@ fun AddEditPartnerDialog(
                 TextButton(onClick = onDismiss) { Text("বাতিল") }
             }
         }
+    )
+}
+
+@Composable
+private fun CapitalContributionDialog(
+    partner: Partner,
+    onDismiss: () -> Unit,
+    onSave: (Double, String, String) -> Unit
+) {
+    var amount by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf(partnerDate()) }
+    var note by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(partner.name + " — মূলধন জমা") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }; error = "" }, label = { Text("জমার পরিমাণ (৳)") }, singleLine = true)
+                OutlinedTextField(date, { date = it; error = "" }, label = { Text("জমার তারিখ (YYYY-MM-DD)") }, singleLine = true)
+                OutlinedTextField(note, { note = it }, label = { Text("বিবরণ (ঐচ্ছিক)") }, singleLine = true)
+                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val value = amount.toDoubleOrNull()
+                when {
+                    value == null || !value.isFinite() || value <= 0.0 -> error = "সঠিক জমার পরিমাণ লিখুন।"
+                    !isValidPartnerDate(date) -> error = "সঠিক জমার তারিখ লিখুন।"
+                    else -> onSave(value, date, note)
+                }
+            }) { Text("জমা সংরক্ষণ") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
     )
 }
 

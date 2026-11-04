@@ -12,6 +12,7 @@ on:
       - fix/stable-login-realtime-sync
       - fix/fast-dashboard-startup
       - fix/partner-last-30-days-date-range
+      - feature/double-entry-financial-dashboard
   workflow_dispatch:
 
 permissions:

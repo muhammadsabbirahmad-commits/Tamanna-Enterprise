@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -117,14 +118,6 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                 }
                 Spacer(Modifier.height(10.dp))
                 Text("বিক্রয় হিসাবের তারিখ নির্বাচন", style = MaterialTheme.typography.titleMedium)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = { val d = todaySale(); applyRange(d, d) }) { Text("আজ") }
-                    TextButton(onClick = { val d = daysAgoSale(1); applyRange(d, d) }) { Text("গতকাল") }
-                    TextButton(onClick = { applyRange(daysAgoSale(6), todaySale()) }) { Text("৭ দিন") }
-                    TextButton(onClick = { applyRange(daysAgoSale(29), todaySale()) }) { Text("৩০ দিন") }
-                    TextButton(onClick = { applyRange(monthStartSale(), todaySale()) }) { Text("এই মাস") }
-                    TextButton(onClick = { applyRange("", "") }) { Text("সব") }
-                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = startDate, onValueChange = { startDate = it },
@@ -144,14 +137,17 @@ private fun SalesScreen(onNewSale: () -> Unit) {
 
                 Spacer(Modifier.height(8.dp))
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("বিক্রয়ের সারসংক্ষেপ", style = MaterialTheme.typography.titleMedium)
-                        Text("সময়: " + if (appliedStart.isBlank() && appliedEnd.isBlank()) "সকল তারিখ" else (appliedStart.ifBlank { "শুরু থেকে" } + " — " + appliedEnd.ifBlank { "আজ পর্যন্ত" }))
-                        Text("মোট বিক্রয়: ৳ " + saleMoney(totalSales))
-                        Text("মোট জমা: ৳ " + saleMoney(totalPaid) + "  •  মোট বাকি: ৳ " + saleMoney(totalDue))
-                        Text("মোট রিটার্ন: ৳ " + saleMoney(totalReturned))
-                        Text("বিক্রয়কৃত পণ্যের পরিমাণ: " + totalQuantity)
-                        Text("বিক্রয় ইনভয়েস: " + groups.size + "টি")
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("বিক্রয় সারসংক্ষেপ", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text("বিক্রয়: ৳ " + saleMoney(totalSales), maxLines = 1)
+                        Text("জমা: ৳ " + saleMoney(totalPaid), maxLines = 1)
+                        Text("বাকি: ৳ " + saleMoney(totalDue), maxLines = 1)
+                        Text("রিটার্ন: ৳ " + saleMoney(totalReturned), maxLines = 1)
+                        Text("পণ্য: " + totalQuantity, maxLines = 1)
+                        Text("ইনভয়েস: " + groups.size + "টি", maxLines = 1)
                     }
                 }
                 Spacer(Modifier.height(10.dp))

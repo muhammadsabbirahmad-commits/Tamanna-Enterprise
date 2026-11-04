@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -83,30 +84,11 @@ fun ExpensePane(a: ComponentActivity) {
         .sortedWith(compareByDescending<Expense> { it.date }.thenByDescending { it.id })
     val filteredTotal = filteredExpenses.sumOf { it.amount }
 
-    Column {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text("প্রতিষ্ঠানের দৈনন্দিন/মাসিক খরচ")
         if (!canManage) Text("শুধু Admin খরচ যোগ ও সম্পাদনা করতে পারবেন।", color = MaterialTheme.colorScheme.error)
 
         Text("তারিখ অনুযায়ী খরচ দেখুন", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("আজ", "গতকাল", "৭ দিন", "৩০ দিন", "এই মাস", "সব").forEach { label ->
-                OutlinedButton(onClick = {
-                    val today = todayFinance()
-                    when (label) {
-                        "আজ" -> { startDate = today; endDate = today }
-                        "গতকাল" -> { startDate = financeDate(1); endDate = financeDate(1) }
-                        "৭ দিন" -> { startDate = financeDate(6); endDate = today }
-                        "৩০ দিন" -> { startDate = financeDate(29); endDate = today }
-                        "এই মাস" -> { startDate = financeMonthStart(); endDate = today }
-                        else -> { startDate = "0001-01-01"; endDate = today }
-                    }
-                    if (validFinanceDate(startDate) && validFinanceDate(endDate)) {
-                        appliedStart = startDate
-                        appliedEnd = endDate
-                    }
-                }) { Text(label) }
-            }
-        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(startDate, { startDate = it }, label = { Text("শুরু (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
             OutlinedTextField(endDate, { endDate = it }, label = { Text("শেষ (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -125,8 +107,14 @@ fun ExpensePane(a: ComponentActivity) {
             enabled = validRange,
             modifier = Modifier.fillMaxWidth()
         ) { Text("তারিখ অনুযায়ী হিসাব রিফ্রেশ করুন") }
-        Text("নির্বাচিত সময়: $appliedStart থেকে $appliedEnd")
-        Text("মোট খরচ: ৳ %.2f  •  এন্ট্রি: %d".format(Locale.US, filteredTotal, filteredExpenses.size))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("খরচের সারসংক্ষেপ", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Text("মোট: ৳ %.2f".format(Locale.US, filteredTotal), maxLines = 1)
+            Text("এন্ট্রি: ${filteredExpenses.size}টি", maxLines = 1)
+        }
 
         HorizontalDivider()
         Text("নতুন খরচ যোগ করুন", style = MaterialTheme.typography.titleMedium)
@@ -159,8 +147,8 @@ fun ExpensePane(a: ComponentActivity) {
         HorizontalDivider()
         Text("খরচের তালিকা", style = MaterialTheme.typography.titleMedium)
         if (filteredExpenses.isEmpty()) Text("নির্বাচিত তারিখে কোনো খরচ পাওয়া যায়নি।")
-        LazyColumn(Modifier.weight(1f, fill = false)) {
-            items(filteredExpenses, key = { it.id }) { expense ->
+        Column {
+            filteredExpenses.forEach { expense ->
                 Row(
                     Modifier.fillMaxWidth().padding(vertical = 7.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
