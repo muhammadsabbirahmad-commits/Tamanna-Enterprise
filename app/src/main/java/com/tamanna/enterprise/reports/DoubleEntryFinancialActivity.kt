@@ -27,7 +27,8 @@ import com.tamanna.enterprise.sales.SalesTransactionStorage
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-private const val LEDGER_START_DATE = "2026-10-20"
+private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
+private fun monthStartIso(): String = todayIso().take(8) + "01"
 
 class DoubleEntryFinancialActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,16 +80,17 @@ private fun validLedgerDate(value: String): Boolean = runCatching {
 
 private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,.2f", value)
 
-private fun buildLedger(context: android.content.Context): LedgerSummary {
-    val purchases = PurchaseStorage.getPurchases(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
-    val sales = SalesStorage.getSales(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
+private fun buildLedger(context: android.content.Context, fromDate: String, toDate: String): LedgerSummary {
+    val inRange: (String) -> Boolean = { dateKey(it) >= fromDate && dateKey(it) <= toDate }
+    val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
+    val sales = SalesStorage.getSales(context).filter { inRange(it.date) }
     val transactions = SalesTransactionStorage.getTransactions(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val expenses = ExpenseStorage.getExpenses(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val damages = ExpenseStorage.getDamages(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val supplierEntries = SupplierDueStorage.getEntries(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val customerEntries = CustomerDueStorage.getEntries(context).filter { dateKey(it.date) >= LEDGER_START_DATE }
     val periodTransactionIds = transactions.map { it.transactionId }.toSet()
-    val returns = SaleReturnStorage.getReturns(context).filter { dateKey(it.date) >= LEDGER_START_DATE && it.transactionId in periodTransactionIds }
+    val returns = SaleReturnStorage.getReturns(context).filter { inRange(it.date) && it.transactionId in periodTransactionIds }
     val returnLines = SaleReturnStorage.getLines(context).filter { line ->
         returns.any { it.returnId == line.returnId }
     }
@@ -96,6 +98,12 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
 
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
+
+    capitalContributions.forEach { contribution ->
+        val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name ?: "পুরোনো/মুছে ফেলা পার্টনার"
+        rows += LedgerRow(contribution.date, "পার্টনার মূলধন জমা • $partnerName", "নগদ/ব্যাংক", "পার্টনার মূলধন", contribution.amount, contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else "")
+        if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
+    }
 
     // Allocate supplier credit notes proportionally to purchases made for that supplier on the same day.
     val purchaseGroups = purchases.groupBy { dateKey(it.date) + "|" + it.supplier.trim().lowercase(Locale.ROOT) }
@@ -262,7 +270,7 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
     val currentProducts = ProductStorage.getProducts(context).associateBy { it.code.lowercase(Locale.ROOT) }
     val stockValue = stockByCode.entries.sumOf { (code, quantity) ->
         if (quantity < 0) {
-            stockWarnings += "$code: ২০ অক্টোবরের পরের ক্রয় দিয়ে বিক্রয়/ক্ষতি পূরণ হচ্ছে না ($quantity ইউনিট)।"
+            stockWarnings += "$code: নির্বাচিত সময়ের ক্রয় দিয়ে বিক্রয়/ক্ষতি পূরণ হচ্ছে না ($quantity ইউনিট)।"
             0.0
         } else {
             val unitCost = currentProducts[code.lowercase(Locale.ROOT)]?.purchasePrice
@@ -275,7 +283,7 @@ private fun buildLedger(context: android.content.Context): LedgerSummary {
     }
     val stockUnits = stockByCode.values.sumOf { it.coerceAtLeast(0) }
 
-    // Cash movement is a partial ledger only: dated partner-capital deposits and opening cash are not stored.
+    // Cash movement is partial until manually entered opening cash/bank balances are reconciled.
     val purchaseDue = supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val cashIn = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
         customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
@@ -297,7 +305,10 @@ private fun DoubleEntryFinancialScreen() {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
     var selectedSide by remember { mutableStateOf<String?>(null) }
-    val summary = remember(refresh) { buildLedger(context) }
+    var fromDate by remember { mutableStateOf(monthStartIso()) }
+    var toDate by remember { mutableStateOf(todayIso()) }
+    val validRange = validLedgerDate(fromDate) && validLedgerDate(toDate) && fromDate <= toDate
+    val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
     val totalDebit = summary.rows.sumOf { it.amount }
     val totalCredit = summary.rows.sumOf { it.amount }
     val debitRows = summary.rows
@@ -318,8 +329,13 @@ private fun DoubleEntryFinancialScreen() {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("হিসাবের সময়কাল: ২০ অক্টোবর ২০২৬ থেকে", style = MaterialTheme.typography.titleMedium)
-            Text("২০ অক্টোবরের আগের কোনো স্টক বা লেনদেন এই রিপোর্টে যোগ হয়নি।", style = MaterialTheme.typography.bodySmall)
+            Text("হিসাবের সময়সীমা নির্বাচন", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("শুরুর তারিখ") }, placeholder = { Text("YYYY-MM-DD") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(toDate, { toDate = it }, label = { Text("শেষ তারিখ") }, placeholder = { Text("YYYY-MM-DD") }, singleLine = true, modifier = Modifier.weight(1f))
+            }
+            if (!validRange) Text("সঠিক তারিখের পরিসর দিন (YYYY-MM-DD)।", color = MaterialTheme.colorScheme.error)
+            Text("নির্বাচিত সময়: $fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 LedgerTotalCard("মোট ডেবিট", totalDebit, "বিস্তারিত দেখুন") { selectedSide = "ডেবিট" }
@@ -350,10 +366,10 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("নথিভুক্ত নগদ এসেছে", summary.cashIn)
             SummaryLine("নথিভুক্ত নগদ গেছে", summary.cashOut)
             SummaryLine("নথিভুক্ত নিট নগদ", summary.cashIn - summary.cashOut)
-            Text("এটি হাতে থাকা প্রকৃত নগদ নয়। ২০ অক্টোবরের আগের নগদ ও তারিখসহ পার্টনার মূলধন জমার রেকর্ড না থাকায় প্রকৃত ক্যাশ ব্যালেন্স নিশ্চিত করা যাচ্ছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text("এটি নথিভুক্ত লেনদেনের নগদ প্রবাহ। প্রারম্ভিক ক্যাশ/ব্যাংক ব্যালেন্স যোগ না করা পর্যন্ত হাতে থাকা প্রকৃত ক্যাশ নিশ্চিত হবে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 
             Text("পার্টনারদের মূলধন", style = MaterialTheme.typography.titleLarge)
-            SummaryLine("পার্টনারদের মোট জমাকৃত মূলধন", summary.totalCapital, "বর্তমানে পার্টনারদের হিসাবে থাকা মোট বিনিয়োগ; সময়কাল-নির্ভর ডেবিট–ক্রেডিট যোগফলের বাইরে দেখানো")
+            SummaryLine("পার্টনারদের মোট জমাকৃত মূলধন", summary.totalCapital, "বর্তমান মোট মূলধন; নির্বাচিত সময়ে জমা হওয়া মূলধন ডেবিট–ক্রেডিট তালিকায় আলাদাভাবে আছে")
 
             if (summary.stockWarnings.isNotEmpty()) {
                 Text("স্টক যাচাইয়ের সতর্কতা", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
