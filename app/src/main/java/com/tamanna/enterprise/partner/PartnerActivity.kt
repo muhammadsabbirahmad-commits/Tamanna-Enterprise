@@ -262,7 +262,7 @@ fun PartnerScreen() {
                                 Text("অবশিষ্ট নিট পাওনা / (ঘাটতি): ৳ %.2f".format(Locale.US, availableBalance),
                                     style = MaterialTheme.typography.titleMedium,
                                     color = if (availableBalance < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                if (canWrite) OutlinedButton(onClick = { withdrawingPartner = partner }, enabled = availableBalance > 0.0) { Text("লভ্যাংশ উত্তোলন") }
+                                OutlinedButton(onClick = { withdrawingPartner = partner }, enabled = canWrite && availableBalance > 0.0) { Text("লভ্যাংশ উত্তোলন") }
                             }
                         }
                     }
