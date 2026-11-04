@@ -14,9 +14,11 @@ class MainActivity : ComponentActivity() {
         SecurityStorage.ensureInitialized(this)
         
         // যদি লগইন করা থাকে তবে সরাসরি ড্যাশবোর্ডে যাবে, নাহলে লগইন স্ক্রিনে
-        val localSession = SecurityStorage.isLoggedIn(this)
-        val firebaseSession = FirebaseAuth.getInstance().currentUser != null
-        if (localSession && firebaseSession) {
+        val localUser = SecurityStorage.getCurrentUser(this)
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        // Never open one Gmail's locally cached business data under a different Firebase UID.
+        val matchingSession = localUser != null && firebaseUser != null && localUser.id == firebaseUser.uid
+        if (matchingSession) {
             startActivity(Intent(this, DashboardActivity::class.java))
         } else {
             // Do not clear the saved app session while Firebase restores its persisted Gmail session.
