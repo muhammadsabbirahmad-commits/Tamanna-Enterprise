@@ -84,7 +84,7 @@ object PartnerStorage {
         list.add(0, partner)
         val saved = savePartners(context, list)
         if (!saved) return false
-        if (partner.shareAmount > 0.0) addCapitalContribution(context, partner.id, partner.shareAmount, todayDate(), "প্রাথমিক মূলধন জমা")
+        if (partner.shareAmount > 0.0) recordCapitalContribution(context, partner.id, partner.shareAmount, todayDate(), "প্রাথমিক মূলধন জমা")
         return true
     }
 
@@ -102,7 +102,7 @@ object PartnerStorage {
         val saved = savePartners(context, updated)
         if (!saved) return false
         val addedCapital = partner.shareAmount - previous.shareAmount
-        if (addedCapital > 0.004) addCapitalContribution(context, partner.id, addedCapital, todayDate(), "পার্টনারের অতিরিক্ত মূলধন")
+        if (addedCapital > 0.004) recordCapitalContribution(context, partner.id, addedCapital, todayDate(), "পার্টনারের অতিরিক্ত মূলধন")
         return true
     }
 
@@ -212,16 +212,20 @@ object PartnerStorage {
     fun addCapitalContribution(context: Context, partnerId: Long, amount: Double, date: String, note: String = ""): Boolean {
         if (getPartners(context).none { it.id == partnerId }) return false
         if (!amount.isFinite() || amount <= 0.0 || !isValidDate(date)) return false
-        val current = getCapitalContributions(context)
-        val contribution = PartnerCapitalContribution(
-            java.util.UUID.randomUUID().toString(), partnerId, amount, date, note.trim()
-        )
-        val saved = saveCapitalContributions(context, current + contribution)
-        if (!saved) return false
+        if (!recordCapitalContribution(context, partnerId, amount, date, note)) return false
         val updatedPartners = getPartners(context).map { partner ->
             if (partner.id == partnerId) partner.copy(shareAmount = partner.shareAmount + amount, updatedAt = System.currentTimeMillis()) else partner
         }
         return savePartners(context, updatedPartners)
+    }
+
+    private fun recordCapitalContribution(context: Context, partnerId: Long, amount: Double, date: String, note: String): Boolean {
+        if (!amount.isFinite() || amount <= 0.0 || !isValidDate(date)) return false
+        val current = getCapitalContributions(context)
+        val contribution = PartnerCapitalContribution(
+            java.util.UUID.randomUUID().toString(), partnerId, amount, date, note.trim()
+        )
+        return saveCapitalContributions(context, current + contribution)
     }
 
     private fun saveCapitalContributions(context: Context, items: List<PartnerCapitalContribution>): Boolean = runCatching {
