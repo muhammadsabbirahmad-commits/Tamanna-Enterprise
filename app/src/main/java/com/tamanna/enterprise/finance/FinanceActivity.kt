@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -83,7 +84,7 @@ fun ExpensePane(a: ComponentActivity) {
         .sortedWith(compareByDescending<Expense> { it.date }.thenByDescending { it.id })
     val filteredTotal = filteredExpenses.sumOf { it.amount }
 
-    Column {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text("প্রতিষ্ঠানের দৈনন্দিন/মাসিক খরচ")
         if (!canManage) Text("শুধু Admin খরচ যোগ ও সম্পাদনা করতে পারবেন।", color = MaterialTheme.colorScheme.error)
 
@@ -159,8 +160,8 @@ fun ExpensePane(a: ComponentActivity) {
         HorizontalDivider()
         Text("খরচের তালিকা", style = MaterialTheme.typography.titleMedium)
         if (filteredExpenses.isEmpty()) Text("নির্বাচিত তারিখে কোনো খরচ পাওয়া যায়নি।")
-        LazyColumn(Modifier.weight(1f, fill = false)) {
-            items(filteredExpenses, key = { it.id }) { expense ->
+        Column {
+            filteredExpenses.forEach { expense ->
                 Row(
                     Modifier.fillMaxWidth().padding(vertical = 7.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
