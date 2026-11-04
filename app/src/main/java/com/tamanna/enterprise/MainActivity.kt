@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
         if (localSession && firebaseSession) {
             startActivity(Intent(this, DashboardActivity::class.java))
         } else {
-            if (localSession && !firebaseSession) SecurityStorage.logout(this)
+            // Do not clear the saved app session while Firebase restores its persisted Gmail session.
             startActivity(Intent(this, LoginActivity::class.java))
         }
         finish()
