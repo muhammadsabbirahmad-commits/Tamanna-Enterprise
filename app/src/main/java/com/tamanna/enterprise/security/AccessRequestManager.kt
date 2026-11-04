@@ -34,7 +34,7 @@ object AccessRequestManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
-    private fun hasCachedApproval(uid: String, email: String): Boolean {
+    fun hasCachedApproval(uid: String, email: String): Boolean {
         val context = FirebaseApp.getInstance().applicationContext
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val cachedUid = prefs.getString(KEY_UID, "").orEmpty()
