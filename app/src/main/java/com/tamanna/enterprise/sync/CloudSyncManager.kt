@@ -303,6 +303,17 @@ object CloudSyncManager {
                             editor.apply()
                             localMap.clear()
                             localMap.putAll(merged)
+                        } else {
+                            // Keep cloud-only preference keys for every namespace.
+                            // Previously these were dropped whenever a device pushed
+                            // its local snapshot, even if that device never had those keys.
+                            val merged = LinkedHashMap<String, Any>()
+                            cloudByNamespace[ns].orEmpty().forEach { (key, value) ->
+                                if (key is String && value != null) merged[key] = value
+                            }
+                            merged.putAll(localMap)
+                            localMap.clear()
+                            localMap.putAll(merged)
                         }
 
                         val nsRef = metaRef.collection("backupData").document(ns)
