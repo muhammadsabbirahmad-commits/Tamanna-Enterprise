@@ -215,16 +215,24 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 val key = replacementProduct.code.trim().lowercase(Locale.ROOT)
                                 stockDeltas[key] = (stockDeltas[key] ?: 0) - replacementQty
                             }
+                            val missingStockCode = stockDeltas.keys.firstOrNull { code ->
+                                latestProducts.none { it.code.equals(code, true) }
+                            }
+                            if (missingStockCode != null) {
+                                message = "পণ্য পাওয়া যায়নি: $missingStockCode"
+                                return@Button
+                            }
                             val currentProducts = stockDeltas.mapValues { (code, _) ->
-                                latestProducts.firstOrNull { it.code.equals(code, true) }
-                                    ?: error("পণ্য পাওয়া যায়নি: $code")
+                                latestProducts.first { it.code.equals(code, true) }
                             }
                             val itemStocks = currentProducts.values.associate { it.code to it.stockQuantity }
-                            currentProducts.forEach { (code, product) ->
-                                val delta = stockDeltas[code] ?: 0
-                                if (product.stockQuantity + delta < 0 ||
-                                    product.stockQuantity + delta > Int.MAX_VALUE
-                                ) error("স্টক অপর্যাপ্ত বা সীমা অতিক্রম করছে: " + product.name)
+                            val stockProblem = currentProducts.entries.firstOrNull { (code, product) ->
+                                val newStock = product.stockQuantity + (stockDeltas[code] ?: 0)
+                                newStock < 0 || newStock > Int.MAX_VALUE
+                            }
+                            if (stockProblem != null) {
+                                message = "স্টক অপর্যাপ্ত বা সীমা অতিক্রম করছে: " + stockProblem.value.name
+                                return@Button
                             }
                             var paymentId = 0L
                             var extraDueId = 0L
