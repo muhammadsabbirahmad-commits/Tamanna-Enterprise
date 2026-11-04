@@ -11,6 +11,7 @@ object ExpenseStorage{
  private fun s(c:Context,k:String,a:JSONArray)=BusinessStorage.prefs(c, P).edit().putString(k,a.toString()).apply()
  fun getExpenses(c:Context)=buildList{val a=a(c,E);for(i in 0 until a.length()){val o=a.getJSONObject(i);add(Expense(o.optLong("id"),o.optString("date"),o.optString("category"),o.optDouble("amount"),o.optString("note")))}}
  fun addExpense(c:Context,x:Expense){val a=a(c,E);a.put(JSONObject().apply{put("id",x.id);put("date",x.date);put("category",x.category);put("amount",x.amount);put("note",x.note)});s(c,E,a)}
+ fun updateExpense(c:Context,x:Expense):Boolean{val a=a(c,E);var found=false;for(i in 0 until a.length()){val old=a.optJSONObject(i)?:continue;if(old.optLong("id")==x.id){a.put(i,JSONObject().apply{put("id",x.id);put("date",x.date);put("category",x.category);put("amount",x.amount);put("note",x.note)});found=true;break}};if(found)s(c,E,a);return found}
  fun getDamages(c:Context)=buildList{val a=a(c,D);for(i in 0 until a.length()){val o=a.getJSONObject(i);add(DamageRecord(o.optLong("id"),o.optString("date"),o.optString("productCode"),o.optString("productName"),o.optInt("quantity"),o.optDouble("unitCost"),o.optString("reason")))}}
  fun addDamage(c:Context,x:DamageRecord){val a=a(c,D);a.put(JSONObject().apply{put("id",x.id);put("date",x.date);put("productCode",x.productCode);put("productName",x.productName);put("quantity",x.quantity);put("unitCost",x.unitCost);put("reason",x.reason)});s(c,D,a)}
 }
