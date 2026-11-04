@@ -64,13 +64,13 @@ class LoginActivity : ComponentActivity() {
                                 }
                                 success?.invoke()
                             } else {
-                                auth.signOut()
+                                // Keep Firebase identity on provisioning/network errors; the server gate still blocks app access.
                                 failure?.invoke(accountMessage)
                             }
                             clear()
                         }
                     } else {
-                        auth.signOut()
+                        // A failed status lookup is not proof of revocation. Keep Gmail signed in for retry.
                         failure?.invoke(message)
                         clear()
                     }
@@ -78,6 +78,42 @@ class LoginActivity : ComponentActivity() {
             }
         } catch (e: ApiException) { failure?.invoke("Google লগইন ব্যর্থ হয়েছে। Status code: ${e.statusCode}"); clear() }
         catch (e: Exception) { failure?.invoke(e.localizedMessage ?: "Google লগইনে সমস্যা হয়েছে।"); clear() }
+    }
+
+    private fun resumeExistingSession(onResult: (Boolean, String) -> Unit) {
+        val user = auth.currentUser
+        val email = user?.email?.trim()?.lowercase().orEmpty()
+        if (user == null || email.isBlank()) {
+            onResult(false, "আগের Gmail সেশন পাওয়া যায়নি।")
+            return
+        }
+
+        CloudSyncManager.stopRealtimeSync()
+        CloudSyncManager.stopAutoSync()
+        AccessRequestManager.requestOrCheck { approved, message, record ->
+            if (!approved || record == null) {
+                // Keep the Firebase identity on pending or temporary server errors.
+                onResult(false, message)
+                return@requestOrCheck
+            }
+            BusinessAccountStorage.activateForUser(this, user.uid, email) { ready, accountMessage ->
+                if (!ready) {
+                    onResult(false, accountMessage)
+                    return@activateForUser
+                }
+                SecurityStorage.upsertGoogleUser(
+                    this,
+                    record.email,
+                    SecurityStorage.ROLE_ADMIN,
+                    true,
+                    record.uid
+                )
+                SecurityStorage.findByGoogleEmail(this, record.email)?.let {
+                    SecurityStorage.login(this, it)
+                }
+                onResult(true, "")
+            }
+        }
     }
 
     private fun clear() { success = null; failure = null }
@@ -96,6 +132,58 @@ class LoginActivity : ComponentActivity() {
         setContent {
             var message by remember { mutableStateOf("") }
             var loading by remember { mutableStateOf(false) }
+
+            // If Firebase already has a Gmail session, recover the app session
+            // automatically instead of showing a misleading fresh-login screen.
+            LaunchedEffect(Unit) {
+                loading = true
+                val continueWithApprovedSession: () -> Unit = {
+                    resumeExistingSession { ok, resumeMessage ->
+                        if (ok) {
+                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { _, _ ->
+                                loading = false
+                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                startActivity(intent)
+                                finish()
+                            }
+                        } else {
+                            loading = false
+                            message = resumeMessage
+                        }
+                    }
+                }
+
+                if (auth.currentUser != null) {
+                    continueWithApprovedSession()
+                } else {
+                    // Firebase session may have been lost while Google Sign-In is
+                    // still available on the device. Restore it silently where possible.
+                    val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(getString(com.tamanna.enterprise.R.string.default_web_client_id))
+                        .requestEmail()
+                        .build()
+                    GoogleSignIn.getClient(this@LoginActivity, options).silentSignIn()
+                        .addOnCompleteListener(this@LoginActivity) { task ->
+                            val account = if (task.isSuccessful) task.result else null
+                            val token = account?.idToken
+                            if (token.isNullOrBlank()) {
+                                loading = false
+                                message = "আগের Gmail সেশন স্বয়ংক্রিয়ভাবে ফিরিয়ে আনা যায়নি। Gmail দিয়ে Login করুন।"
+                            } else {
+                                auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
+                                    .addOnCompleteListener(this@LoginActivity) { authTask ->
+                                        if (authTask.isSuccessful) continueWithApprovedSession()
+                                        else {
+                                            loading = false
+                                            message = "Gmail সেশন পুনরুদ্ধার করা যায়নি। আবার Login করুন।"
+                                        }
+                                    }
+                            }
+                        }
+                }
+            }
+
             MaterialTheme { Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
                     Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)

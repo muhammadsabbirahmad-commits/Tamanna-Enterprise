@@ -9,6 +9,7 @@ on:
       - feat/partner-profit-loss-allocation
       - feat/full-firestore-sync
       - fix/per-gmail-private-business-data
+      - fix/stable-login-realtime-sync
   workflow_dispatch:
 
 permissions:
