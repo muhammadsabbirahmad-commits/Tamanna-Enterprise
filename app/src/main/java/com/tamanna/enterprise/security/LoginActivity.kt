@@ -80,6 +80,42 @@ class LoginActivity : ComponentActivity() {
         catch (e: Exception) { failure?.invoke(e.localizedMessage ?: "Google লগইনে সমস্যা হয়েছে।"); clear() }
     }
 
+    private fun resumeExistingSession(onResult: (Boolean, String) -> Unit) {
+        val user = auth.currentUser
+        val email = user?.email?.trim()?.lowercase().orEmpty()
+        if (user == null || email.isBlank()) {
+            onResult(false, "আগের Gmail সেশন পাওয়া যায়নি।")
+            return
+        }
+
+        CloudSyncManager.stopRealtimeSync()
+        CloudSyncManager.stopAutoSync()
+        AccessRequestManager.requestOrCheck { approved, message, record ->
+            if (!approved || record == null) {
+                // Keep the Firebase identity on pending or temporary server errors.
+                onResult(false, message)
+                return@requestOrCheck
+            }
+            BusinessAccountStorage.activateForUser(this, user.uid, email) { ready, accountMessage ->
+                if (!ready) {
+                    onResult(false, accountMessage)
+                    return@activateForUser
+                }
+                SecurityStorage.upsertGoogleUser(
+                    this,
+                    record.email,
+                    SecurityStorage.ROLE_ADMIN,
+                    true,
+                    record.uid
+                )
+                SecurityStorage.findByGoogleEmail(this, record.email)?.let {
+                    SecurityStorage.login(this, it)
+                }
+                onResult(true, "")
+            }
+        }
+    }
+
     private fun clear() { success = null; failure = null }
 
     private fun startLogin() {
@@ -96,6 +132,29 @@ class LoginActivity : ComponentActivity() {
         setContent {
             var message by remember { mutableStateOf("") }
             var loading by remember { mutableStateOf(false) }
+
+            // If Firebase already has a Gmail session, recover the app session
+            // automatically instead of showing a misleading fresh-login screen.
+            LaunchedEffect(Unit) {
+                if (auth.currentUser != null) {
+                    loading = true
+                    resumeExistingSession { ok, resumeMessage ->
+                        if (ok) {
+                            CloudSyncManager.smartSync(this@LoginActivity, isAuto = false) { _, _ ->
+                                loading = false
+                                val intent = Intent(this@LoginActivity, DashboardActivity::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                startActivity(intent)
+                                finish()
+                            }
+                        } else {
+                            loading = false
+                            message = resumeMessage
+                        }
+                    }
+                }
+            }
+
             MaterialTheme { Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
                     Text("Tamanna Enterprise", style = MaterialTheme.typography.headlineMedium)
