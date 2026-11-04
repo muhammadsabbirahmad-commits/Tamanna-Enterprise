@@ -50,6 +50,7 @@ object PartnerStorage {
     private const val KEY_RATE_HISTORY = "partner_profit_rate_history"
     private const val KEY_WITHDRAWALS = "partner_profit_withdrawals"
     private const val KEY_CAPITAL_CONTRIBUTIONS = "partner_capital_contributions"
+    private const val KEY_CAPITALIZED_PROFIT_PERIODS = "partner_capitalized_profit_periods"
 
     private fun prefs(context: Context) = BusinessStorage.prefs(context, PREFS)
 
@@ -183,6 +184,62 @@ object PartnerStorage {
         return getPartners(context).firstOrNull { it.id == partnerId }?.profitPercentage ?: 0.0
     }
 
+
+
+    fun isProfitPeriodCapitalized(context: Context, fromDate: String, toDate: String): Boolean {
+        val periodId = "$fromDate..$toDate"
+        val raw = prefs(context).getString(KEY_CAPITALIZED_PROFIT_PERIODS, "[]") ?: "[]"
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).any { array.optJSONObject(it)?.optString("id") == periodId }
+        }.getOrDefault(false)
+    }
+
+    /** Adds retained profit to partner capital without changing cash/bank balances. */
+    fun capitalizeRemainingProfit(context: Context, fromDate: String, toDate: String, amount: Double): Boolean {
+        if (!isValidDate(fromDate) || !isValidDate(toDate) || fromDate > toDate) return false
+        if (!amount.isFinite() || amount <= 0.004) return false
+        val periodId = "$fromDate..$toDate"
+        val currentPrefs = prefs(context)
+        val oldPeriods = runCatching {
+            JSONArray(currentPrefs.getString(KEY_CAPITALIZED_PROFIT_PERIODS, "[]") ?: "[]")
+        }.getOrDefault(JSONArray())
+        if ((0 until oldPeriods.length()).any { oldPeriods.optJSONObject(it)?.optString("id") == periodId }) return false
+
+        val partners = getPartners(context)
+        if (partners.isEmpty()) return false
+        val rates = partners.associate { it.id to getPercentageForDate(context, it.id, toDate) }
+        if (rates.values.any { !it.isFinite() || it < 0.0 || it > 100.0 }) return false
+        if (kotlin.math.abs(rates.values.sum() - 100.0) > 0.0001) return false
+
+        val now = System.currentTimeMillis()
+        var allocated = 0.0
+        val contributions = getCapitalContributions(context).toMutableList()
+        val updatedPartners = partners.mapIndexed { index, item ->
+            val share = if (index == partners.lastIndex) (amount - allocated).coerceAtLeast(0.0)
+                else kotlin.math.round(amount * (rates[item.id] ?: 0.0) / 100.0 * 100.0) / 100.0
+            allocated += share
+            if (share > 0.004) contributions += PartnerCapitalContribution(
+                id = java.util.UUID.randomUUID().toString(), partnerId = item.id,
+                amount = share, date = toDate,
+                note = "অবণ্টিত লভ্যাংশ মূলধনে যোগ • $fromDate থেকে $toDate",
+                createdAt = now
+            )
+            item.copy(shareAmount = item.shareAmount + share, updatedAt = now)
+        }
+        val newPeriods = JSONArray(oldPeriods.toString()).apply {
+            put(JSONObject().put("id", periodId).put("amount", amount)
+                .put("date", toDate).put("fromDate", fromDate).put("toDate", toDate)
+                .put("createdAt", now).put("updatedAt", now))
+        }
+        return runCatching {
+            currentPrefs.edit()
+                .putString(KEY_CAPITAL_CONTRIBUTIONS, capitalArray(contributions).toString())
+                .putString(KEY_PARTNERS, partnerArray(updatedPartners).toString())
+                .putString(KEY_CAPITALIZED_PROFIT_PERIODS, newPeriods.toString())
+                .commit()
+        }.getOrDefault(false)
+    }
 
     fun getCapitalContributions(context: Context): List<PartnerCapitalContribution> {
         val raw = prefs(context).getString(KEY_CAPITAL_CONTRIBUTIONS, null)
