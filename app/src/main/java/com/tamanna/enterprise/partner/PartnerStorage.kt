@@ -77,6 +77,7 @@ object PartnerStorage {
     }
 
     fun addPartner(context: Context, partner: Partner): Boolean {
+        getCapitalContributions(context) // Migrate any existing partners before adding this new one.
         if (partner.name.isBlank() || partner.shareAmount < 0 || partner.profitPercentage != 0.0) return false
         val list = getPartners(context).toMutableList()
         if (list.any { it.id == partner.id }) return false
@@ -89,6 +90,7 @@ object PartnerStorage {
     }
 
     fun updatePartner(context: Context, partner: Partner): Boolean {
+        getCapitalContributions(context) // Preserve the old capital baseline before calculating an increase.
         if (partner.name.isBlank() || partner.shareAmount < 0) return false
         val list = getPartners(context)
         if (list.none { it.id == partner.id }) return false
@@ -190,7 +192,7 @@ object PartnerStorage {
                     createdAt = partner.id, approximateDate = true
                 )
             }
-            if (legacy.isNotEmpty()) saveCapitalContributions(context, legacy)
+            saveCapitalContributions(context, legacy)
             return legacy
         }
         return runCatching {
