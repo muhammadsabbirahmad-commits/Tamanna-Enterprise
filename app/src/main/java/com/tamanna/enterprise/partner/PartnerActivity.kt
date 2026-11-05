@@ -110,11 +110,6 @@ fun PartnerScreen() {
     val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
         if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
-    val last30FromDate = partnerDate(29)
-    val last30ToDate = partnerDate()
-    val last30DailyNet = remember(refresh, last30FromDate, last30ToDate, allDailyNet) {
-        partnerDateRange(last30FromDate, last30ToDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
-    }
     val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
         if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
     }
@@ -266,8 +261,6 @@ fun PartnerScreen() {
                 }
                 if (!distributionValid) {
                     Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ-লোকসান বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন.", color = MaterialTheme.colorScheme.error)
-                } else {
-
                 }
                 Text("দৈনিক লাভ / লোকসান", style = MaterialTheme.typography.titleMedium)
                 dailyNet.asReversed().forEach { (day, net) ->
