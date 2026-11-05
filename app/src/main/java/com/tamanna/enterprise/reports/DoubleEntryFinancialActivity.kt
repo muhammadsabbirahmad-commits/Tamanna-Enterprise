@@ -406,7 +406,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             }
             if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "এক্সচেঞ্জ • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "এক্সচেঞ্জ: ${exchange.exchangeId}")
             if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "এক্সচেঞ্জ • পুরোনো বাকি সমন্বয়", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "এক্সচেঞ্জ: ${exchange.exchangeId}")
-            if (kotlin.math.abs(ret.amount - replacementValue - refunded - dueReduction) > 0.02) {
+            if (kotlin.math.abs(ret.amount + extraDue - replacementValue - refunded - dueReduction) > 0.02) {
                 warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: ফেরত মূল্য, নতুন পণ্য ও নিট সমন্বয়ের অঙ্ক মেলেনি।"
             }
         }
@@ -464,8 +464,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
     val salesTotal = transactions.sumOf { it.total.coerceAtLeast(0.0) } -
-        returns.filter { ret -> exchanges.none { it.returnId == ret.returnId } }.sumOf { it.amount.coerceAtLeast(0.0) } +
-        exchanges.sumOf { (it.quantity.coerceAtLeast(0) * it.unitPrice.coerceAtLeast(0.0)) }
+        returns.sumOf { it.amount.coerceAtLeast(0.0) } +
+        exchanges.sumOf { it.quantity.coerceAtLeast(0) * it.unitPrice.coerceAtLeast(0.0) }
     // Return due-reductions are mirrored in the customer sub-ledger as PAYMENT
     // records, but they are not cash collections. Count only actual receipts.
     val actualCustomerCollections = customerEntries.filter {
@@ -499,12 +499,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.debitAmount })
     checkSource("পণ্য ক্রয়", purchaseTotal,
         rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.debitAmount })
-    checkSource("বিক্রয় ইনভয়েস", transactions.sumOf { it.total.coerceAtLeast(0.0) },
+    checkSource("বিক্রয় ইনভয়েস ও এক্সচেঞ্জ", transactions.sumOf { it.total.coerceAtLeast(0.0) } +
+        exchanges.sumOf { it.quantity.coerceAtLeast(0) * it.unitPrice.coerceAtLeast(0.0) },
         rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.creditAmount })
     checkSource("বিক্রয় ফেরত", returns.sumOf { it.amount.coerceAtLeast(0.0) },
         rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.debitAmount })
-    checkSource("বিক্রিত পণ্যের ক্রয়মূল্য", grossCogs,
-        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.debitAmount })
+    checkSource("বিক্রিত ও এক্সচেঞ্জ পণ্যের ক্রয়মূল্য", grossCogs,
+        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") ||
+            it.description.startsWith("এক্সচেঞ্জ • বিকল্প পণ্যের ক্রয়মূল্য •") }.sumOf { it.debitAmount })
     checkSource("ফেরত পণ্যের ক্রয়মূল্য", returnedCost,
         rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীর কাছে ক্রয়-বাকি", supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) },
@@ -555,8 +557,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.debitAmount })
     }
 
-    // Profit, partner distribution and the profit screen all use the same calculation engine.
-    val netProfit = sharedProfitReport.netProfit
+    // The shared profit engine covers original sales/returns; add the replacement sale margin here.
+    val exchangeNetProfit = exchanges.sumOf { exchange ->
+        val replacementRevenue = exchange.quantity.coerceAtLeast(0) * exchange.unitPrice.coerceAtLeast(0.0)
+        val replacementCost = exchangeProducts.firstOrNull { it.code.equals(exchange.productCode, true) }
+            ?.let { exchange.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0) } ?: 0.0
+        replacementRevenue - replacementCost
+    }
+    val netProfit = sharedProfitReport.netProfit + exchangeNetProfit
 
     // Current stock is read from the live product inventory, not reconstructed from only the selected period.
     // Historical stock snapshots are not stored by the app, so this value is explicitly labelled as current.
