@@ -104,50 +104,68 @@ private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,
 
 
 
+
 private data class DailyBalanceEntry(
     val id: String, val date: String, val account: String,
     val mode: String, val amount: Double, val note: String = "",
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(), val deleted: Boolean = false
 )
 
 private object DailyBalanceStorage {
     private const val PREFS = "tamanna_daily_manual_balances"
     private const val KEY = "entries"
-    fun get(context: android.content.Context): List<DailyBalanceEntry> = runCatching {
+
+    private fun readAll(context: android.content.Context): List<DailyBalanceEntry> = runCatching {
         val raw = BusinessStorage.prefs(context, PREFS).getString(KEY, "[]") ?: "[]"
         val array = JSONArray(raw)
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
-                add(DailyBalanceEntry(item.optString("id"), item.optString("date"), item.optString("account"),
-                    item.optString("mode"), item.optDouble("amount"), item.optString("note"), item.optLong("updatedAt")))
+                add(DailyBalanceEntry(
+                    item.optString("id"), item.optString("date"), item.optString("account"),
+                    item.optString("mode"), item.optDouble("amount"), item.optString("note"),
+                    item.optLong("updatedAt"), item.optBoolean("deleted", false)
+                ))
             }
-        }.filter { it.id.isNotBlank() && validLedgerDate(it.date) && it.account in setOf("CASH","BANK") &&
-            it.mode in setOf("SET","ADD","SUB") && it.amount.isFinite() && it.amount >= 0.0 }
+        }.filter { it.id.isNotBlank() && validLedgerDate(it.date) &&
+            it.account in setOf("CASH", "BANK") && it.mode in setOf("SET", "ADD", "SUB") &&
+            it.amount.isFinite() && it.amount >= 0.0 }
     }.getOrDefault(emptyList())
-    fun save(context: android.content.Context, entry: DailyBalanceEntry): Boolean = runCatching {
+
+    fun get(context: android.content.Context): List<DailyBalanceEntry> =
+        readAll(context).filterNot { it.deleted }
+
+    private fun writeAll(context: android.content.Context, entries: List<DailyBalanceEntry>): Boolean = runCatching {
         val array = JSONArray()
-        (get(context).filterNot { it.id == entry.id } + entry).sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.updatedAt }).forEach {
-            array.put(JSONObject().put("id",it.id).put("date",it.date).put("account",it.account)
-                .put("mode",it.mode).put("amount",it.amount).put("note",it.note).put("updatedAt",it.updatedAt))
+        entries.sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.updatedAt }).forEach {
+            array.put(JSONObject().put("id", it.id).put("date", it.date).put("account", it.account)
+                .put("mode", it.mode).put("amount", it.amount).put("note", it.note)
+                .put("updatedAt", it.updatedAt).put("deleted", it.deleted))
         }
-        BusinessStorage.prefs(context, PREFS).edit().putString(KEY,array.toString()).commit()
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).commit()
     }.getOrDefault(false)
-    fun delete(context: android.content.Context, id: String): Boolean = runCatching {
-        val array = JSONArray()
-        get(context).filterNot { it.id == id }.forEach {
-            array.put(JSONObject().put("id",it.id).put("date",it.date).put("account",it.account)
-                .put("mode",it.mode).put("amount",it.amount).put("note",it.note).put("updatedAt",it.updatedAt))
-        }
-        BusinessStorage.prefs(context, PREFS).edit().putString(KEY,array.toString()).commit()
-    }.getOrDefault(false)
+
+    fun save(context: android.content.Context, entry: DailyBalanceEntry): Boolean =
+        writeAll(context, readAll(context).filterNot { it.id == entry.id } + entry)
+
+    fun delete(context: android.content.Context, id: String): Boolean {
+        val now = System.currentTimeMillis()
+        val entries = readAll(context).map { if (it.id == id) it.copy(updatedAt = now, deleted = true) else it }
+        return writeAll(context, entries)
+    }
+
     fun balance(entries: List<DailyBalanceEntry>, account: String, toDate: String,
         openingAmount: Double?, openingDate: String?): Double {
         var total = if (openingDate != null && openingDate <= toDate) openingAmount ?: 0.0 else 0.0
         entries.asSequence().filter { it.account == account && it.date <= toDate &&
             (openingDate == null || it.date >= openingDate) }
             .sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.updatedAt }).forEach { entry ->
-                total = when(entry.mode) { "SET" -> entry.amount; "ADD" -> total + entry.amount; "SUB" -> total - entry.amount; else -> total }
+                total = when (entry.mode) {
+                    "SET" -> entry.amount
+                    "ADD" -> total + entry.amount
+                    "SUB" -> total - entry.amount
+                    else -> total
+                }
             }
         return total
     }
