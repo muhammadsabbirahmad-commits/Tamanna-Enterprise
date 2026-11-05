@@ -349,8 +349,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
     val salesTotal = transactions.sumOf { it.total.coerceAtLeast(0.0) } - returns.sumOf { it.amount.coerceAtLeast(0.0) }
+    // Return due-reductions are mirrored in the customer sub-ledger as PAYMENT
+    // records, but they are not cash collections. Count only actual receipts.
+    val actualCustomerCollections = customerEntries.filter {
+        it.type == "PAYMENT" && it.amount > 0.0 &&
+            !it.note.trim().startsWith("বিক্রয় রিটার্ন:")
+    }
     val collectionTotal = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
-        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
+        actualCustomerCollections.sumOf { it.amount }
     val receivable = customerEntries.sumOf { if (it.type == "SALE") it.amount else -it.amount }.coerceAtLeast(0.0)
     val supplierPayable = supplierEntries.sumOf { it.amount }.coerceAtLeast(0.0)
     val expenseTotal = allExpenses.sumOf { it.amount.coerceAtLeast(0.0) }
@@ -387,7 +393,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীকে পরিশোধ", supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) },
         rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.debitAmount })
-    checkSource("ক্রেতার বাকি আদায়", customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) },
+    checkSource("ক্রেতার বাকি আদায়", actualCustomerCollections.sumOf { it.amount },
         rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.debitAmount })
     checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
         rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.debitAmount })
@@ -427,7 +433,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     // Cash movement is partial until manually entered opening cash/bank balances are reconciled.
     val purchaseDue = supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val cashIn = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
-        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) } +
+        actualCustomerCollections.sumOf { it.amount } +
         externalCapitalIn
     val cashOut = (purchaseTotal - purchaseDue).coerceAtLeast(0.0) +
         supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) } +
