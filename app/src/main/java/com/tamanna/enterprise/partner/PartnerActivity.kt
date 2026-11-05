@@ -85,6 +85,48 @@ private fun partnerDateRange(fromDate: String, toDate: String): List<String> {
     }
 }
 
+private fun partnerDateToUtcMillis(value: String): Long? = runCatching {
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+    format.parse(value)?.time
+}.getOrNull()
+
+private fun partnerUtcMillisToDate(value: Long): String {
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+    return format.format(java.util.Date(value))
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PartnerDatePickerDialog(
+    title: String,
+    initialDate: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = partnerDateToUtcMillis(initialDate)
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    state.selectedDateMillis?.let { onSelect(partnerUtcMillisToDate(it)) }
+                },
+                enabled = state.selectedDateMillis != null
+            ) { Text("নির্বাচন") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
+    ) {
+        DatePicker(state = state, title = { Text(title, modifier = Modifier.padding(start = 24.dp, top = 16.dp)) })
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PartnerScreen() {
@@ -114,6 +156,8 @@ fun PartnerScreen() {
     var withdrawingPartner by remember { mutableStateOf<Partner?>(null) }
     var fromDate by remember { mutableStateOf(partnerDate(29)) }
     var toDate by remember { mutableStateOf(partnerDate()) }
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
 
     val validRange = isValidPartnerDate(fromDate) && isValidPartnerDate(toDate) && fromDate <= toDate
     val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
@@ -166,6 +210,37 @@ fun PartnerScreen() {
                 )
             }
 
+            Text("হিসাবের সময়সীমা", style = MaterialTheme.typography.titleLarge)
+            Text("ক্যালেন্ডার থেকে শুরুর ও শেষের তারিখ বেছে নিলে প্রত্যেক পার্টনারের নির্বাচিত সময়ের লাভ-ঘাটতি আপডেট হবে।", style = MaterialTheme.typography.bodySmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { showStartDatePicker = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text("শুরুর তারিখ", style = MaterialTheme.typography.labelSmall)
+                        Text(fromDate)
+                    }
+                }
+                OutlinedButton(
+                    onClick = { showEndDatePicker = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text("শেষের তারিখ", style = MaterialTheme.typography.labelSmall)
+                        Text(toDate)
+                    }
+                }
+            }
+            if (!validRange) {
+                Text("শুরুর তারিখ শেষের তারিখের পরে হতে পারবে না।", color = MaterialTheme.colorScheme.error)
+            } else {
+                Text("$fromDate থেকে $toDate পর্যন্ত হিসাব", style = MaterialTheme.typography.labelMedium)
+            }
+
             Text("পার্টনারদের তালিকা", style = MaterialTheme.typography.titleLarge)
             Text("প্রত্যেক পার্টনারের সব তথ্য ও কাজ একটিমাত্র কার্ডে রাখা হয়েছে। তারিখের পরিসর বদলালে কার্ডের সময়ভিত্তিক হিসাবও বদলাবে।", style = MaterialTheme.typography.bodySmall)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
@@ -215,6 +290,31 @@ fun PartnerScreen() {
             }
 
         }
+    }
+
+    if (showStartDatePicker) {
+        PartnerDatePickerDialog(
+            title = "হিসাবের শুরুর তারিখ",
+            initialDate = fromDate,
+            onDismiss = { showStartDatePicker = false },
+            onSelect = { selected ->
+                fromDate = selected
+                showStartDatePicker = false
+                refresh++
+            }
+        )
+    }
+    if (showEndDatePicker) {
+        PartnerDatePickerDialog(
+            title = "হিসাবের শেষ তারিখ",
+            initialDate = toDate,
+            onDismiss = { showEndDatePicker = false },
+            onSelect = { selected ->
+                toDate = selected
+                showEndDatePicker = false
+                refresh++
+            }
+        )
     }
 
     if (showAddDialog && canWrite) {
@@ -327,20 +427,20 @@ fun PartnerCard(
             ) {
                 Text(partner.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 val statusColor = when {
-                    availableBalance > 0.004 -> MaterialTheme.colorScheme.primaryContainer
-                    availableBalance < -0.004 -> MaterialTheme.colorScheme.errorContainer
+                    periodNet > 0.004 -> MaterialTheme.colorScheme.primaryContainer
+                    periodNet < -0.004 -> MaterialTheme.colorScheme.errorContainer
                     else -> MaterialTheme.colorScheme.surfaceVariant
                 }
                 val statusTextColor = when {
-                    availableBalance > 0.004 -> MaterialTheme.colorScheme.onPrimaryContainer
-                    availableBalance < -0.004 -> MaterialTheme.colorScheme.onErrorContainer
+                    periodNet > 0.004 -> MaterialTheme.colorScheme.onPrimaryContainer
+                    periodNet < -0.004 -> MaterialTheme.colorScheme.onErrorContainer
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
                 Surface(color = statusColor, shape = MaterialTheme.shapes.small) {
                     Text(
                         text = when {
-                            availableBalance > 0.004 -> "লাভ ৳ %.2f".format(Locale.US, availableBalance)
-                            availableBalance < -0.004 -> "ঘাটতি ৳ %.2f".format(Locale.US, kotlin.math.abs(availableBalance))
+                            periodNet > 0.004 -> "লাভ ৳ %.2f".format(Locale.US, periodNet)
+                            periodNet < -0.004 -> "ঘাটতি ৳ %.2f".format(Locale.US, kotlin.math.abs(periodNet))
                             else -> "সমতা ৳ 0.00"
                         },
                         color = statusTextColor,
