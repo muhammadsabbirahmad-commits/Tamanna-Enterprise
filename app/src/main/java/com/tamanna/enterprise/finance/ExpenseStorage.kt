@@ -46,6 +46,7 @@ object ExpenseStorage {
     private const val P = "tamanna_enterprise_finance"
     private const val E = "expenses"
     private const val D = "damages"
+    private const val DELETED_EXPENSE_IDS = "deleted_expense_ids"
 
     private fun prefs(c: Context) = BusinessStorage.prefs(c, P)
     private fun array(c: Context, key: String) = JSONArray(prefs(c).getString(key, "[]") ?: "[]")
@@ -200,11 +201,18 @@ object ExpenseStorage {
         return expenses
     }
 
+    private fun deletedExpenseIds(c: Context): Set<Long> = runCatching {
+        val ids = JSONArray(prefs(c).getString(DELETED_EXPENSE_IDS, "[]") ?: "[]")
+        buildSet { for (i in 0 until ids.length()) add(ids.optLong(i)) }
+    }.getOrDefault(emptySet())
+
     fun getExpenses(c: Context): List<Expense> {
         val items = migrateLegacyAllocations(c)
+        val deletedIds = deletedExpenseIds(c)
         return buildList {
             for (i in 0 until items.length()) {
                 val item = items.optJSONObject(i) ?: continue
+                if (item.optLong("id") in deletedIds) continue
                 add(Expense(
                     id = item.optLong("id"),
                     date = item.optString("date"),
@@ -263,6 +271,29 @@ object ExpenseStorage {
             }
         }
         return found && save(c, E, items)
+    }
+
+    /** Permanently removes an expense locally and records a tombstone for cloud sync. */
+    fun deleteExpense(c: Context, expenseId: Long): Boolean {
+        if (expenseId <= 0L) return false
+        val items = array(c, E)
+        val exists = (0 until items.length()).any { items.optJSONObject(it)?.optLong("id") == expenseId }
+        if (!exists) return false
+
+        val deleted = JSONArray(prefs(c).getString(DELETED_EXPENSE_IDS, "[]") ?: "[]")
+        if ((0 until deleted.length()).none { deleted.optLong(it) == expenseId }) {
+            deleted.put(expenseId)
+        }
+        // Commit the tombstone first: even if the subsequent list write fails,
+        // the record remains hidden and cannot be resurrected by a cloud merge.
+        if (!prefs(c).edit().putString(DELETED_EXPENSE_IDS, deleted.toString()).commit()) return false
+
+        val remaining = JSONArray()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            if (item.optLong("id") != expenseId) remaining.put(item)
+        }
+        return save(c, E, remaining)
     }
 
     fun getPartnerExpenseTotal(
