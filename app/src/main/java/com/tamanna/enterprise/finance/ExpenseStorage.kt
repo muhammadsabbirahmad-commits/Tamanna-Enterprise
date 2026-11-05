@@ -159,9 +159,8 @@ object ExpenseStorage {
     }
 
     /**
-     * Backfills old expenses once. If the old rate history is missing, the
-     * current split is used only as an explicitly marked estimate; it is never
-     * presented as a confirmed historical rate.
+     * Backfills old expenses only when the effective historical rate is known.
+     * Missing historical rate data remains unallocated and is surfaced for review.
      */
     private fun isValidAllocation(items: List<PartnerExpenseAllocation>, amount: Double): Boolean {
         if (items.isEmpty() || !amount.isFinite() || amount <= 0.0) return false
@@ -188,7 +187,7 @@ object ExpenseStorage {
                 context,
                 item.optString("date"),
                 amount,
-                allowEstimatedLegacyRate = true
+                allowEstimatedLegacyRate = false
             )
             if (allocation != null) {
                 item.put("allocations", allocationArray(allocation.first))
@@ -225,7 +224,7 @@ object ExpenseStorage {
         if (x.id <= 0L || !x.amount.isFinite() || x.amount <= 0.0 || !validDate(x.date)) return false
         val normalizedAmount = moneyCents(x.amount) / 100.0
         if (normalizedAmount <= 0.0) return false
-        val allocated = buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = true) ?: return false
+        val allocated = buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
         val items = array(c, E)
         if ((0 until items.length()).any { items.optJSONObject(it)?.optLong("id") == x.id }) return false
         items.put(expenseJson(x.copy(
@@ -321,7 +320,7 @@ object ExpenseStorage {
             val existing = parseAllocations(item.optJSONArray("allocations"))
             if (isValidAllocation(existing, amount)) continue
             val allocation = buildAllocations(
-                context, item.optString("date"), amount, allowEstimatedLegacyRate = true
+                context, item.optString("date"), amount, allowEstimatedLegacyRate = false
             ) ?: continue
             item.put("allocations", allocationArray(allocation.first))
             item.put("allocationEstimated", allocation.second)
