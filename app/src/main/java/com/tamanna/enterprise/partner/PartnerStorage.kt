@@ -93,24 +93,29 @@ object PartnerStorage {
     }
 
     fun updatePartner(context: Context, partner: Partner): Boolean {
-        getCapitalContributions(context) // Preserve old capital before calculating an increase.
-        if (partner.name.isBlank() || partner.shareAmount < 0) return false
+        getCapitalContributions(context) // Migrate existing capital before recording an adjustment.
+        if (partner.name.isBlank() || !partner.shareAmount.isFinite() || partner.shareAmount < 0.0) return false
         val existing = getPartners(context)
         val previous = existing.firstOrNull { it.id == partner.id } ?: return false
-        // Capital reductions need a separately recorded capital-return transaction.
-        if (partner.shareAmount + 0.004 < previous.shareAmount) return false
+        val now = System.currentTimeMillis()
+        val delta = partner.shareAmount - previous.shareAmount
         val updatedPartners = existing.map {
             if (it.id == partner.id) partner.copy(
                 profitPercentage = it.profitPercentage,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = now
             ) else it
         }
         val contributions = getCapitalContributions(context).toMutableList()
-        val addedCapital = partner.shareAmount - previous.shareAmount
-        if (addedCapital > 0.004) contributions += PartnerCapitalContribution(
-            java.util.UUID.randomUUID().toString(), partner.id, addedCapital,
-            todayDate(), "পার্টনারের অতিরিক্ত মূলধন"
-        )
+        if (kotlin.math.abs(delta) > 0.004) {
+            contributions += PartnerCapitalContribution(
+                id = java.util.UUID.randomUUID().toString(),
+                partnerId = partner.id,
+                amount = delta,
+                date = todayDate(),
+                note = if (delta > 0.0) "পার্টনারের অতিরিক্ত মূলধন" else "পার্টনারের মূলধন ফেরত/কমানো",
+                createdAt = now
+            )
+        }
         return saveCapitalAndPartners(context, contributions, updatedPartners)
     }
 
@@ -198,6 +203,24 @@ object PartnerStorage {
                 oldFrom.isNotBlank() && oldTo.isNotBlank() && oldFrom <= toDate && oldTo >= fromDate
             }
         }.getOrDefault(false)
+    }
+
+    /** Returns the exact amount already capitalized for this closed date range. */
+    fun getCapitalizedProfitAmount(context: Context, fromDate: String, toDate: String): Double {
+        if (!isValidDate(fromDate) || !isValidDate(toDate) || fromDate > toDate) return 0.0
+        val raw = prefs(context).getString(KEY_CAPITALIZED_PROFIT_PERIODS, "[]") ?: "[]"
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                val closedFrom = item.optString("fromDate")
+                val closedTo = item.optString("toDate")
+                if (closedFrom.isNotBlank() && closedTo.isNotBlank() &&
+                    closedFrom >= fromDate && closedTo <= toDate
+                ) item.optDouble("amount").takeIf { it.isFinite() && it > 0.0 }
+                else null
+            }.sum()
+        }.getOrDefault(0.0)
     }
 
     /** Adds retained profit to partner capital without changing cash/bank balances. */

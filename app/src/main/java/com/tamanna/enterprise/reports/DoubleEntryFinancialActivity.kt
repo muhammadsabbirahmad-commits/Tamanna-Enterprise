@@ -18,6 +18,7 @@ import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.partner.PartnerStorage
+import com.tamanna.enterprise.profit.BusinessProfitCalculator
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.purchase.SupplierDueStorage
@@ -60,7 +61,9 @@ private data class LedgerSummary(
     val receivable: Double,
     val supplierPayable: Double,
     val expenseTotal: Double,
+    val periodExpenseTotal: Double,
     val damageTotal: Double,
+    val periodDamageTotal: Double,
     val withdrawalTotal: Double,
     val totalCapital: Double,
     val netProfit: Double,
@@ -83,14 +86,17 @@ private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,
 private fun buildLedger(context: android.content.Context, fromDate: String, toDate: String): LedgerSummary {
     val inRange: (String) -> Boolean = { dateKey(it) >= fromDate && dateKey(it) <= toDate }
     val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
-    val sales = SalesStorage.getSales(context).filter { inRange(it.date) }
+    val allSales = SalesStorage.getSales(context)
+    val sales = allSales.filter { inRange(it.date) }
     val transactions = SalesTransactionStorage.getTransactions(context).filter { inRange(it.date) }
-    val expenses = ExpenseStorage.getExpenses(context).filter { inRange(it.date) }
-    val damages = ExpenseStorage.getDamages(context).filter { inRange(it.date) }
+    val allExpenses = ExpenseStorage.getExpenses(context)
+    val expenses = allExpenses.filter { inRange(it.date) }
+    val allDamages = ExpenseStorage.getDamages(context)
+    val damages = allDamages.filter { inRange(it.date) }
     val supplierEntries = SupplierDueStorage.getEntries(context).filter { inRange(it.date) }
     val customerEntries = CustomerDueStorage.getEntries(context).filter { inRange(it.date) }
-    val periodTransactionIds = transactions.map { it.transactionId }.toSet()
-    val returns = SaleReturnStorage.getReturns(context).filter { inRange(it.date) && it.transactionId in periodTransactionIds }
+    // A return belongs to the period in which the return happened, even if the original sale was older.
+    val returns = SaleReturnStorage.getReturns(context).filter { inRange(it.date) }
     val returnLines = SaleReturnStorage.getLines(context).filter { line ->
         returns.any { it.returnId == line.returnId }
     }
@@ -99,16 +105,41 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
+    val sharedProfitReport = BusinessProfitCalculator.calculate(context, fromDate, toDate)
+    warnings += sharedProfitReport.warnings
+
+    // Use exactly the same weighted historical purchase cost as the shared profit calculator.
+    fun historicalReturnCost(line: com.tamanna.enterprise.sales.SaleReturnLine): Double {
+        val originals = allSales.filter {
+            it.transactionId == line.transactionId &&
+                it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
+        }
+        if (originals.isEmpty()) return 0.0
+        val originalUnits = originals.sumOf { it.quantity.coerceAtLeast(0) }
+        if (originalUnits <= 0) return 0.0
+        val weightedUnitCost = originals.sumOf {
+            it.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0)
+        } / originalUnits
+        return line.quantity.coerceAtLeast(0) * weightedUnitCost
+    }
 
     capitalContributions.forEach { contribution ->
         val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name ?: "পুরোনো/মুছে ফেলা পার্টনার"
-        val isRetainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+        val retainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+        val capitalReturned = contribution.amount < -0.004
+        val amount = kotlin.math.abs(contribution.amount)
+        if (amount <= 0.004) return@forEach
+        val description = when {
+            retainedProfit -> "অবণ্টিত মুনাফা মূলধনে স্থানান্তর • $partnerName"
+            capitalReturned -> "পার্টনার মূলধন ফেরত • $partnerName"
+            else -> "পার্টনার মূলধন জমা • $partnerName"
+        }
         rows += LedgerRow(
             contribution.date,
-            if (isRetainedProfit) "অবণ্টিত লভ্যাংশ মূলধনে স্থানান্তর • $partnerName" else "পার্টনার মূলধন জমা • $partnerName",
-            if (isRetainedProfit) "অবণ্টিত লভ্যাংশ" else "নগদ/ব্যাংক",
-            "পার্টনার মূলধন",
-            contribution.amount,
+            description,
+            if (retainedProfit) "অবণ্টিত মুনাফা" else if (capitalReturned) "পার্টনার মূলধন" else "নগদ/ব্যাংক",
+            if (capitalReturned) "নগদ/ব্যাংক" else "পার্টনার মূলধন",
+            amount,
             contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else ""
         )
         if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
@@ -167,14 +198,11 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }
 
     // Cost of goods sold, separately from revenue.
+    // Record the full cost at sale time; returned goods reverse COGS on the actual return date below.
     sales.forEach { sale ->
-        val returnedQty = returnLines.filter {
-            it.transactionId == sale.transactionId && it.productCode.equals(sale.productCode, true)
-        }.sumOf { it.quantity }
-        val netQty = (sale.quantity - returnedQty).coerceAtLeast(0)
-        val cost = netQty * sale.purchasePrice
+        val cost = sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0)
         if (cost > 0.0) rows += LedgerRow(
-            dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × $netQty",
+            dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × ${sale.quantity}",
             "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", cost
         )
     }
@@ -194,10 +222,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
         }
         returnLines.filter { it.returnId == ret.returnId }.forEach { line ->
-            val originalCost = sales.firstOrNull {
-                it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true)
-            }?.purchasePrice ?: 0.0
-            val costValue = line.quantity * originalCost
+            val originalExists = allSales.any {
+                it.transactionId == line.transactionId &&
+                    it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
+            }
+            val costValue = historicalReturnCost(line)
+            if (!originalExists) {
+                warnings += "রিটার্ন ${ret.returnId}: ${line.productCode} পণ্যের মূল বিক্রয়-লাইন পাওয়া যায়নি; ফেরত পণ্যের ক্রয়মূল্য যাচাই প্রয়োজন।"
+            }
             if (costValue > 0.0) rows += LedgerRow(
                 dateKey(ret.date), "ফেরত পণ্য স্টকে • ${line.productName} × ${line.quantity}",
                 "স্টক/ইনভেন্টরি", "বিক্রিত পণ্যের খরচ", costValue
@@ -246,18 +278,69 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val receivable = customerEntries.sumOf { if (it.type == "SALE") it.amount else -it.amount }.coerceAtLeast(0.0)
     val supplierPayable = supplierEntries.sumOf { it.amount }.coerceAtLeast(0.0)
-    val expenseTotal = expenses.sumOf { it.amount.coerceAtLeast(0.0) }
-    val damageTotal = damages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
+    val expenseTotal = allExpenses.sumOf { it.amount.coerceAtLeast(0.0) }
+    val periodExpenseTotal = expenses.sumOf { it.amount.coerceAtLeast(0.0) }
+    val damageTotal = allDamages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
+    val periodDamageTotal = damages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
     val withdrawalTotal = withdrawals.sumOf { it.amount.coerceAtLeast(0.0) }
     val totalCapital = PartnerStorage.getPartners(context).sumOf { it.shareAmount.coerceAtLeast(0.0) }
-    val cogs = sales.sumOf { sale ->
-        val returned = returnLines.filter { it.transactionId == sale.transactionId && it.productCode.equals(sale.productCode, true) }.sumOf { it.quantity }
-        (sale.quantity - returned).coerceAtLeast(0) * sale.purchasePrice
+    val grossCogs = sales.sumOf { sale -> sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0) }
+    val returnedCost = returnLines.sumOf { line -> historicalReturnCost(line) }
+    val netCogs = grossCogs - returnedCost
+
+    // Reconcile each journal category against its independent source records.
+    fun checkSource(label: String, source: Double, journal: Double) {
+        if (kotlin.math.abs(source - journal) > 0.01) {
+            warnings += "$label: মূল রেকর্ড ${money(source)}, ডেবিট-ক্রেডিট জার্নাল ${money(journal)}; অমিল যাচাই করুন।"
+        }
     }
-    val returnedCost = returnLines.sumOf { line ->
-        line.quantity * (sales.firstOrNull { it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true) }?.purchasePrice ?: 0.0)
+    checkSource("প্রতিষ্ঠানের খরচ", periodExpenseTotal,
+        rows.filter { it.description.startsWith("প্রতিষ্ঠানের খরচ •") }.sumOf { it.amount })
+    checkSource("ড্যামেজ ক্ষতি", periodDamageTotal,
+        rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.amount })
+    checkSource("পণ্য ক্রয়", purchaseTotal,
+        rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.amount })
+    checkSource("বিক্রয় ইনভয়েস", transactions.sumOf { it.total.coerceAtLeast(0.0) },
+        rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.amount })
+    checkSource("বিক্রয় ফেরত", returns.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.amount })
+    checkSource("বিক্রিত পণ্যের ক্রয়মূল্য", grossCogs,
+        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.amount })
+    checkSource("ফেরত পণ্যের ক্রয়মূল্য", returnedCost,
+        rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.amount })
+    checkSource("সরবরাহকারীর কাছে ক্রয়-বাকি", supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.amount })
+    checkSource("সরবরাহকারীকে পরিশোধ", supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) },
+        rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.amount })
+    checkSource("ক্রেতার বাকি আদায়", customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.amount })
+    checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.amount })
+    val externalCapitalIn = capitalContributions.filter {
+        it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+    }.sumOf { it.amount }
+    val capitalizedProfit = capitalContributions.filter {
+        it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+    }.sumOf { it.amount }
+    val capitalReturned = capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount }
+    checkSource("পার্টনারের নগদ মূলধন জমা", externalCapitalIn,
+        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.amount })
+    checkSource("অবণ্টিত মুনাফা মূলধনে স্থানান্তর", capitalizedProfit,
+        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.amount })
+    checkSource("পার্টনারের মূলধন ফেরত", capitalReturned,
+        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.amount })
+
+    // Verify each invoice's payment and receivable split independently of the balanced journal totals.
+    transactions.forEach { tx ->
+        val invoiceRows = rows.filter { it.note.contains("ইনভয়েস: ${tx.transactionId}") }
+        checkSource("ইনভয়েস ${tx.transactionId} জমা", tx.paid.coerceAtLeast(0.0),
+            invoiceRows.filter { it.debitAccount == "নগদ" }.sumOf { it.amount })
+        checkSource("ইনভয়েস ${tx.transactionId} বাকি", tx.due.coerceAtLeast(0.0),
+            invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.amount })
     }
-    val netProfit = salesTotal - cogs - expenseTotal - damageTotal
+
+    // Profit, partner distribution and the profit screen all use the same calculation engine.
+    val netProfit = sharedProfitReport.netProfit
 
     // Current stock is read from the live product inventory, not reconstructed from only the selected period.
     // Historical stock snapshots are not stored by the app, so this value is explicitly labelled as current.
@@ -269,16 +352,18 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     // Cash movement is partial until manually entered opening cash/bank balances are reconciled.
     val purchaseDue = supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val cashIn = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
-        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
+        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) } +
+        externalCapitalIn
     val cashOut = (purchaseTotal - purchaseDue).coerceAtLeast(0.0) +
-        supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount } +
-        expenseTotal + withdrawalTotal
+        supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) } +
+        periodExpenseTotal + withdrawalTotal +
+        returns.sumOf { it.refundAmount.coerceAtLeast(0.0) } + capitalReturned
 
     return LedgerSummary(
         rows.sortedWith(compareBy<LedgerRow> { it.date }.thenBy { it.description }),
         purchaseTotal, stockValue, stockUnits, salesTotal, collectionTotal, receivable,
-        supplierPayable, expenseTotal, damageTotal, withdrawalTotal, totalCapital, netProfit,
-        cashIn, cashOut, stockWarnings, warnings
+        supplierPayable, expenseTotal, periodExpenseTotal, damageTotal, periodDamageTotal,
+        withdrawalTotal, totalCapital, netProfit, cashIn, cashOut, stockWarnings, warnings
     )
 }
 
@@ -298,12 +383,14 @@ private fun DoubleEntryFinancialScreen() {
     val totalManualCash = accounts.sumOf { it.balance.coerceAtLeast(0.0) }
     val validRange = validLedgerDate(fromDate) && validLedgerDate(toDate) && fromDate <= toDate
     val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
-    val remainingDividend = summary.netProfit - summary.withdrawalTotal
+    val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
+    val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
-    val totalDebit = summary.rows.sumOf { it.amount }
-    val totalCredit = summary.rows.sumOf { it.amount }
-    val debitRows = summary.rows
-    val creditRows = summary.rows
+    val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.amount > 0.0 }
+    val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.amount > 0.0 }
+    val totalDebit = debitRows.sumOf { it.amount }
+    val totalCredit = creditRows.sumOf { it.amount }
+    val ledgerDifference = kotlin.math.abs(totalDebit - totalCredit)
 
     Scaffold(
         topBar = {
@@ -335,9 +422,9 @@ private fun DoubleEntryFinancialScreen() {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp)) {
                     Text("ডেবিট–ক্রেডিট যাচাই", style = MaterialTheme.typography.titleMedium)
-                    Text(if (kotlin.math.abs(totalDebit - totalCredit) < 0.01) "জার্নাল এন্ট্রিগুলো সমান: ${money(totalDebit)}"
-                    else "অমিল: ${money(kotlin.math.abs(totalDebit - totalCredit))}")
-                    Text("প্রতিটি সংরক্ষিত এন্ট্রিতে সমপরিমাণ ডেবিট ও ক্রেডিট দেখানো হয়।", style = MaterialTheme.typography.bodySmall)
+                    Text(if (ledgerDifference < 0.01) "জার্নাল এন্ট্রির দুই পাশ সমান: ${money(totalDebit)}"
+                    else "ডেবিট-ক্রেডিটে অমিল: ${money(ledgerDifference)}")
+                    Text("প্রতিটি লেনদেনের ডেবিট ও ক্রেডিট একই অঙ্কে লেখা হয়। তাই মোট সমান থাকাই যথেষ্ট নয়; নিচের মূল রেকর্ড যাচাইয়ের সতর্কতাও পরীক্ষা করুন।", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -348,8 +435,8 @@ private fun DoubleEntryFinancialScreen() {
                     SummaryLine("মোট ক্রেডিট", totalCredit)
                     SummaryLine("আপনার কাছে আছে (যোগ করা ক্যাশ/ব্যাংক)", totalManualCash)
                     SummaryLine("নির্বাচিত সময়ের নিট লাভ", summary.netProfit)
-                    SummaryLine(if (remainingDividend >= 0.0) "অতিরিক্ত অবশিষ্ট লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
-                    Text("অবশিষ্ট লভ্যাংশ = নির্বাচিত সময়ের নিট লাভ − একই সময়ের পার্টনার উত্তোলন। এটি চূড়ান্ত বণ্টনের আগে ব্যবসায় রেখে দেওয়া লাভের হিসাব।", style = MaterialTheme.typography.bodySmall)
+                    SummaryLine(if (remainingDividend >= 0.0) "অবণ্টিত লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
+                    Text("অবণ্টিত লভ্যাংশ = নির্বাচিত সময়ের নিট মুনাফা − নগদ লভ্যাংশ উত্তোলন − ইতিমধ্যে মূলধনে স্থানান্তর। মূলধনে স্থানান্তর করলে ক্যাশ বাড়ে না।", style = MaterialTheme.typography.bodySmall)
                     if (alreadyCapitalized) {
                         Text("এই তারিখের হিসাবের লভ্যাংশ ইতিমধ্যে মূলধনে যোগ করা হয়েছে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                     } else {
@@ -368,8 +455,10 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("বিক্রয় থেকে মোট আদায়", summary.collectionTotal)
             SummaryLine("ক্রেতার কাছে পাওনা", summary.receivable)
             SummaryLine("সরবরাহকারীর কাছে দেনা", summary.supplierPayable)
-            SummaryLine("মোট প্রতিষ্ঠানের খরচ", summary.expenseTotal)
-            SummaryLine("ড্যামেজ/নষ্টের ক্ষতি", summary.damageTotal)
+            SummaryLine("মোট প্রতিষ্ঠানের খরচ (শুরু থেকে)", summary.expenseTotal)
+            SummaryLine("নির্বাচিত সময়ের প্রতিষ্ঠানের খরচ", summary.periodExpenseTotal)
+            SummaryLine("মোট ড্যামেজ/নষ্টের ক্ষতি (শুরু থেকে)", summary.damageTotal)
+            SummaryLine("নির্বাচিত সময়ের ড্যামেজ ক্ষতি", summary.periodDamageTotal)
             SummaryLine("পার্টনারের উত্তোলন", summary.withdrawalTotal)
 
             Text("নগদ প্রবাহ", style = MaterialTheme.typography.titleLarge)
