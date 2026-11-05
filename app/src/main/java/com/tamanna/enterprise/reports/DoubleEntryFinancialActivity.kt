@@ -101,7 +101,10 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         returns.any { it.returnId == line.returnId }
     }
     val withdrawals = PartnerStorage.getWithdrawals(context).filter { inRange(it.date) }
-    val capitalContributions = PartnerStorage.getCapitalContributions(context).filter { inRange(it.date) }
+    val allCapitalContributions = PartnerStorage.getCapitalContributions(context)
+    val capitalContributions = allCapitalContributions.filter { inRange(it.date) }
+    // Prior capital movements are opening balances for the selected period, not omitted transactions.
+    val openingCapitalContributions = allCapitalContributions.filter { dateKey(it.date) < fromDate }
 
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
@@ -121,6 +124,55 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             it.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0)
         } / originalUnits
         return line.quantity.coerceAtLeast(0) * weightedUnitCost
+    }
+
+    // Bring all partner capital movements before the selected start date into the ledger
+    // as opening balances. This keeps historical capital visible without counting it as a
+    // transaction inside the selected period.
+    openingCapitalContributions.forEach { contribution ->
+        val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name
+            ?: "পুরোনো/মুছে ফেলা পার্টনার"
+        val retainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+        val capitalReturned = contribution.amount < -0.004
+        val amount = kotlin.math.abs(contribution.amount)
+        if (amount <= 0.004) return@forEach
+        rows += LedgerRow(
+            fromDate,
+            "প্রারম্ভিক মূলধন • $partnerName",
+            when {
+                retainedProfit -> "প্রারম্ভিক অবণ্টিত মুনাফা"
+                capitalReturned -> "পার্টনার মূলধন"
+                else -> "প্রারম্ভিক সম্পদ সমন্বয়"
+            },
+            if (capitalReturned) "প্রারম্ভিক সম্পদ সমন্বয়" else "পার্টনার মূলধন",
+            amount,
+            "${contribution.date} তারিখের আগের মূলধন • ${contribution.note}"
+        )
+    }
+
+    // Some older installs may already have a partial contribution history. Reconcile only
+    // the unrecorded difference against the partner's saved current capital, and label it
+    // explicitly as an estimated opening adjustment instead of silently losing the balance.
+    val activePartners = PartnerStorage.getPartners(context)
+    activePartners.forEach { partner ->
+        val recordedNet = allCapitalContributions.filter { it.partnerId == partner.id }.sumOf { it.amount }
+        val unrecorded = partner.shareAmount - recordedNet
+        if (kotlin.math.abs(unrecorded) > 0.004) {
+            val amount = kotlin.math.abs(unrecorded)
+            val isIncrease = unrecorded > 0.0
+            rows += LedgerRow(
+                fromDate,
+                "প্রারম্ভিক মূলধন সমন্বয় • ${partner.name}",
+                if (isIncrease) "প্রারম্ভিক সম্পদ সমন্বয়" else "পার্টনার মূলধন",
+                if (isIncrease) "পার্টনার মূলধন" else "প্রারম্ভিক সম্পদ সমন্বয়",
+                amount,
+                "সংরক্ষিত মূলধন জমা/ফেরত রেকর্ডের সঙ্গে বর্তমান মূলধনের পার্থক্য; পুরোনো তথ্যের কারণে আনুমানিক সমন্বয়।"
+            )
+            warnings += "${partner.name}-এর বর্তমান মূলধন ও সংরক্ষিত জমা/ফেরত রেকর্ডে ${money(unrecorded)} পার্থক্য আছে; এটি প্রারম্ভিক সমন্বয় হিসেবে দেখানো হয়েছে, প্রকৃত জমার তারিখ নয়।"
+        }
+    }
+    if (openingCapitalContributions.isNotEmpty()) {
+        warnings += "নির্বাচিত সময়ের আগের পার্টনার মূলধন প্রারম্ভিক ব্যালান্স হিসেবে দেখানো হয়েছে। ‘প্রারম্ভিক সম্পদ সমন্বয়’ নগদ/স্টক/পাওনার প্রকৃত ভাগ নয়; সম্পদের পৃথক উদ্বোধনী ব্যালান্সের সঙ্গে মিলিয়ে নিতে হবে।"
     }
 
     capitalContributions.forEach { contribution ->
