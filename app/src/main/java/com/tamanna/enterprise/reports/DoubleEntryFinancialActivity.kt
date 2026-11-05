@@ -268,6 +268,28 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         line.quantity.coerceAtLeast(0) * (originalSale?.purchasePrice ?: 0.0)
     }
     val netCogs = grossCogs - returnedCost
+
+    // Reconcile each journal category against its independent source records.
+    fun checkSource(label: String, source: Double, journal: Double) {
+        if (kotlin.math.abs(source - journal) > 0.01) {
+            warnings += "$label: মূল রেকর্ড ${money(source)}, ডেবিট-ক্রেডিট জার্নাল ${money(journal)}; অমিল যাচাই করুন।"
+        }
+    }
+    checkSource("প্রতিষ্ঠানের খরচ", periodExpenseTotal,
+        rows.filter { it.description.startsWith("প্রতিষ্ঠানের খরচ •") }.sumOf { it.amount })
+    checkSource("ড্যামেজ ক্ষতি", periodDamageTotal,
+        rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.amount })
+    checkSource("পণ্য ক্রয়", purchaseTotal,
+        rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.amount })
+    checkSource("বিক্রয় ইনভয়েস", transactions.sumOf { it.total.coerceAtLeast(0.0) },
+        rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.amount })
+    checkSource("বিক্রয় ফেরত", returns.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.amount })
+    checkSource("বিক্রিত পণ্যের ক্রয়মূল্য", grossCogs,
+        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.amount })
+    checkSource("ফেরত পণ্যের ক্রয়মূল্য", returnedCost,
+        rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.amount })
+
     // Profit, partner distribution and the profit screen all use the same calculation engine.
     val netProfit = sharedProfitReport.netProfit
 
