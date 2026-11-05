@@ -50,6 +50,20 @@ object BusinessProfitCalculator {
         val returns = SaleReturnStorage.getReturns(context)
         val returnLines = SaleReturnStorage.getLines(context)
         val warnings = mutableListOf<String>()
+        val datedSales = sales.filter { sale ->
+            val key = day(sale.date)
+            key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)
+        }
+        datedSales.filter { it.transactionId !in transactions }.map { it.transactionId }.distinct().forEach { id ->
+            warnings += "বিক্রয় $id: ইনভয়েসের ডিসকাউন্ট/পেমেন্ট রেকর্ড নেই; বিক্রয় লাইনের ভিত্তিতে লাভ গণনা করা হয়েছে, যাচাই প্রয়োজন।"
+        }
+        transactions.values.filter { tx ->
+            val key = day(tx.date)
+            key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate) &&
+                datedSales.none { it.transactionId == tx.transactionId }
+        }.forEach { tx ->
+            warnings += "ইনভয়েস ${tx.transactionId}: ইনভয়েসের রেকর্ড আছে কিন্তু বিক্রয়ের পণ্য-লাইন নেই; পণ্যের ক্রয়মূল্য ছাড়া প্রকৃত লাভ নির্ণয় সম্ভব নয়।"
+        }
         val days = linkedMapOf<String, MutableDaily>()
 
         fun bucket(date: String): MutableDaily {
