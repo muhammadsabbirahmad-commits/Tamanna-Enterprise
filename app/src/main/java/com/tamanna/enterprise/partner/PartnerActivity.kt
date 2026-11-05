@@ -478,16 +478,16 @@ fun PartnerCard(
             HorizontalDivider()
             Text("নির্বাচিত সময়ের হিসাব", style = MaterialTheme.typography.titleMedium)
             Text("লাভের অংশ: ৳ %.2f".format(Locale.US, periodProfit))
-            Text("প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, periodExpense))
+            Text("প্রতিষ্ঠানের খরচের অংশ (তথ্য): ৳ %.2f".format(Locale.US, periodExpense))
             Text("লোকসানের অংশ: ৳ %.2f".format(Locale.US, periodLoss),
                 color = MaterialTheme.colorScheme.error)
-            Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNet),
+            Text("নিট ফলাফল (খরচ ধাপে ধাপে সমন্বয়ের পর): ৳ %.2f".format(Locale.US, periodNet),
                 style = MaterialTheme.typography.titleMedium,
                 color = if (periodNet < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             HorizontalDivider()
             Text("সর্বমোট হিসাব", style = MaterialTheme.typography.titleMedium)
             Text("সর্বমোট লাভের অংশ: ৳ %.2f".format(Locale.US, lifetimeProfit))
-            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpense))
+            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ (তথ্য): ৳ %.2f".format(Locale.US, lifetimeExpense))
             Text("সর্বমোট লোকসানের অংশ: ৳ %.2f".format(Locale.US, lifetimeLoss),
                 color = MaterialTheme.colorScheme.error)
             Text("মোট লভ্যাংশ উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))
