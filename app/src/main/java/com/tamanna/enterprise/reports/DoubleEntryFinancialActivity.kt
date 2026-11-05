@@ -512,6 +512,30 @@ private fun DoubleEntryFinancialScreen() {
     val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
     val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
+
+    // The debit detail shows only three management figures. Recoverable business
+    // expenses are offset by cumulative trading profit (sales less discounts,
+    // COGS and returns), not by gross sales revenue and not by net profit after
+    // expenses (which would subtract the same expenses twice).
+    val cumulativeProfitReport = remember(refresh, toDate) {
+        BusinessProfitCalculator.calculate(context, null, toDate)
+    }
+    val cumulativeTradingProfit = cumulativeProfitReport.days.sumOf {
+        it.netProfit + it.expenses + it.damageLoss
+    }
+    val cumulativeBusinessExpenses = cumulativeProfitReport.expenses + cumulativeProfitReport.damageLoss
+    val unrecoveredBusinessExpenses = (cumulativeBusinessExpenses - cumulativeTradingProfit).coerceAtLeast(0.0)
+
+    // Cash is shown from verified opening cash plus all recorded cash movements
+    // up to the selected end date. It remains a movement-based figure if opening
+    // cash has not been verified; no artificial opening amount is created.
+    val verifiedOpeningCash = openingBalances?.takeIf { it.verified && it.date <= toDate }
+    val cashStartDate = verifiedOpeningCash?.date ?: "0001-01-01"
+    val cumulativeCashSummary = remember(refresh, toDate, verifiedOpeningCash) {
+        buildLedger(context, cashStartDate, toDate)
+    }
+    val cashInHand = (verifiedOpeningCash?.cash ?: 0.0) +
+        cumulativeCashSummary.cashIn - cumulativeCashSummary.cashOut
     val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.debitAmount > 0.0 }
     val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.creditAmount > 0.0 }
     // Credit detail is limited to partner capital deposits; the headline credit total remains the full journal total.
@@ -811,21 +835,26 @@ private fun DoubleEntryFinancialScreen() {
         val rows = if (side == "ডেবিট") debitRows else partnerInvestmentRows
         AlertDialog(
             onDismissRequest = { selectedSide = null },
-            title = { Text(if (side == "ক্রেডিট") "পার্টনারদের বিনিয়োগ" else "$side লেনদেনের বিস্তারিত") },
+            title = { Text(if (side == "ক্রেডিট") "পার্টনারদের বিনিয়োগ" else "ডেবিটের সারসংক্ষেপ") },
             text = {
                 Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
-                    if (side == "ক্রেডিট") {
+                    if (side == "ডেবিট") {
+                        SummaryLine("১. মোট স্টক", summary.stockValue, "বর্তমান স্টকের মোট ক্রয়মূল্য")
+                        SummaryLine("২. মোট ব্যয়", unrecoveredBusinessExpenses, "দৈনিক প্রকৃত লভ্যাংশ দিয়ে সমন্বয়ের পর অবশিষ্ট ব্যয়")
+                        SummaryLine("৩. হাতে নগদ", cashInHand, if (verifiedOpeningCash == null) "যাচাইকৃত প্রারম্ভিক নগদ নেই; রেকর্ডকৃত নগদ প্রবাহের ভিত্তিতে" else "যাচাইকৃত প্রারম্ভিক নগদ ও পরবর্তী রেকর্ডকৃত নগদ প্রবাহ")
+                        Text("ব্যয় পুরোপুরি সমন্বয় হয়ে গেলে পরবর্তী দৈনিক লভ্যাংশ আর ব্যয় কমাবে না; সেটি অবশিষ্ট লভ্যাংশ হিসেবে থাকবে।", style = MaterialTheme.typography.bodySmall)
+                    } else {
                         SummaryLine("পার্টনারদের মোট বিনিয়োগ", summary.totalCapital)
                         Text("নিচে শুধু পার্টনারদের মূলধন জমার এন্ট্রি দেখানো হয়েছে। পণ্য বিক্রি বা স্টকের এন্ট্রি এখানে দেখানো হবে না।", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text("মোট এন্ট্রি: ${rows.size}টি")
-                    rows.forEach { row ->
-                        HorizontalDivider()
-                        Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-                            Text(row.description, style = MaterialTheme.typography.bodyMedium)
-                            Text(row.date + " • " + money(if (side == "ডেবিট") row.debitAmount else row.creditAmount), style = MaterialTheme.typography.bodySmall)
-                            Text(if (side == "ডেবিট") "ডেবিট: ${row.debitAccount}" else "ক্রেডিট: ${row.creditAccount}", style = MaterialTheme.typography.bodySmall)
-                            if (row.note.isNotBlank()) Text(row.note, style = MaterialTheme.typography.bodySmall)
+                        Text("মোট এন্ট্রি: ${rows.size}টি")
+                        rows.forEach { row ->
+                            HorizontalDivider()
+                            Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+                                Text(row.description, style = MaterialTheme.typography.bodyMedium)
+                                Text(row.date + " • " + money(row.creditAmount), style = MaterialTheme.typography.bodySmall)
+                                Text("ক্রেডিট: ${row.creditAccount}", style = MaterialTheme.typography.bodySmall)
+                                if (row.note.isNotBlank()) Text(row.note, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
