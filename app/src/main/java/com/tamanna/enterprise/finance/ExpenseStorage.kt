@@ -264,8 +264,12 @@ object ExpenseStorage {
 
     fun getUnallocatedExpenseTotal(c: Context): Double = getExpenses(c)
         .filter { expense ->
-            expense.allocations.isEmpty() ||
-                expense.allocations.sumOf { moneyCents(it.amount) } != moneyCents(expense.amount)
+            val allocations = expense.allocations
+            allocations.isEmpty() ||
+                allocations.any { !it.amount.isFinite() || it.amount < 0.0 || !it.percentage.isFinite() || it.percentage < 0.0 } ||
+                allocations.map { it.partnerId }.distinct().size != allocations.size ||
+                kotlin.math.abs(allocations.sumOf { it.percentage } - 100.0) > 0.0001 ||
+                allocations.sumOf { moneyCents(it.amount) } != moneyCents(expense.amount)
         }
         .sumOf { it.amount }
 
