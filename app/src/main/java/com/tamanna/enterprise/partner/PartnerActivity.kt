@@ -109,9 +109,6 @@ fun PartnerScreen() {
     val last30DailyNet = remember(refresh, last30FromDate, last30ToDate, allDailyNet) {
         partnerDateRange(last30FromDate, last30ToDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
-    val last30ExpenseTotal = remember(refresh, last30FromDate, last30ToDate, dailyExpenses) {
-        dailyExpenses.filterKeys { it in last30FromDate..last30ToDate }.values.sum()
-    }
     val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
         if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
     }
@@ -158,7 +155,7 @@ fun PartnerScreen() {
                 val loss30 = last30DailyNet.sumOf { (day, net) ->
                     kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
-                val expense30 = last30ExpenseTotal * PartnerStorage.getPercentageForDate(context, partner.id, last30ToDate) / 100.0
+                val expense30 = dailyExpenses.entries.filter { it.key in last30FromDate..last30ToDate }.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
                 PartnerCard(partner, canWrite, profit30, loss30, expense30, onAddCapital = { addingCapitalFor = partner }) {
                     if (canWrite) editingPartner = partner
                 }
@@ -205,6 +202,10 @@ fun PartnerScreen() {
                             color = if (periodNetResult < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                         Text("$fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
                     }
+                }
+                if (profitReport.warnings.isNotEmpty()) {
+                    Text("লাভের হিসাব যাচাইয়ের সতর্কতা", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                    profitReport.warnings.forEach { Text("• $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
                 if (!distributionValid) {
                     Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ-লোকসান বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন.", color = MaterialTheme.colorScheme.error)
