@@ -47,7 +47,8 @@ private data class LedgerRow(
     val description: String,
     val debitAccount: String,
     val creditAccount: String,
-    val amount: Double,
+    val debitAmount: Double,
+    val creditAmount: Double,
     val note: String = ""
 )
 
@@ -103,9 +104,6 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val withdrawals = PartnerStorage.getWithdrawals(context).filter { inRange(it.date) }
     val allCapitalContributions = PartnerStorage.getCapitalContributions(context)
     val capitalContributions = allCapitalContributions.filter { inRange(it.date) }
-    // Prior capital movements are opening balances for the selected period, not omitted transactions.
-    val openingCapitalContributions = allCapitalContributions.filter { dateKey(it.date) < fromDate }
-
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
     val sharedProfitReport = BusinessProfitCalculator.calculate(context, fromDate, toDate)
@@ -126,53 +124,40 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         return line.quantity.coerceAtLeast(0) * weightedUnitCost
     }
 
-    // Bring all partner capital movements before the selected start date into the ledger
-    // as opening balances. This keeps historical capital visible without counting it as a
-    // transaction inside the selected period.
-    openingCapitalContributions.forEach { contribution ->
-        val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name
-            ?: "পুরোনো/মুছে ফেলা পার্টনার"
-        val retainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
-        val capitalReturned = contribution.amount < -0.004
-        val amount = kotlin.math.abs(contribution.amount)
-        if (amount <= 0.004) return@forEach
-        rows += LedgerRow(
-            fromDate,
-            "প্রারম্ভিক মূলধন • $partnerName",
-            when {
-                retainedProfit -> "প্রারম্ভিক অবণ্টিত মুনাফা"
-                capitalReturned -> "পার্টনার মূলধন"
-                else -> "প্রারম্ভিক সম্পদ সমন্বয়"
-            },
-            if (capitalReturned) "প্রারম্ভিক সম্পদ সমন্বয়" else "পার্টনার মূলধন",
-            amount,
-            "${contribution.date} তারিখের আগের মূলধন • ${contribution.note}"
-        )
-    }
-
-    // Some older installs may already have a partial contribution history. Reconcile only
-    // the unrecorded difference against the partner's saved current capital, and label it
-    // explicitly as an estimated opening adjustment instead of silently losing the balance.
-    val activePartners = PartnerStorage.getPartners(context)
-    activePartners.forEach { partner ->
-        val recordedNet = allCapitalContributions.filter { it.partnerId == partner.id }.sumOf { it.amount }
-        val unrecorded = partner.shareAmount - recordedNet
-        if (kotlin.math.abs(unrecorded) > 0.004) {
-            val amount = kotlin.math.abs(unrecorded)
-            val isIncrease = unrecorded > 0.0
-            rows += LedgerRow(
-                fromDate,
-                "প্রারম্ভিক মূলধন সমন্বয় • ${partner.name}",
-                if (isIncrease) "প্রারম্ভিক সম্পদ সমন্বয়" else "পার্টনার মূলধন",
-                if (isIncrease) "পার্টনার মূলধন" else "প্রারম্ভিক সম্পদ সমন্বয়",
-                amount,
-                "সংরক্ষিত মূলধন জমা/ফেরত রেকর্ডের সঙ্গে বর্তমান মূলধনের পার্থক্য; পুরোনো তথ্যের কারণে আনুমানিক সমন্বয়।"
-            )
-            warnings += "${partner.name}-এর বর্তমান মূলধন ও সংরক্ষিত জমা/ফেরত রেকর্ডে ${money(unrecorded)} পার্থক্য আছে; এটি প্রারম্ভিক সমন্বয় হিসেবে দেখানো হয়েছে, প্রকৃত জমার তারিখ নয়।"
+    // Opening capital and assets are reconciled in a separate verified opening-balance
+    // panel. Never manufacture an asset counterpart from historic partner capital.
+    val openingBalance = OpeningBalanceStorage.get(context)
+    if (openingBalance == null) {
+        warnings += "প্রারম্ভিক ব্যালান্স সংরক্ষণ করা হয়নি; পুরোনো মূলধনের বিপরীতে কোনো নগদ/স্টক/পাওনা অনুমান করে যোগ করা হয়নি।"
+    } else if (openingBalance.date != fromDate) {
+        warnings += "প্রারম্ভিক ব্যালান্সের তারিখ ${openingBalance.date}; নির্বাচিত হিসাবের শুরুর তারিখ ${fromDate}। উদ্বোধনী এন্ট্রি দেখতে রিপোর্টের শুরুর তারিখ একই করুন।"
+    } else if (!openingBalance.verified) {
+        warnings += "প্রারম্ভিক ব্যালান্স সংরক্ষিত আছে, কিন্তু যাচাইকৃত হিসেবে নিশ্চিত করা হয়নি; তাই ট্রায়াল ব্যালান্সে পোস্ট করা হয়নি।"
+    } else {
+        // Post only the actual opening balances entered by the user. Each opening asset
+        // is an independent debit and each liability/equity is an independent credit.
+        // If the accounting equation does not balance, the trial balance stays unbalanced;
+        // no suspense/plug account is generated to conceal the difference.
+        fun openingDebit(account: String, label: String, amount: Double) {
+            if (amount > 0.004) rows += LedgerRow(fromDate, "প্রারম্ভিক $label", account, "", amount, 0.0)
         }
-    }
-    if (openingCapitalContributions.isNotEmpty()) {
-        warnings += "নির্বাচিত সময়ের আগের পার্টনার মূলধন প্রারম্ভিক ব্যালান্স হিসেবে দেখানো হয়েছে। ‘প্রারম্ভিক সম্পদ সমন্বয়’ নগদ/স্টক/পাওনার প্রকৃত ভাগ নয়; সম্পদের পৃথক উদ্বোধনী ব্যালান্সের সঙ্গে মিলিয়ে নিতে হবে।"
+        fun openingCredit(account: String, label: String, amount: Double) {
+            if (amount > 0.004) rows += LedgerRow(fromDate, "প্রারম্ভিক $label", "", account, 0.0, amount)
+        }
+        openingDebit("নগদ", "নগদ", openingBalance.cash)
+        openingDebit("ব্যাংক", "ব্যাংক", openingBalance.bank)
+        openingDebit("স্টক/ইনভেন্টরি", "স্টক", openingBalance.stock)
+        openingDebit("ক্রেতার পাওনা", "ক্রেতার পাওনা", openingBalance.customerReceivable)
+        openingCredit("সরবরাহকারীর দেনা", "সরবরাহকারীর দেনা", openingBalance.supplierPayable)
+        openingCredit("অন্যান্য দেনা", "অন্যান্য দেনা", openingBalance.otherLiabilities)
+        val openingCapital = allCapitalContributions
+            .filter { dateKey(it.date) <= openingBalance.date }
+            .sumOf { it.amount }
+        if (openingCapital >= 0.0) openingCredit("পার্টনার মূলধন", "পার্টনার মূলধন", openingCapital)
+        else openingDebit("পার্টনার মূলধন", "পার্টনার মূলধনের ঘাটতি", -openingCapital)
+        if (allCapitalContributions.any { dateKey(it.date) <= openingBalance.date && it.approximateDate }) {
+            warnings += "প্রারম্ভিক মূলধনের কিছু পুরোনো জমার তারিখ আনুমানিক; পার্টনারভিত্তিক মূলধন যাচাই করুন।"
+        }
     }
 
     capitalContributions.forEach { contribution ->
@@ -186,14 +171,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             capitalReturned -> "পার্টনার মূলধন ফেরত • $partnerName"
             else -> "পার্টনার মূলধন জমা • $partnerName"
         }
-        rows += LedgerRow(
-            contribution.date,
-            description,
-            if (retainedProfit) "অবণ্টিত মুনাফা" else if (capitalReturned) "পার্টনার মূলধন" else "নগদ/ব্যাংক",
-            if (capitalReturned) "নগদ/ব্যাংক" else "পার্টনার মূলধন",
-            amount,
-            contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else ""
-        )
+        rows += LedgerRow(contribution.date, description, if (retainedProfit) "অবণ্টিত মুনাফা" else if (capitalReturned) "পার্টনার মূলধন" else "নগদ/ব্যাংক", if (capitalReturned) "নগদ/ব্যাংক" else "পার্টনার মূলধন", amount, amount, contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else "")
         if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
     }
 
@@ -213,16 +191,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
                 else if (groupTotal > 0.0) (dueForGroup * gross / groupTotal).coerceAtMost(gross) else 0.0
             allocatedDue += due
             val paid = (gross - due).coerceAtLeast(0.0)
-            if (paid > 0.004) rows += LedgerRow(
-                dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}",
-                "স্টক/ইনভেন্টরি", "নগদ", paid,
-                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; ক্রয়ের মোট ${money(gross)}"
-            )
-            if (due > 0.004) rows += LedgerRow(
-                dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}",
-                "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due,
-                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}"
-            )
+            if (paid > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}", "স্টক/ইনভেন্টরি", "নগদ", paid, paid, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; ক্রয়ের মোট ${money(gross)}")
+            if (due > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}", "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due, due, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}")
         }
     }
 
@@ -235,14 +205,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         if (kotlin.math.abs((tx.paid + tx.due) - gross) > 0.02) {
             warnings += "বিক্রয় ${tx.transactionId}: মোট, জমা ও বাকি টাকার মধ্যে অমিল আছে।"
         }
-        if (paid > 0.004) rows += LedgerRow(
-            dateKey(tx.date), "বিক্রয় আদায় • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
-            "নগদ", "বিক্রয় আয়", paid, "ইনভয়েস: ${tx.transactionId}"
-        )
-        if (due > 0.004) rows += LedgerRow(
-            dateKey(tx.date), "বিক্রয় বাকি • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
-            "ক্রেতার পাওনা", "বিক্রয় আয়", due, "ইনভয়েস: ${tx.transactionId}"
-        )
+        if (paid > 0.004) rows += LedgerRow(dateKey(tx.date), "বিক্রয় আদায় • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}", "নগদ", "বিক্রয় আয়", paid, paid, "ইনভয়েস: ${tx.transactionId}")
+        if (due > 0.004) rows += LedgerRow(dateKey(tx.date), "বিক্রয় বাকি • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}", "ক্রেতার পাওনা", "বিক্রয় আয়", due, due, "ইনভয়েস: ${tx.transactionId}")
     }
     val transactionIds = transactions.map { it.transactionId }.toSet()
     sales.filter { it.transactionId !in transactionIds }.groupBy { it.transactionId }.forEach { (id, items) ->
@@ -253,23 +217,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     // Record the full cost at sale time; returned goods reverse COGS on the actual return date below.
     sales.forEach { sale ->
         val cost = sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0)
-        if (cost > 0.0) rows += LedgerRow(
-            dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × ${sale.quantity}",
-            "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", cost
-        )
+        if (cost > 0.0) rows += LedgerRow(dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × ${sale.quantity}", "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", cost, cost)
     }
 
     returns.forEach { ret ->
         val refunded = ret.refundAmount.coerceAtLeast(0.0)
         val dueReduction = ret.dueReduction.coerceAtLeast(0.0)
-        if (refunded > 0.0) rows += LedgerRow(
-            dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded,
-            "রিটার্ন: ${ret.returnId}"
-        )
-        if (dueReduction > 0.0) rows += LedgerRow(
-            dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction,
-            "রিটার্ন: ${ret.returnId}"
-        )
+        if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "রিটার্ন: ${ret.returnId}")
+        if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "রিটার্ন: ${ret.returnId}")
         if (kotlin.math.abs(ret.amount - refunded - dueReduction) > 0.02) {
             warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
         }
@@ -282,46 +237,28 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             if (!originalExists) {
                 warnings += "রিটার্ন ${ret.returnId}: ${line.productCode} পণ্যের মূল বিক্রয়-লাইন পাওয়া যায়নি; ফেরত পণ্যের ক্রয়মূল্য যাচাই প্রয়োজন।"
             }
-            if (costValue > 0.0) rows += LedgerRow(
-                dateKey(ret.date), "ফেরত পণ্য স্টকে • ${line.productName} × ${line.quantity}",
-                "স্টক/ইনভেন্টরি", "বিক্রিত পণ্যের খরচ", costValue
-            )
+            if (costValue > 0.0) rows += LedgerRow(dateKey(ret.date), "ফেরত পণ্য স্টকে • ${line.productName} × ${line.quantity}", "স্টক/ইনভেন্টরি", "বিক্রিত পণ্যের খরচ", costValue, costValue)
         }
     }
 
     // Customer payments against previously recorded receivables.
     customerEntries.filter { it.type == "PAYMENT" && it.amount > 0.0 }.forEach { entry ->
-        rows += LedgerRow(
-            dateKey(entry.date), "ক্রেতার বাকি আদায় • ${entry.customer}",
-            "নগদ", "ক্রেতার পাওনা", entry.amount, entry.note
-        )
+        rows += LedgerRow(dateKey(entry.date), "ক্রেতার বাকি আদায় • ${entry.customer}", "নগদ", "ক্রেতার পাওনা", entry.amount, entry.amount, entry.note)
     }
 
     expenses.forEach { expense ->
-        if (expense.amount > 0.0) rows += LedgerRow(
-            dateKey(expense.date), "প্রতিষ্ঠানের খরচ • ${expense.category}",
-            "প্রতিষ্ঠানের খরচ", "নগদ", expense.amount, expense.note
-        )
+        if (expense.amount > 0.0) rows += LedgerRow(dateKey(expense.date), "প্রতিষ্ঠানের খরচ • ${expense.category}", "প্রতিষ্ঠানের খরচ", "নগদ", expense.amount, expense.amount, expense.note)
     }
     damages.forEach { damage ->
-        if (damage.totalLoss > 0.0) rows += LedgerRow(
-            dateKey(damage.date), "ড্যামেজ/নষ্ট • ${damage.productName}",
-            "ড্যামেজ ক্ষতি", "স্টক/ইনভেন্টরি", damage.totalLoss, damage.reason
-        )
+        if (damage.totalLoss > 0.0) rows += LedgerRow(dateKey(damage.date), "ড্যামেজ/নষ্ট • ${damage.productName}", "ড্যামেজ ক্ষতি", "স্টক/ইনভেন্টরি", damage.totalLoss, damage.totalLoss, damage.reason)
     }
 
     supplierEntries.filter { it.type == "PAYMENT" && it.amount < 0.0 }.forEach { entry ->
-        rows += LedgerRow(
-            dateKey(entry.date), "সরবরাহকারীকে পরিশোধ • ${entry.supplier}",
-            "সরবরাহকারীর দেনা", "নগদ", -entry.amount, entry.note
-        )
+        rows += LedgerRow(dateKey(entry.date), "সরবরাহকারীকে পরিশোধ • ${entry.supplier}", "সরবরাহকারীর দেনা", "নগদ", -entry.amount, -entry.amount, entry.note)
     }
     withdrawals.forEach { withdrawal ->
         val partner = PartnerStorage.getPartners(context).firstOrNull { it.id == withdrawal.partnerId }?.name ?: "পার্টনার"
-        rows += LedgerRow(
-            dateKey(withdrawal.date), "পার্টনার উত্তোলন • $partner",
-            "পার্টনার উত্তোলন", "নগদ", withdrawal.amount, withdrawal.note
-        )
+        rows += LedgerRow(dateKey(withdrawal.date), "পার্টনার উত্তোলন • $partner", "পার্টনার উত্তোলন", "নগদ", withdrawal.amount, withdrawal.amount, withdrawal.note)
     }
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
@@ -347,27 +284,27 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         }
     }
     checkSource("প্রতিষ্ঠানের খরচ", periodExpenseTotal,
-        rows.filter { it.description.startsWith("প্রতিষ্ঠানের খরচ •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("প্রতিষ্ঠানের খরচ •") }.sumOf { it.debitAmount })
     checkSource("ড্যামেজ ক্ষতি", periodDamageTotal,
-        rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.debitAmount })
     checkSource("পণ্য ক্রয়", purchaseTotal,
-        rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.debitAmount })
     checkSource("বিক্রয় ইনভয়েস", transactions.sumOf { it.total.coerceAtLeast(0.0) },
-        rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.amount })
+        rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.creditAmount })
     checkSource("বিক্রয় ফেরত", returns.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.amount })
+        rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.debitAmount })
     checkSource("বিক্রিত পণ্যের ক্রয়মূল্য", grossCogs,
-        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.debitAmount })
     checkSource("ফেরত পণ্যের ক্রয়মূল্য", returnedCost,
-        rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীর কাছে ক্রয়-বাকি", supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীকে পরিশোধ", supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) },
-        rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.debitAmount })
     checkSource("ক্রেতার বাকি আদায়", customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.debitAmount })
     checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.debitAmount })
     val externalCapitalIn = capitalContributions.filter {
         it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
     }.sumOf { it.amount }
@@ -376,19 +313,19 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }.sumOf { it.amount }
     val capitalReturned = capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount }
     checkSource("পার্টনারের নগদ মূলধন জমা", externalCapitalIn,
-        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.creditAmount })
     checkSource("অবণ্টিত মুনাফা মূলধনে স্থানান্তর", capitalizedProfit,
-        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.creditAmount })
     checkSource("পার্টনারের মূলধন ফেরত", capitalReturned,
-        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.debitAmount })
 
     // Verify each invoice's payment and receivable split independently of the balanced journal totals.
     transactions.forEach { tx ->
         val invoiceRows = rows.filter { it.note.contains("ইনভয়েস: ${tx.transactionId}") }
         checkSource("ইনভয়েস ${tx.transactionId} জমা", tx.paid.coerceAtLeast(0.0),
-            invoiceRows.filter { it.debitAccount == "নগদ" }.sumOf { it.amount })
+            invoiceRows.filter { it.debitAccount == "নগদ" }.sumOf { it.debitAmount })
         checkSource("ইনভয়েস ${tx.transactionId} বাকি", tx.due.coerceAtLeast(0.0),
-            invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.amount })
+            invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.debitAmount })
     }
 
     // Profit, partner distribution and the profit screen all use the same calculation engine.
@@ -428,6 +365,8 @@ private fun DoubleEntryFinancialScreen() {
     var fromDate by remember { mutableStateOf(monthStartIso()) }
     var toDate by remember { mutableStateOf(todayIso()) }
     var accounts by remember(refresh) { mutableStateOf(CashAccountStorage.getAccounts(context)) }
+    var openingBalances by remember(refresh) { mutableStateOf(OpeningBalanceStorage.get(context)) }
+    var showOpeningBalanceDialog by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<ManualCashAccount?>(null) }
     var showCapitalizationDialog by remember { mutableStateOf(false) }
@@ -438,10 +377,11 @@ private fun DoubleEntryFinancialScreen() {
     val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
     val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
-    val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.amount > 0.0 }
-    val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.amount > 0.0 }
-    val totalDebit = debitRows.sumOf { it.amount }
-    val totalCredit = creditRows.sumOf { it.amount }
+    val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.debitAmount > 0.0 }
+    val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.creditAmount > 0.0 }
+    // Independent totals: a missing/zero side is not silently copied from the other side.
+    val totalDebit = debitRows.sumOf { it.debitAmount }
+    val totalCredit = creditRows.sumOf { it.creditAmount }
     val ledgerDifference = kotlin.math.abs(totalDebit - totalCredit)
 
     Scaffold(
@@ -476,7 +416,7 @@ private fun DoubleEntryFinancialScreen() {
                     Text("ডেবিট–ক্রেডিট যাচাই", style = MaterialTheme.typography.titleMedium)
                     Text(if (ledgerDifference < 0.01) "জার্নাল এন্ট্রির দুই পাশ সমান: ${money(totalDebit)}"
                     else "ডেবিট-ক্রেডিটে অমিল: ${money(ledgerDifference)}")
-                    Text("প্রতিটি লেনদেনের ডেবিট ও ক্রেডিট একই অঙ্কে লেখা হয়। তাই মোট সমান থাকাই যথেষ্ট নয়; নিচের মূল রেকর্ড যাচাইয়ের সতর্কতাও পরীক্ষা করুন।", style = MaterialTheme.typography.bodySmall)
+                    Text("ডেবিট ও ক্রেডিট আলাদা অঙ্ক থেকে যোগ করা হয়। প্রারম্ভিক ব্যালান্সের অমিল থাকলে তা সমন্বয় করে লুকানো হয় না; মূল রেকর্ডের সতর্কতাও যাচাই করুন।", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -547,8 +487,47 @@ private fun DoubleEntryFinancialScreen() {
                 }
             }
 
+            Text("প্রারম্ভিক মূলধন ও সম্পদ যাচাই", style = MaterialTheme.typography.titleLarge)
+            val openingSnapshot = openingBalances
+            val openingCapital = openingSnapshot?.let { opening ->
+                PartnerStorage.getCapitalContributions(context)
+                    .filter { dateKey(it.date) <= opening.date }
+                    .sumOf { it.amount }
+            } ?: 0.0
+            val openingDifference = openingSnapshot?.let {
+                it.totalAssets - it.totalLiabilities - openingCapital
+            } ?: 0.0
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (openingSnapshot == null) "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ"
+                        else if (openingSnapshot.verified && openingSnapshot.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
+                        else "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (openingSnapshot?.let { it.verified && it.date == fromDate && kotlin.math.abs(openingDifference) < 0.01 } == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    if (openingSnapshot == null) {
+                        Text("শুরুর দিনের প্রকৃত নগদ, ব্যাংক, স্টক, ক্রেতার পাওনা ও দেনা এখনো লেখা হয়নি।", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text("হিসাবের তারিখ: ${openingSnapshot.date}", style = MaterialTheme.typography.bodySmall)
+                        SummaryLine("প্রারম্ভিক নগদ", openingSnapshot.cash)
+                        SummaryLine("প্রারম্ভিক ব্যাংক", openingSnapshot.bank)
+                        SummaryLine("প্রারম্ভিক স্টক (ক্রয়মূল্যে)", openingSnapshot.stock)
+                        SummaryLine("প্রারম্ভিক ক্রেতার পাওনা", openingSnapshot.customerReceivable)
+                        SummaryLine("প্রারম্ভিক সরবরাহকারী দেনা", openingSnapshot.supplierPayable)
+                        SummaryLine("অন্যান্য প্রারম্ভিক দেনা", openingSnapshot.otherLiabilities)
+                        SummaryLine("প্রারম্ভিক পার্টনার মূলধন (রেকর্ড অনুযায়ী)", openingCapital)
+                        SummaryLine("সম্পদ − দেনা − মূলধন", openingDifference)
+                        if (!openingSnapshot.verified) Text("এই অঙ্কগুলো এখনো ব্যবহারকারী দ্বারা যাচাইকৃত হিসেবে চিহ্নিত হয়নি।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (kotlin.math.abs(openingDifference) >= 0.01) Text("অমিল ${money(kotlin.math.abs(openingDifference))}। এটি কোনো কাল্পনিক সম্পদ বা Suspense Account-এ বসানো হয়নি; প্রকৃত উদ্বোধনী হিসাব মিলিয়ে নিন।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (openingSnapshot.date != fromDate) Text("এই রিপোর্টের শুরুর তারিখের সঙ্গে প্রারম্ভিক ব্যালান্সের তারিখ মিলছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(onClick = { showOpeningBalanceDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (openingSnapshot == null) "প্রারম্ভিক ব্যালান্স লিখুন" else "প্রারম্ভিক ব্যালান্স সম্পাদনা করুন")
+                    }
+                }
+            }
+
             Text("পার্টনারদের মূলধন", style = MaterialTheme.typography.titleLarge)
-            SummaryLine("পার্টনারদের মোট জমাকৃত মূলধন", summary.totalCapital, "বর্তমান মোট মূলধন; নির্বাচিত সময়ে জমা হওয়া মূলধন ডেবিট–ক্রেডিট তালিকায় আলাদাভাবে আছে")
+            SummaryLine("পার্টনারদের বর্তমান মোট মূলধন", summary.totalCapital, "এটি বর্তমান মূলধন ব্যালান্স; নির্বাচিত সময়ের আগের জমা প্রারম্ভিক ব্যালান্স এবং সময়ের ভেতরের জমা/ফেরত লেনদেন হিসেবে ক্রেডিট/ডেবিট তালিকায় আছে")
 
             if (summary.stockWarnings.isNotEmpty()) {
                 Text("স্টক যাচাইয়ের সতর্কতা", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
@@ -560,6 +539,57 @@ private fun DoubleEntryFinancialScreen() {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showOpeningBalanceDialog) {
+        val saved = openingBalances
+        var date by remember(saved) { mutableStateOf(saved?.date ?: fromDate) }
+        var cash by remember(saved) { mutableStateOf(saved?.cash?.toString() ?: "0") }
+        var bank by remember(saved) { mutableStateOf(saved?.bank?.toString() ?: "0") }
+        var stock by remember(saved) { mutableStateOf(saved?.stock?.toString() ?: "0") }
+        var receivable by remember(saved) { mutableStateOf(saved?.customerReceivable?.toString() ?: "0") }
+        var supplierDue by remember(saved) { mutableStateOf(saved?.supplierPayable?.toString() ?: "0") }
+        var otherLiabilities by remember(saved) { mutableStateOf(saved?.otherLiabilities?.toString() ?: "0") }
+        var verified by remember(saved) { mutableStateOf(saved?.verified ?: false) }
+        var error by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showOpeningBalanceDialog = false },
+            title = { Text("প্রকৃত প্রারম্ভিক ব্যালান্স") },
+            text = {
+                Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("ব্যবসার শুরুর দিনের বাস্তব অঙ্ক লিখুন। বর্তমান ব্যালান্স বা অনুমান এখানে দেবেন না।", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(date, { date = it; error = "" }, label = { Text("প্রারম্ভিক তারিখ (YYYY-MM-DD)") }, singleLine = true)
+                    OutlinedTextField(cash, { cash = it; error = "" }, label = { Text("হাতে নগদ (৳)") }, singleLine = true)
+                    OutlinedTextField(bank, { bank = it; error = "" }, label = { Text("ব্যাংক ব্যালান্স (৳)") }, singleLine = true)
+                    OutlinedTextField(stock, { stock = it; error = "" }, label = { Text("স্টকের ক্রয়মূল্য (৳)") }, singleLine = true)
+                    OutlinedTextField(receivable, { receivable = it; error = "" }, label = { Text("ক্রেতার কাছে পাওনা (৳)") }, singleLine = true)
+                    OutlinedTextField(supplierDue, { supplierDue = it; error = "" }, label = { Text("সরবরাহকারীর কাছে দেনা (৳)") }, singleLine = true)
+                    OutlinedTextField(otherLiabilities, { otherLiabilities = it; error = "" }, label = { Text("অন্যান্য দেনা (৳)") }, singleLine = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = verified, onCheckedChange = { verified = it })
+                        Text("আমি বাস্তব হিসাব দেখে অঙ্কগুলো যাচাই করেছি")
+                    }
+                    if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    fun amount(value: String) = value.trim().toDoubleOrNull()
+                    val values = listOf(amount(cash), amount(bank), amount(stock), amount(receivable), amount(supplierDue), amount(otherLiabilities))
+                    if (!validLedgerDate(date)) error = "সঠিক প্রারম্ভিক তারিখ লিখুন।"
+                    else if (values.any { it == null || !it.isFinite() || it < 0.0 }) error = "সব ঘরে শূন্য বা তার বেশি সঠিক অঙ্ক লিখুন।"
+                    else {
+                        val item = OpeningBalances(date, values[0]!!, values[1]!!, values[2]!!, values[3]!!, values[4]!!, values[5]!!, verified)
+                        if (OpeningBalanceStorage.save(context, item)) {
+                            openingBalances = item
+                            showOpeningBalanceDialog = false
+                            refresh++
+                        } else error = "প্রারম্ভিক ব্যালান্স সংরক্ষণ করা যায়নি।"
+                    }
+                }) { Text("সংরক্ষণ") }
+            },
+            dismissButton = { TextButton(onClick = { showOpeningBalanceDialog = false }) { Text("বাতিল") } }
+        )
     }
 
     if (showAccountDialog) {
@@ -627,7 +657,7 @@ private fun DoubleEntryFinancialScreen() {
                         HorizontalDivider()
                         Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
                             Text(row.description, style = MaterialTheme.typography.bodyMedium)
-                            Text(row.date + " • " + money(row.amount), style = MaterialTheme.typography.bodySmall)
+                            Text(row.date + " • " + money(if (side == "ডেবিট") row.debitAmount else row.creditAmount), style = MaterialTheme.typography.bodySmall)
                             Text(if (side == "ডেবিট") "ডেবিট: ${row.debitAccount}" else "ক্রেডিট: ${row.creditAccount}", style = MaterialTheme.typography.bodySmall)
                             if (row.note.isNotBlank()) Text(row.note, style = MaterialTheme.typography.bodySmall)
                         }
