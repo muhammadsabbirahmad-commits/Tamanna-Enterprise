@@ -66,7 +66,7 @@ class DoubleEntryAccountingTest {
         val days = listOf(
             DailyBusinessProfit("2026-11-01", 0.0, 0.0, 0.0, 0.0, 0.0, 100.0, 0.0),
             DailyBusinessProfit("2026-11-02", 60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0),
-            DailyBusinessProfit("2026-11-03", 70.0, 0.0, 0.0, 0.0, 0.0, 20.0, 5.0)
+            DailyBusinessProfit("2026-11-03", 75.0, 0.0, 0.0, 0.0, 0.0, 20.0, 5.0)
         )
         val result = calculateExpenseRecovery(days)
         assertEquals(-50.0, result.distributableByDay["2026-11-02"]!!, 0.001)
