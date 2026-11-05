@@ -427,6 +427,25 @@ object CloudSyncManager {
             merged[key] = mergeJsonArrayById(localRaw, cloudRaw)
         }
 
+        if (namespace == "tamanna_enterprise_finance") {
+            val deletedExpenseIds = mergeJsonIdArray(
+                local["deleted_expense_ids"] as? String ?: "[]",
+                cloud["deleted_expense_ids"] as? String ?: "[]"
+            )
+            merged["deleted_expense_ids"] = deletedExpenseIds
+            val deleted = runCatching {
+                val ids = JSONArray(deletedExpenseIds)
+                buildSet { for (i in 0 until ids.length()) add(ids.getLong(i).toString()) }
+            }.getOrDefault(emptySet())
+            val expenses = JSONArray(merged["expenses"] as? String ?: "[]")
+            val filtered = JSONArray()
+            for (i in 0 until expenses.length()) {
+                val expense = expenses.optJSONObject(i) ?: continue
+                if (!deleted.contains(expense.opt("id")?.toString().orEmpty())) filtered.put(expense)
+            }
+            merged["expenses"] = filtered.toString()
+        }
+
         if (namespace == "tamanna_partner_storage") {
             merged["partner_profit_rate_history"] = mergePartnerRateHistory(
                 local["partner_profit_rate_history"] as? String ?: "[]",
