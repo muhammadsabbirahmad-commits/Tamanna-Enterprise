@@ -609,14 +609,12 @@ private fun DoubleEntryFinancialScreen() {
     // expenses are offset by cumulative trading profit (sales less discounts,
     // COGS and returns), not by gross sales revenue and not by net profit after
     // expenses (which would subtract the same expenses twice).
+    // Same cumulative recovery engine used by partner distribution.
+    // Damage is a direct loss, not part of the recoverable operating-expense pool.
     val cumulativeProfitReport = remember(refresh, toDate) {
         BusinessProfitCalculator.calculate(context, null, toDate)
     }
-    val cumulativeTradingProfit = cumulativeProfitReport.days.sumOf {
-        it.netProfit + it.expenses + it.damageLoss
-    }
-    val cumulativeBusinessExpenses = cumulativeProfitReport.expenses + cumulativeProfitReport.damageLoss
-    val unrecoveredBusinessExpenses = (cumulativeBusinessExpenses - cumulativeTradingProfit).coerceAtLeast(0.0)
+    val unrecoveredBusinessExpenses = cumulativeProfitReport.unrecoveredOperatingExpenses
 
     // Evening cash and bank figures are manually recorded by date, separately from estimated cash flow.
     val cashInHand = DailyBalanceStorage.balance(dailyBalanceEntries, "CASH", toDate,
