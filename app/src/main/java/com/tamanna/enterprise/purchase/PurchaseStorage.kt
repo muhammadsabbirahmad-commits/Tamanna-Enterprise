@@ -13,7 +13,10 @@ data class Purchase(
     val quantity: Int,
     val purchasePrice: Double,
     val supplier: String,
-    val memoNumber: String
+    val memoNumber: String,
+    val paidAmount: Double = 0.0,
+    val dueAmount: Double = 0.0,
+    val settlementRecorded: Boolean = false
 )
 
 object PurchaseStorage {
@@ -35,7 +38,10 @@ object PurchaseStorage {
                     quantity = item.getInt("quantity"),
                     purchasePrice = item.getDouble("purchasePrice"),
                     supplier = item.getString("supplier"),
-                    memoNumber = item.getString("memoNumber")
+                    memoNumber = item.getString("memoNumber"),
+                    paidAmount = item.optDouble("paidAmount", 0.0),
+                    dueAmount = item.optDouble("dueAmount", 0.0),
+                    settlementRecorded = item.optBoolean("settlementRecorded", false)
                 ))
             }
         }.sortedByDescending { it.id }
@@ -77,6 +83,9 @@ object PurchaseStorage {
                 put("purchasePrice", it.purchasePrice)
                 put("supplier", it.supplier)
                 put("memoNumber", it.memoNumber)
+                put("paidAmount", it.paidAmount)
+                put("dueAmount", it.dueAmount)
+                put("settlementRecorded", it.settlementRecorded)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit()

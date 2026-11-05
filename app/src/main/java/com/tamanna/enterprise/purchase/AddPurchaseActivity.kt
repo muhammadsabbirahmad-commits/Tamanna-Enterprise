@@ -140,7 +140,10 @@ private fun AddPurchaseScreen(
                                 quantity = qty,
                                 purchasePrice = price,
                                 supplier = supplier.trim(),
-                                memoNumber = memoNumber.trim()
+                                memoNumber = memoNumber.trim(),
+                                paidAmount = paidAmount,
+                                dueAmount = dueAmount,
+                                settlementRecorded = true
                             )
                         )
 
@@ -156,7 +159,8 @@ private fun AddPurchaseScreen(
                                 context,
                                 supplier.trim(),
                                 dueAmount,
-                                "ক্রয়: " + latestProduct.name + " x" + qty + if (memoNumber.isBlank()) "" else " • মেমো " + memoNumber.trim()
+                                "ক্রয়: " + latestProduct.name + " x" + qty + if (memoNumber.isBlank()) "" else " • মেমো " + memoNumber.trim(),
+                                savedPurchaseId
                             )
                             if (supplierDueId <= 0L) {
                                 PurchaseStorage.removeById(context, savedPurchaseId)

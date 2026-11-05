@@ -175,25 +175,80 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
     }
 
-    // Allocate supplier credit notes proportionally to purchases made for that supplier on the same day.
-    val purchaseGroups = purchases.groupBy { dateKey(it.date) + "|" + it.supplier.trim().lowercase(Locale.ROOT) }
-    purchaseGroups.forEach { (groupKey, group) ->
-        val split = groupKey.split("|", limit = 2)
-        val dueForGroup = supplierEntries.filter {
-            it.type == "PURCHASE" && dateKey(it.date) == split[0] &&
-                it.supplier.trim().equals(group.first().supplier.trim(), true)
-        }.sumOf { it.amount.coerceAtLeast(0.0) }.coerceAtMost(group.sumOf { it.quantity * it.purchasePrice })
-        val groupTotal = group.sumOf { it.quantity * it.purchasePrice }
-        var allocatedDue = 0.0
-        group.forEachIndexed { index, purchase ->
-            val gross = (purchase.quantity * purchase.purchasePrice).coerceAtLeast(0.0)
-            val due = if (index == group.lastIndex) (dueForGroup - allocatedDue).coerceAtLeast(0.0)
-                else if (groupTotal > 0.0) (dueForGroup * gross / groupTotal).coerceAtMost(gross) else 0.0
-            allocatedDue += due
-            val paid = (gross - due).coerceAtLeast(0.0)
-            if (paid > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}", "স্টক/ইনভেন্টরি", "নগদ", paid, paid, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; ক্রয়ের মোট ${money(gross)}")
-            if (due > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}", "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due, due, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}")
+    // Each purchase is reconciled against its own invoice settlement.
+    // New records use a stable purchaseId and stored paid/due amounts. Legacy
+    // records are matched only by an exact unique supplier/date/memo description;
+    // ambiguous historical entries are deliberately left unreconciled.
+    val purchaseDueEntries = supplierEntries.filter { it.type == "PURCHASE" }
+    val consumedLegacyDueIds = mutableSetOf<Long>()
+    purchases.forEach { purchase ->
+        val gross = (purchase.quantity.coerceAtLeast(0) * purchase.purchasePrice.coerceAtLeast(0.0))
+        if (gross <= 0.004) return@forEach
+
+        val linkedEntries = purchaseDueEntries.filter { it.purchaseId == purchase.id }
+        val expectedLegacyNote = "ক্রয়: ${purchase.productName} x${purchase.quantity}" +
+            if (purchase.memoNumber.isBlank()) "" else " • মেমো ${purchase.memoNumber.trim()}"
+        val legacyMatches = if (!purchase.settlementRecorded) {
+            purchaseDueEntries.filter {
+                it.purchaseId <= 0L && it.id !in consumedLegacyDueIds &&
+                    it.supplier.trim().equals(purchase.supplier.trim(), true) &&
+                    dateKey(it.date) == dateKey(purchase.date) &&
+                    it.note.trim() == expectedLegacyNote
+            }
+        } else emptyList()
+        val duplicateLegacyPurchaseCount = if (!purchase.settlementRecorded) purchases.count {
+            !it.settlementRecorded &&
+                it.supplier.trim().equals(purchase.supplier.trim(), true) &&
+                dateKey(it.date) == dateKey(purchase.date) &&
+                it.productName == purchase.productName &&
+                it.quantity == purchase.quantity &&
+                it.memoNumber.trim() == purchase.memoNumber.trim()
+        } else 0
+
+        val dueFromSource: Double? = when {
+            purchase.settlementRecorded -> purchase.dueAmount
+            linkedEntries.size == 1 -> linkedEntries.single().amount
+            linkedEntries.size > 1 -> {
+                warnings += "ক্রয় ইনভয়েস ${purchase.id}: একই ইনভয়েসে একাধিক বাকি রেকর্ড আছে; যাচাই প্রয়োজন।"
+                null
+            }
+            legacyMatches.size == 1 && duplicateLegacyPurchaseCount == 1 -> {
+                consumedLegacyDueIds += legacyMatches.single().id
+                legacyMatches.single().amount
+            }
+            legacyMatches.isNotEmpty() -> {
+                warnings += "পুরোনো ক্রয় ${purchase.memoNumber.ifBlank { purchase.id.toString() }}: একই মেমো/পণ্য/তারিখের একাধিক বাকি রেকর্ড মেলায় ইনভয়েসভিত্তিক ভাগ নির্ধারণ করা যায়নি।"
+                null
+            }
+            else -> 0.0
         }
+
+        if (purchase.settlementRecorded && linkedEntries.size == 1 &&
+            kotlin.math.abs(linkedEntries.single().amount - purchase.dueAmount) > 0.01) {
+            warnings += "ইনভয়েস ${purchase.memoNumber.ifBlank { purchase.id.toString() }}: ক্রয় রেকর্ডের বাকি ${money(purchase.dueAmount)} এবং সরবরাহকারী রেকর্ডের বাকি ${money(linkedEntries.single().amount)} মেলেনি।"
+        }
+
+        if (dueFromSource == null) {
+            // Do not invent a cash/payable split for ambiguous legacy records.
+            rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity} • নিষ্পত্তি যাচাই বাকি",
+                "স্টক/ইনভেন্টরি", "", gross, 0.0,
+                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; মোট ${money(gross)}; নগদ/বাকি ভাগ পুরোনো রেকর্ড থেকে নিশ্চিত করা যায়নি।")
+            return@forEach
+        }
+
+        val due = dueFromSource.coerceIn(0.0, gross)
+        if (kotlin.math.abs(dueFromSource - due) > 0.01) {
+            warnings += "ইনভয়েস ${purchase.memoNumber.ifBlank { purchase.id.toString() }}: বাকি মোট ক্রয়মূল্যের বেশি; প্রকৃত অঙ্ক যাচাই করুন।"
+        }
+        val paid = gross - due
+        if (purchase.settlementRecorded && kotlin.math.abs(purchase.paidAmount + purchase.dueAmount - gross) > 0.01) {
+            warnings += "ইনভয়েস ${purchase.memoNumber.ifBlank { purchase.id.toString() }}: জমা ও বাকি মিলে মোট ক্রয়মূল্য হচ্ছে না।"
+        }
+        val invoiceNote = "মেমো: ${purchase.memoNumber.ifBlank { "—" }} • ইনভয়েস ID: ${purchase.id}"
+        if (paid > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}",
+            "স্টক/ইনভেন্টরি", "নগদ", paid, paid, "$invoiceNote; ক্রয়ের মোট ${money(gross)}")
+        if (due > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}",
+            "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due, due, invoiceNote)
     }
 
     // Sales: cash received at checkout plus the outstanding customer receivable.
