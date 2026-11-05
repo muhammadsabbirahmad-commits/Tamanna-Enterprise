@@ -19,6 +19,10 @@ on:
       - fix/supplier-invoice-due-allocation
       - fix/sales-return-journal-reconciliation
       - feat/audited-double-entry-trial-balance
+  pull_request:
+    branches:
+      - main
+      - fix/sales-return-journal-reconciliation
   workflow_dispatch:
 
 permissions:
