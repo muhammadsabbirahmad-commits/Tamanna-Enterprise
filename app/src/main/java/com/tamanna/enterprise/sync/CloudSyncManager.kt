@@ -53,6 +53,15 @@ object CloudSyncManager {
     private var isAutoSyncRunning = false
     private var realtimeListener: com.google.firebase.firestore.ListenerRegistration? = null
     private var realtimeListenerStarting = false
+    @Volatile private var dataChangedListener: (() -> Unit)? = null
+
+    fun setDataChangedListener(listener: (() -> Unit)?) {
+        dataChangedListener = listener
+    }
+
+    private fun notifyLocalDataChanged() {
+        Handler(Looper.getMainLooper()).post { dataChangedListener?.invoke() }
+    }
 
     fun isAutoSyncEnabled(): Boolean = isAutoSyncRunning
 
@@ -176,6 +185,19 @@ object CloudSyncManager {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
+    /** Upload the local snapshot after a successful transaction, merging cloud rows first. */
+    fun pushLocalChangesToCloud(context: Context, onComplete: (Boolean) -> Unit) {
+        val appContext = context.applicationContext
+        getTargetSyncDoc(appContext) { metaRef, canPush ->
+            if (metaRef == null || !canPush) {
+                Log.w(TAG, "Immediate upload skipped: business owner could not be verified.")
+                onComplete(false)
+                return@getTargetSyncDoc
+            }
+            pushAllToCloud(appContext, calculateLocalHash(appContext), metaRef, onComplete)
+        }
+    }
+
     fun smartSync(context: Context, isAuto: Boolean = false, onComplete: (String, Boolean) -> Unit) {
         val appContext = context.applicationContext
 
@@ -290,6 +312,23 @@ object CloudSyncManager {
                             editor.apply()
                             localMap.clear()
                             localMap.putAll(merged)
+                        } else if (ns == "tamanna_enterprise_sales" || ns == "tamanna_enterprise_purchases" || ns == "tamanna_enterprise_sale_transactions") {
+                            val merged = mergeRecordNamespace(ns, localMap, cloudByNamespace[ns].orEmpty())
+                            val editor = prefs.edit()
+                            for ((key, value) in merged) {
+                                when (value) {
+                                    is String -> editor.putString(key, value)
+                                    is Int -> editor.putInt(key, value)
+                                    is Long -> editor.putLong(key, value)
+                                    is Double -> editor.putFloat(key, value.toFloat())
+                                    is Float -> editor.putFloat(key, value)
+                                    is Boolean -> editor.putBoolean(key, value)
+                                    is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                                }
+                            }
+                            editor.apply()
+                            localMap.clear()
+                            localMap.putAll(merged)
                         } else if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts" || ns == "tamanna_opening_balances" || ns == "tamanna_daily_manual_balances") {
                             val merged = mergeFinanceNamespace(ns, localMap, cloudByNamespace[ns].orEmpty())
                             val editor = prefs.edit()
@@ -336,6 +375,7 @@ object CloudSyncManager {
                         .addOnSuccessListener {
                             val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
                             syncPrefs.edit().putString(lastHashKey(context), finalHash).apply()
+                            notifyLocalDataChanged()
                             onResult(true)
                         }
                         .addOnFailureListener { e ->
@@ -400,6 +440,46 @@ object CloudSyncManager {
         addAll(cloudRaw)
         val result = JSONArray()
         products.values.forEach { result.put(it) }
+        return result.toString()
+    }
+
+    /** Merge sales/purchase rows by stable identity; local rows win collisions without updatedAt. */
+    private fun mergeRecordNamespace(namespace: String, local: Map<String, Any>, cloud: Map<*, *>): Map<String, Any> {
+        val merged = LinkedHashMap<String, Any>()
+        cloud.forEach { (key, value) -> if (key is String && value != null) merged[key] = value }
+        local.forEach { (key, value) -> merged[key] = value }
+        val arrayKey = when (namespace) {
+            "tamanna_enterprise_sales" -> "sales"
+            "tamanna_enterprise_purchases" -> "purchases"
+            "tamanna_enterprise_sale_transactions" -> "transactions"
+            else -> return merged
+        }
+        merged[arrayKey] = mergeJsonArrayByStableKey(namespace, local[arrayKey] as? String ?: "[]", cloud[arrayKey] as? String ?: "[]")
+        return merged
+    }
+
+    private fun mergeJsonArrayByStableKey(namespace: String, localRaw: String, cloudRaw: String): String {
+        val records = LinkedHashMap<String, JSONObject>()
+        fun key(item: JSONObject): String = when (namespace) {
+            "tamanna_enterprise_sales" -> item.opt("id")?.toString()?.takeIf { it.isNotBlank() } ?: (item.optString("transactionId") + "|" + item.optString("productCode"))
+            "tamanna_enterprise_purchases" -> item.opt("id")?.toString().orEmpty()
+            "tamanna_enterprise_sale_transactions" -> item.optString("transactionId")
+            else -> ""
+        }
+        fun addAll(raw: String, localRows: Boolean) {
+            val array = JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val id = key(item)
+                if (id.isBlank()) continue
+                val old = records[id]
+                if (old == null || localRows || item.optLong("updatedAt", 0L) > old.optLong("updatedAt", 0L)) records[id] = item
+            }
+        }
+        addAll(cloudRaw, false)
+        addAll(localRaw, true)
+        val result = JSONArray()
+        records.values.forEach { result.put(it) }
         return result.toString()
     }
 
@@ -539,6 +619,7 @@ object CloudSyncManager {
 
                             val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
                             syncPrefs.edit().putString(lastHashKey(context), cloudHash).apply()
+                            notifyLocalDataChanged()
                             onResult(true)
                         } catch (e: Exception) {
                             Log.e(TAG, "Exception during pullAllFromCloud processing", e)
@@ -567,6 +648,26 @@ object CloudSyncManager {
                 if (key is String && value != null) key to value else null
             }.toMap()
             val merged = mergeProductNamespace(local, cloudData)
+            for ((key, value) in merged) {
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Double -> editor.putFloat(key, value.toFloat())
+                    is Float -> editor.putFloat(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Number -> editor.putLong(key, value.toLong())
+                    is List<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+            editor.apply()
+            return
+        }
+
+        // Merge sale rows and invoice headers so first-time pulls cannot erase local sales.
+        if (ns == "tamanna_enterprise_sales" || ns == "tamanna_enterprise_purchases" || ns == "tamanna_enterprise_sale_transactions") {
+            val local = prefs.all.mapNotNull { (key, value) -> if (key is String && value != null) key to value else null }.toMap()
+            val merged = mergeRecordNamespace(ns, local, cloudData)
             for ((key, value) in merged) {
                 when (value) {
                     is String -> editor.putString(key, value)
