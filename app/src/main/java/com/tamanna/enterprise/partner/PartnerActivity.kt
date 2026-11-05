@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
+import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.profit.BusinessProfitCalculator
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
@@ -91,6 +92,17 @@ fun PartnerScreen() {
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
     val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
     val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
+    // Partner expense cards read the immutable allocation snapshot saved with each expense.
+    val expenseRecords = remember(refresh) { ExpenseStorage.getExpenses(context) }
+    val unallocatedExpenseTotal = remember(expenseRecords) {
+        expenseRecords.filter { expense ->
+            expense.allocations.isEmpty() ||
+                expense.allocations.sumOf { kotlin.math.round(it.amount * 100.0).toLong() } != kotlin.math.round(expense.amount * 100.0).toLong()
+        }.sumOf { it.amount }
+    }
+    val estimatedExpenseTotal = remember(expenseRecords) {
+        expenseRecords.filter { it.allocationEstimated }.sumOf { it.amount }
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingPartner by remember { mutableStateOf<Partner?>(null) }
@@ -150,6 +162,19 @@ fun PartnerScreen() {
                 }
             }
 
+            if (unallocatedExpenseTotal > 0.004) {
+                Text(
+                    "সতর্কতা: ৳ %.2f প্রতিষ্ঠানের খরচের পার্টনার বরাদ্দ অসম্পূর্ণ। ঐতিহাসিক শতাংশের রেকর্ড বা ১০০%% বণ্টন যাচাই করুন।".format(Locale.US, unallocatedExpenseTotal),
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            if (estimatedExpenseTotal > 0.004) {
+                Text(
+                    "নোট: ৳ %.2f পুরোনো খরচের বরাদ্দ বর্তমান শতাংশ থেকে আনুমানিকভাবে তৈরি হয়েছে; মূল তারিখের শতাংশের রেকর্ড না থাকায় ১০০%% ঐতিহাসিক নিশ্চয়তা নেই।".format(Locale.US, estimatedExpenseTotal),
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+
             Text("পার্টনারদের তালিকা", style = MaterialTheme.typography.titleLarge)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
             partners.forEach { partner ->
@@ -159,10 +184,15 @@ fun PartnerScreen() {
                 val loss30 = last30DailyNet.sumOf { (day, net) ->
                     kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
-                val expense30 = dailyExpenses.entries.filter { it.key in last30FromDate..last30ToDate }.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
-                val lifetimeExpenses = dailyExpenses.entries.sumOf { (day, amount) ->
-                    amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
+                val expense30 = expenseRecords
+                    .filter { it.date in last30FromDate..last30ToDate }
+                    .flatMap { it.allocations }
+                    .filter { it.partnerId == partner.id }
+                    .sumOf { it.amount }
+                val lifetimeExpenses = expenseRecords
+                    .flatMap { it.allocations }
+                    .filter { it.partnerId == partner.id }
+                    .sumOf { it.amount }
                 PartnerCard(partner, canWrite, profit30, loss30, expense30, lifetimeExpenses, onAddCapital = { addingCapitalFor = partner }) {
                     if (canWrite) editingPartner = partner
                 }
