@@ -16,6 +16,7 @@ on:
       - feature/double-entry-financial-dashboard
       - fix/firebase-auth-session-persistence
       - audit/complete-double-entry-accounting
+      - fix/supplier-invoice-due-allocation
   workflow_dispatch:
 
 permissions:
