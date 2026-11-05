@@ -35,7 +35,9 @@ data class DamageRecord(
     val productName: String,
     val quantity: Int,
     val unitCost: Double,
-    val reason: String
+    val reason: String,
+    val allocations: List<PartnerExpenseAllocation> = emptyList(),
+    val allocationEstimated: Boolean = false
 ) {
     val totalLoss get() = quantity * unitCost
 }
@@ -157,21 +159,35 @@ object ExpenseStorage {
     }
 
     /**
-     * Backfills old expenses once. If the old rate history is missing, the
-     * current split is used only as an explicitly marked estimate; it is never
-     * presented as a confirmed historical rate.
+     * Backfills old expenses only when the effective historical rate is known.
+     * Missing historical rate data remains unallocated and is surfaced for review.
      */
+    private fun isValidAllocation(items: List<PartnerExpenseAllocation>, amount: Double): Boolean {
+        if (items.isEmpty() || !amount.isFinite() || amount <= 0.0) return false
+        if (items.any {
+                it.partnerId <= 0L || !it.percentage.isFinite() || it.percentage < 0.0 ||
+                    !it.amount.isFinite() || it.amount < 0.0
+            }) return false
+        if (items.map { it.partnerId }.distinct().size != items.size) return false
+        return kotlin.math.abs(items.sumOf { it.percentage } - 100.0) <= 0.0001 &&
+            items.sumOf { moneyCents(it.amount) } == moneyCents(amount)
+    }
+
     private fun migrateLegacyAllocations(context: Context): JSONArray {
         val expenses = array(context, E)
         var changed = false
         for (i in 0 until expenses.length()) {
             val item = expenses.optJSONObject(i) ?: continue
-            if (item.has("allocations")) continue
+            val amount = item.optDouble("amount", 0.0)
+            val existing = parseAllocations(item.optJSONArray("allocations"))
+            // Some older entries already contain an empty/incomplete allocations array.
+            // Repair those too; only a complete 100% snapshot is considered final.
+            if (isValidAllocation(existing, amount)) continue
             val allocation = buildAllocations(
                 context,
                 item.optString("date"),
-                item.optDouble("amount", 0.0),
-                allowEstimatedLegacyRate = true
+                amount,
+                allowEstimatedLegacyRate = false
             )
             if (allocation != null) {
                 item.put("allocations", allocationArray(allocation.first))
@@ -233,9 +249,8 @@ object ExpenseStorage {
                 val oldAllocations = parseAllocations(old.optJSONArray("allocations"))
                 val sameFinancialValue = old.optString("date") == x.date &&
                     moneyCents(old.optDouble("amount", 0.0)) == moneyCents(normalizedAmount)
-                val allocated = if (sameFinancialValue && oldAllocations.isNotEmpty() &&
-                    oldAllocations.sumOf { moneyCents(it.amount) } == moneyCents(normalizedAmount)
-                ) oldAllocations to old.optBoolean("allocationEstimated", false)
+                val allocated = if (sameFinancialValue && isValidAllocation(oldAllocations, normalizedAmount))
+                    oldAllocations to old.optBoolean("allocationEstimated", false)
                 else buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
                 items.put(i, expenseJson(x.copy(
                     amount = normalizedAmount,
@@ -255,51 +270,93 @@ object ExpenseStorage {
         partnerId: Long,
         fromDate: String? = null,
         toDate: String? = null
-    ): Double = getExpenses(c)
-        .asSequence()
-        .filter { (fromDate == null || it.date >= fromDate) && (toDate == null || it.date <= toDate) }
-        .flatMap { it.allocations.asSequence() }
-        .filter { it.partnerId == partnerId }
-        .sumOf { it.amount }
+    ): Double {
+        val ordinary = getExpenses(c).asSequence()
+            .filter { (fromDate == null || it.date >= fromDate) && (toDate == null || it.date <= toDate) }
+            .flatMap { it.allocations.asSequence() }
+            .filter { it.partnerId == partnerId }
+            .sumOf { it.amount }
+        val damage = getDamages(c).asSequence()
+            .filter { (fromDate == null || it.date >= fromDate) && (toDate == null || it.date <= toDate) }
+            .flatMap { it.allocations.asSequence() }
+            .filter { it.partnerId == partnerId }
+            .sumOf { it.amount }
+        return ordinary + damage
+    }
 
-    fun getUnallocatedExpenseTotal(c: Context): Double = getExpenses(c)
-        .filter { expense ->
-            val allocations = expense.allocations
-            allocations.isEmpty() ||
-                allocations.any { !it.amount.isFinite() || it.amount < 0.0 || !it.percentage.isFinite() || it.percentage < 0.0 } ||
-                allocations.map { it.partnerId }.distinct().size != allocations.size ||
-                kotlin.math.abs(allocations.sumOf { it.percentage } - 100.0) > 0.0001 ||
-                allocations.sumOf { moneyCents(it.amount) } != moneyCents(expense.amount)
+    private fun isValidDamageAllocation(damage: DamageRecord): Boolean =
+        isValidAllocation(damage.allocations, damage.totalLoss)
+
+    fun getUnallocatedExpenseTotal(c: Context): Double {
+        val ordinary = getExpenses(c).filterNot { isValidAllocation(it.allocations, it.amount) }.sumOf { it.amount }
+        val damage = getDamages(c).filterNot(::isValidDamageAllocation).sumOf { it.totalLoss }
+        return ordinary + damage
+    }
+
+    fun getEstimatedAllocationExpenseTotal(c: Context): Double {
+        val ordinary = getExpenses(c).filter { it.allocationEstimated }.sumOf { it.amount }
+        val damage = getDamages(c).filter { it.allocationEstimated }.sumOf { it.totalLoss }
+        return ordinary + damage
+    }
+
+    private fun damageJson(x: DamageRecord) = JSONObject().apply {
+        put("id", x.id)
+        put("date", x.date)
+        put("productCode", x.productCode)
+        put("productName", x.productName)
+        put("quantity", x.quantity)
+        put("unitCost", x.unitCost)
+        put("reason", x.reason)
+        put("allocations", allocationArray(x.allocations))
+        put("allocationEstimated", x.allocationEstimated)
+    }
+
+    private fun migrateLegacyDamageAllocations(context: Context): JSONArray {
+        val items = array(context, D)
+        var changed = false
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val amount = item.optInt("quantity").coerceAtLeast(0) * item.optDouble("unitCost").coerceAtLeast(0.0)
+            val existing = parseAllocations(item.optJSONArray("allocations"))
+            if (isValidAllocation(existing, amount)) continue
+            val allocation = buildAllocations(
+                context, item.optString("date"), amount, allowEstimatedLegacyRate = false
+            ) ?: continue
+            item.put("allocations", allocationArray(allocation.first))
+            item.put("allocationEstimated", allocation.second)
+            changed = true
         }
-        .sumOf { it.amount }
-
-    fun getEstimatedAllocationExpenseTotal(c: Context): Double = getExpenses(c)
-        .filter { it.allocationEstimated }
-        .sumOf { it.amount }
+        if (changed) save(context, D, items)
+        return items
+    }
 
     fun getDamages(c: Context) = buildList {
-        val items = array(c, D)
+        val items = migrateLegacyDamageAllocations(c)
         for (i in 0 until items.length()) {
-            val item = items.getJSONObject(i)
+            val item = items.optJSONObject(i) ?: continue
             add(DamageRecord(
                 item.optLong("id"), item.optString("date"), item.optString("productCode"),
                 item.optString("productName"), item.optInt("quantity"),
-                item.optDouble("unitCost"), item.optString("reason")
+                item.optDouble("unitCost"), item.optString("reason"),
+                parseAllocations(item.optJSONArray("allocations")),
+                item.optBoolean("allocationEstimated", false)
             ))
         }
     }
 
-    fun addDamage(c: Context, x: DamageRecord) {
+    /** Saves each damage loss with the same date-effective 100% partner split. */
+    fun addDamage(c: Context, x: DamageRecord): Boolean {
+        if (x.id <= 0L || !validDate(x.date) || x.quantity <= 0 ||
+            !x.unitCost.isFinite() || x.unitCost <= 0.0) return false
+        val allocation = buildAllocations(
+            c, x.date, x.totalLoss, allowEstimatedLegacyRate = false
+        ) ?: return false
         val items = array(c, D)
-        items.put(JSONObject().apply {
-            put("id", x.id)
-            put("date", x.date)
-            put("productCode", x.productCode)
-            put("productName", x.productName)
-            put("quantity", x.quantity)
-            put("unitCost", x.unitCost)
-            put("reason", x.reason)
-        })
-        save(c, D, items)
+        if ((0 until items.length()).any { items.optJSONObject(it)?.optLong("id") == x.id }) return false
+        items.put(damageJson(x.copy(
+            allocations = allocation.first,
+            allocationEstimated = allocation.second
+        )))
+        return save(c, D, items)
     }
 }

@@ -27,7 +27,11 @@ data class DailyBusinessProfit(
 
 data class BusinessProfitReport(
     val days: List<DailyBusinessProfit>,
-    val warnings: List<String>
+    val warnings: List<String>,
+    /** Daily partner-distributable result after carrying forward and recovering unpaid operating expenses. */
+    val partnerDistributionByDay: Map<String, Double> = emptyMap(),
+    /** Remaining operating expenses after cumulative trading-profit recovery through the report end date. */
+    val unrecoveredOperatingExpenses: Double = 0.0
 ) {
     val grossSales: Double get() = days.sumOf { it.grossSales }
     val salesDiscount: Double get() = days.sumOf { it.salesDiscount }
@@ -37,6 +41,26 @@ data class BusinessProfitReport(
     val expenses: Double get() = days.sumOf { it.expenses }
     val damageLoss: Double get() = days.sumOf { it.damageLoss }
     val netProfit: Double get() = days.sumOf { it.netProfit }
+}
+
+internal data class ExpenseRecoveryResult(
+    val distributableByDay: Map<String, Double>,
+    val unrecoveredOperatingExpenses: Double
+)
+
+/** Damage is a direct loss; only positive trading profit after damage recovers operating expenses. */
+internal fun calculateExpenseRecovery(days: List<DailyBusinessProfit>): ExpenseRecoveryResult {
+    var unpaid = 0.0
+    val distributable = linkedMapOf<String, Double>()
+    days.sortedBy { it.date }.forEach { result ->
+        unpaid += result.expenses.coerceAtLeast(0.0)
+        val tradingAfterDamage = result.grossSales - result.salesDiscount -
+            result.costOfGoodsSold - result.returnRevenue + result.returnCost - result.damageLoss
+        val recovered = minOf(tradingAfterDamage.coerceAtLeast(0.0), unpaid)
+        unpaid = (unpaid - recovered).coerceAtLeast(0.0)
+        distributable[result.date] = tradingAfterDamage - recovered
+    }
+    return ExpenseRecoveryResult(distributable, unpaid)
 }
 
 object BusinessProfitCalculator {
@@ -49,10 +73,11 @@ object BusinessProfitCalculator {
         val damages = ExpenseStorage.getDamages(context)
         val returns = SaleReturnStorage.getReturns(context)
         val returnLines = SaleReturnStorage.getLines(context)
+        val exchanges = SaleReturnStorage.getExchanges(context)
         val warnings = mutableListOf<String>()
         val datedSales = sales.filter { sale ->
             val key = day(sale.date)
-            key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)
+            key.isNotBlank() && (toDate == null || key <= toDate)
         }
         datedSales.filter { it.transactionId !in transactions }.map { it.transactionId }.distinct().forEach { id ->
             warnings += "বিক্রয় $id: ইনভয়েসের ডিসকাউন্ট/পেমেন্ট রেকর্ড নেই; বিক্রয় লাইনের ভিত্তিতে লাভ গণনা করা হয়েছে, যাচাই প্রয়োজন।"
@@ -86,7 +111,7 @@ object BusinessProfitCalculator {
 
         sales.forEach { sale ->
             val key = day(sale.date)
-            if (key.isBlank() || (fromDate != null && key < fromDate) || (toDate != null && key > toDate)) return@forEach
+            if (key.isBlank() || (toDate != null && key > toDate)) return@forEach
             val gross = (sale.quantity.coerceAtLeast(0) * sale.salePrice.coerceAtLeast(0.0))
             val tx = transactions[sale.transactionId]
             val invoiceSubtotal = tx?.subtotal?.coerceAtLeast(0.0) ?: 0.0
@@ -101,7 +126,7 @@ object BusinessProfitCalculator {
 
         returns.forEach { ret ->
             val returnDate = day(ret.date)
-            if (returnDate.isBlank() || (fromDate != null && returnDate < fromDate) || (toDate != null && returnDate > toDate)) return@forEach
+            if (returnDate.isBlank() || (toDate != null && returnDate > toDate)) return@forEach
             val item = bucket(returnDate)
             // The saved return amount is the authoritative net amount actually refunded/credited.
             item.returnRevenue += ret.amount.coerceAtLeast(0.0)
@@ -121,25 +146,43 @@ object BusinessProfitCalculator {
             }
         }
 
+        exchanges.filter { exchange ->
+            val key = day(exchange.date)
+            key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)
+        }.forEach { exchange ->
+            warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: বিকল্প পণ্যের বিক্রয়মূল্য ও ক্রয়মূল্য আলাদা সংরক্ষিত নেই; এই এক্সচেঞ্জের প্রকৃত লাভ নিশ্চিতভাবে গণনা করা যায়নি।"
+        }
+
         expenses.forEach { expense ->
             val key = day(expense.date)
-            if (key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)) {
+            if (key.isNotBlank() && (toDate == null || key <= toDate)) {
                 bucket(key).expenses += expense.amount.coerceAtLeast(0.0)
             }
         }
         damages.forEach { damage ->
             val key = day(damage.date)
-            if (key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)) {
+            if (key.isNotBlank() && (toDate == null || key <= toDate)) {
                 bucket(key).damageLoss += damage.totalLoss.coerceAtLeast(0.0)
             }
         }
 
+        val dailyResults = days.map { (date, item) ->
+            DailyBusinessProfit(date, item.grossSales, item.salesDiscount, item.cogs,
+                item.returnRevenue, item.returnCost, item.expenses, item.damageLoss)
+        }.sortedBy { it.date }
+
+        // Run recovery from the beginning of the available business history through toDate.
+        // Only the displayed rows are filtered by fromDate, so changing the calendar
+        // start date never resets the opening unpaid-expense balance.
+        val recovery = calculateExpenseRecovery(dailyResults)
+        val visibleDays = dailyResults.filter { fromDate == null || it.date >= fromDate }
+        val visibleDistribution = recovery.distributableByDay.filterKeys { fromDate == null || it >= fromDate }
+
         return BusinessProfitReport(
-            days = days.map { (date, item) ->
-                DailyBusinessProfit(date, item.grossSales, item.salesDiscount, item.cogs,
-                    item.returnRevenue, item.returnCost, item.expenses, item.damageLoss)
-            }.sortedBy { it.date },
-            warnings = warnings.distinct()
+            days = visibleDays,
+            warnings = warnings.distinct(),
+            partnerDistributionByDay = visibleDistribution,
+            unrecoveredOperatingExpenses = recovery.unrecoveredOperatingExpenses
         )
     }
 

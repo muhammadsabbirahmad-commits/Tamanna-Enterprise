@@ -14,6 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.profit.BusinessProfitCalculator
@@ -81,19 +85,68 @@ private fun partnerDateRange(fromDate: String, toDate: String): List<String> {
     }
 }
 
+private fun partnerDateToUtcMillis(value: String): Long? = runCatching {
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+    format.parse(value)?.time
+}.getOrNull()
+
+private fun partnerUtcMillisToDate(value: Long): String {
+    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+    return format.format(java.util.Date(value))
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PartnerDatePickerDialog(
+    title: String,
+    initialDate: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = partnerDateToUtcMillis(initialDate)
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    state.selectedDateMillis?.let { onSelect(partnerUtcMillisToDate(it)) }
+                },
+                enabled = state.selectedDateMillis != null
+            ) { Text("নির্বাচন") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
+    ) {
+        DatePicker(state = state, title = { Text(title, modifier = Modifier.padding(start = 24.dp, top = 16.dp)) })
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PartnerScreen() {
     val context = LocalContext.current
     val canWrite = remember { SecurityStorage.canWrite(context) }
     var refresh by remember { mutableIntStateOf(0) }
+    // Refresh saved expense allocations whenever this screen becomes visible again.
+    val lifecycleOwner = context as? LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refresh++
+        }
+        lifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(observer) }
+    }
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
     val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
-    val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
-    val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
-    // Partner expense cards read the immutable allocation snapshot saved with each expense.
-    val expenseRecords = remember(refresh) { ExpenseStorage.getExpenses(context) }
+    // Partner profit/loss uses rolling expense recovery, not expenses deducted immediately.
+    val allDailyNet = remember(profitReport) { profitReport.partnerDistributionByDay }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
@@ -104,18 +157,13 @@ fun PartnerScreen() {
     var withdrawingPartner by remember { mutableStateOf<Partner?>(null) }
     var fromDate by remember { mutableStateOf(partnerDate(29)) }
     var toDate by remember { mutableStateOf(partnerDate()) }
-    var message by remember { mutableStateOf("") }
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
 
     val validRange = isValidPartnerDate(fromDate) && isValidPartnerDate(toDate) && fromDate <= toDate
     val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
         if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
-    val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
-        if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
-    }
-    val periodTotalProfit = dailyNet.sumOf { maxOf(it.second, 0.0) }
-    val periodTotalLoss = dailyNet.sumOf { kotlin.math.abs(minOf(it.second, 0.0)) }
-    val periodNetResult = periodTotalProfit - periodTotalLoss
     val lifetimeNetByDay = allDailyNet
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
@@ -163,6 +211,58 @@ fun PartnerScreen() {
                 )
             }
 
+            if (profitReport.warnings.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("লাভ-লোকসানের হিসাব যাচাই প্রয়োজন", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer)
+                        profitReport.warnings.take(8).forEach { warning ->
+                            Text("• $warning", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                        if (profitReport.warnings.size > 8) {
+                            Text("আরও ${profitReport.warnings.size - 8}টি সতর্কবার্তা আছে।",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                    }
+                }
+            }
+
+            Text("হিসাবের সময়সীমা", style = MaterialTheme.typography.titleLarge)
+            Text("ক্যালেন্ডার থেকে শুরুর ও শেষের তারিখ বেছে নিলে প্রত্যেক পার্টনারের নির্বাচিত সময়ের লাভ-ঘাটতি আপডেট হবে।", style = MaterialTheme.typography.bodySmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { showStartDatePicker = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text("শুরুর তারিখ", style = MaterialTheme.typography.labelSmall)
+                        Text(fromDate)
+                    }
+                }
+                OutlinedButton(
+                    onClick = { showEndDatePicker = true },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text("শেষের তারিখ", style = MaterialTheme.typography.labelSmall)
+                        Text(toDate)
+                    }
+                }
+            }
+            if (!validRange) {
+                Text("শুরুর তারিখ শেষের তারিখের পরে হতে পারবে না।", color = MaterialTheme.colorScheme.error)
+            } else {
+                Text("$fromDate থেকে $toDate পর্যন্ত হিসাব", style = MaterialTheme.typography.labelMedium)
+            }
+
             Text("পার্টনারদের তালিকা", style = MaterialTheme.typography.titleLarge)
             Text("প্রত্যেক পার্টনারের সব তথ্য ও কাজ একটিমাত্র কার্ডে রাখা হয়েছে। তারিখের পরিসর বদলালে কার্ডের সময়ভিত্তিক হিসাবও বদলাবে।", style = MaterialTheme.typography.bodySmall)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
@@ -185,15 +285,13 @@ fun PartnerScreen() {
                     .sumOf { it.amount.coerceAtLeast(0.0) }
                 val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal - capitalizedProfit
                 val periodPartnerNet = allocatedProfit - allocatedLoss
-                val allocatedExpense = expenseRecords
-                    .filter { it.date in fromDate..toDate }
-                    .flatMap { it.allocations }
-                    .filter { it.partnerId == partner.id }
-                    .sumOf { it.amount }
-                val lifetimeExpense = expenseRecords
-                    .flatMap { it.allocations }
-                    .filter { it.partnerId == partner.id }
-                    .sumOf { it.amount }
+                // Includes ordinary business expenses and damaged-stock losses.
+                val allocatedExpense = remember(refresh, fromDate, toDate, partner.id) {
+                    ExpenseStorage.getPartnerExpenseTotal(context, partner.id, fromDate, toDate)
+                }
+                val lifetimeExpense = remember(refresh, partner.id) {
+                    ExpenseStorage.getPartnerExpenseTotal(context, partner.id)
+                }
                 PartnerCard(
                     partner = partner,
                     canWrite = canWrite,
@@ -213,65 +311,32 @@ fun PartnerScreen() {
                 )
             }
 
-            HorizontalDivider()
-            Text("পার্টনারভিত্তিক লাভ-লোকসানের হিসাব", style = MaterialTheme.typography.titleLarge)
-            Text("বিক্রয়মূল্য থেকে পণ্যের ক্রয়মূল্য, প্রতিষ্ঠানের খরচ ও ড্যামেজ বাদ দিয়ে প্রতিদিনের নিট ফলাফল বের হবে। লাভ হলে লাভ এবং লোকসান হলে প্রত্যেক পার্টনারের নির্ধারিত শতাংশ অনুযায়ী লোকসান দেখানো হবে।")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { fromDate = partnerDate(); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("আজ") }
-                OutlinedButton(onClick = { fromDate = partnerDate(1); toDate = partnerDate(1) }, modifier = Modifier.weight(1f)) { Text("গতকাল") }
-                OutlinedButton(onClick = { fromDate = partnerDate(6); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("৭ দিন") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { fromDate = partnerDate(29); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("৩০ দিন") }
-                OutlinedButton(onClick = {
-                    val c = Calendar.getInstance()
-                    c.set(Calendar.DAY_OF_MONTH, 1)
-                    fromDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.time)
-                    toDate = partnerDate()
-                }, modifier = Modifier.weight(1f)) { Text("এই মাস") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("শুরু (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
-                OutlinedTextField(toDate, { toDate = it }, label = { Text("শেষ (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
-            }
-            Button(
-                onClick = { refresh++ },
-                enabled = validRange,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("তারিখ অনুযায়ী হিসাব রিফ্রেশ করুন")
-            }
-            if (!validRange) {
-                Text("সঠিক তারিখের পরিসর দিন।", color = MaterialTheme.colorScheme.error)
-            } else {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("এই সময়ের ব্যবসার হিসাব", style = MaterialTheme.typography.titleMedium)
-                        Text("মোট লাভ: ৳ %.2f".format(Locale.US, periodTotalProfit))
-                        Text("প্রতিষ্ঠানের মোট খরচ: ৳ %.2f".format(Locale.US, periodExpenseTotal))
-                        Text("মোট লোকসান: ৳ %.2f".format(Locale.US, periodTotalLoss), color = MaterialTheme.colorScheme.error)
-                        Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNetResult), style = MaterialTheme.typography.headlineSmall,
-                            color = if (periodNetResult < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                        Text("$fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                if (profitReport.warnings.isNotEmpty()) {
-                    Text("লাভের হিসাব যাচাইয়ের সতর্কতা", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
-                    profitReport.warnings.forEach { Text("• $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                }
-                if (!distributionValid) {
-                    Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ-লোকসান বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন.", color = MaterialTheme.colorScheme.error)
-                }
-                Text("দৈনিক লাভ / লোকসান", style = MaterialTheme.typography.titleMedium)
-                dailyNet.asReversed().forEach { (day, net) ->
-                    val label = if (net < 0.0) "লোকসান" else "লাভ"
-                    Text("$day  •  $label: ৳ %.2f".format(Locale.US, kotlin.math.abs(net)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (net < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                }
-            }
-            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
         }
+    }
+
+    if (showStartDatePicker) {
+        PartnerDatePickerDialog(
+            title = "হিসাবের শুরুর তারিখ",
+            initialDate = fromDate,
+            onDismiss = { showStartDatePicker = false },
+            onSelect = { selected ->
+                fromDate = selected
+                showStartDatePicker = false
+                refresh++
+            }
+        )
+    }
+    if (showEndDatePicker) {
+        PartnerDatePickerDialog(
+            title = "হিসাবের শেষ তারিখ",
+            initialDate = toDate,
+            onDismiss = { showEndDatePicker = false },
+            onSelect = { selected ->
+                toDate = selected
+                showEndDatePicker = false
+                refresh++
+            }
+        )
     }
 
     if (showAddDialog && canWrite) {
@@ -377,7 +442,35 @@ fun PartnerCard(
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(partner.name, style = MaterialTheme.typography.titleLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(partner.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                val statusColor = when {
+                    periodNet > 0.004 -> MaterialTheme.colorScheme.primaryContainer
+                    periodNet < -0.004 -> MaterialTheme.colorScheme.errorContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val statusTextColor = when {
+                    periodNet > 0.004 -> MaterialTheme.colorScheme.onPrimaryContainer
+                    periodNet < -0.004 -> MaterialTheme.colorScheme.onErrorContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Surface(color = statusColor, shape = MaterialTheme.shapes.small) {
+                    Text(
+                        text = when {
+                            periodNet > 0.004 -> "লাভ ৳ %.2f".format(Locale.US, periodNet)
+                            periodNet < -0.004 -> "ঘাটতি ৳ %.2f".format(Locale.US, kotlin.math.abs(periodNet))
+                            else -> "সমতা ৳ 0.00"
+                        },
+                        color = statusTextColor,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
             if (partner.note.isNotBlank()) Text("নোট: ${partner.note}", style = MaterialTheme.typography.bodySmall)
             Text("বিনিয়োগ / বর্তমান মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
             Text("লাভ বণ্টনের হার: %.2f%%".format(Locale.US, partner.profitPercentage),
@@ -385,16 +478,16 @@ fun PartnerCard(
             HorizontalDivider()
             Text("নির্বাচিত সময়ের হিসাব", style = MaterialTheme.typography.titleMedium)
             Text("লাভের অংশ: ৳ %.2f".format(Locale.US, periodProfit))
-            Text("প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, periodExpense))
+            Text("প্রতিষ্ঠানের খরচের অংশ (তথ্য): ৳ %.2f".format(Locale.US, periodExpense))
             Text("লোকসানের অংশ: ৳ %.2f".format(Locale.US, periodLoss),
                 color = MaterialTheme.colorScheme.error)
-            Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNet),
+            Text("নিট ফলাফল (খরচ ধাপে ধাপে সমন্বয়ের পর): ৳ %.2f".format(Locale.US, periodNet),
                 style = MaterialTheme.typography.titleMedium,
                 color = if (periodNet < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             HorizontalDivider()
             Text("সর্বমোট হিসাব", style = MaterialTheme.typography.titleMedium)
             Text("সর্বমোট লাভের অংশ: ৳ %.2f".format(Locale.US, lifetimeProfit))
-            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpense))
+            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ (তথ্য): ৳ %.2f".format(Locale.US, lifetimeExpense))
             Text("সর্বমোট লোকসানের অংশ: ৳ %.2f".format(Locale.US, lifetimeLoss),
                 color = MaterialTheme.colorScheme.error)
             Text("মোট লভ্যাংশ উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))

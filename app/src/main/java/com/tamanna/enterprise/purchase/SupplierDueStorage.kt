@@ -13,7 +13,8 @@ data class SupplierDueEntry(
     val supplier: String,
     val type: String,
     val amount: Double,
-    val note: String
+    val note: String,
+    val purchaseId: Long = 0L
 )
 
 object SupplierDueStorage {
@@ -28,7 +29,7 @@ object SupplierDueStorage {
             for (i in 0 until array.length()) {
                 val o = array.getJSONObject(i)
                 add(SupplierDueEntry(o.getLong("id"), o.getString("date"), o.getString("supplier"),
-                    o.getString("type"), o.getDouble("amount"), o.optString("note", "")))
+                    o.getString("type"), o.getDouble("amount"), o.optString("note", ""), o.optLong("purchaseId", 0L)))
             }
         }.sortedByDescending { it.id }
     }
@@ -56,9 +57,9 @@ object SupplierDueStorage {
         return true
     }
 
-    fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String): Long {
+    fun addPurchaseDue(context: Context, supplier: String, amount: Double, note: String, purchaseId: Long = 0L): Long {
         if (supplier.isBlank() || amount <= 0) return 0L
-        val id = add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PURCHASE", amount, note))
+        val id = add(context, SupplierDueEntry(System.currentTimeMillis(), now(), supplier.trim(), "PURCHASE", amount, note, purchaseId))
         ensureSupplier(context, supplier)
         return id
     }
@@ -85,7 +86,7 @@ object SupplierDueStorage {
         remaining.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id); put("date", it.date); put("supplier", it.supplier)
-                put("type", it.type); put("amount", it.amount); put("note", it.note)
+                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
@@ -107,7 +108,7 @@ object SupplierDueStorage {
         remaining.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id); put("date", it.date); put("supplier", it.supplier)
-                put("type", it.type); put("amount", it.amount); put("note", it.note)
+                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
@@ -127,7 +128,7 @@ object SupplierDueStorage {
         entries.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id); put("date", it.date); put("supplier", it.supplier)
-                put("type", it.type); put("amount", it.amount); put("note", it.note)
+                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()

@@ -191,6 +191,12 @@ private fun PurchaseScreen(onAddPurchase: () -> Unit, onMemoScan: () -> Unit) {
                     Text("পরিমাণ: " + purchase.quantity)
                     Text("প্রতি ইউনিট ক্রয়মূল্য: ৳ " + purchaseMoney(purchase.purchasePrice))
                     Text("মোট ক্রয়মূল্য: ৳ " + purchaseMoney(purchase.quantity * purchase.purchasePrice))
+                    if (purchase.settlementRecorded) {
+                        Text("এই ইনভয়েসে পরিশোধ: ৳ " + purchaseMoney(purchase.paidAmount))
+                        Text("এই ইনভয়েসে বাকি: ৳ " + purchaseMoney(purchase.dueAmount))
+                    } else {
+                        Text("পুরোনো ইনভয়েস: জমা/বাকি আলাদা তথ্য সংরক্ষিত নেই; মূল বাকি রেকর্ড যাচাই করুন।")
+                    }
                     Text("সরবরাহকারী: " + purchase.supplier.ifBlank { "উল্লেখ নেই" })
                     Text("মেমো নম্বর: " + purchase.memoNumber.ifBlank { "উল্লেখ নেই" })
                 }

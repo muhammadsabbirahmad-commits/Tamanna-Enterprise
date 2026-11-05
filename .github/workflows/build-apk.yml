@@ -15,6 +15,14 @@ on:
       - fix/partner-last-30-days-date-range
       - feature/double-entry-financial-dashboard
       - fix/firebase-auth-session-persistence
+      - audit/complete-double-entry-accounting
+      - fix/supplier-invoice-due-allocation
+      - fix/sales-return-journal-reconciliation
+      - feat/audited-double-entry-trial-balance
+  pull_request:
+    branches:
+      - main
+      - fix/sales-return-journal-reconciliation
   workflow_dispatch:
 
 permissions:
@@ -58,6 +66,9 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > app/release-keystore.jks
           chmod 600 app/release-keystore.jks
+
+      - name: Run accounting unit tests
+        run: gradle testDebugUnitTest
 
       - name: Build signed Release APK
         env:
