@@ -9,7 +9,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.DocumentReference
 import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.product.ProductStorage
-import com.tamanna.enterprise.security.SecurityStorage
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -133,24 +132,26 @@ object CloudSyncManager {
             .collection("data")
             .document("backup")
 
-        // Firestore backup writes are restricted to the actual business owner.
-        // A local ADMIN label alone is not sufficient to grant cloud-write access.
+        // Firestore Rules enforce approved-account access. A successful read of
+        // this business document plus an exact ownerUid match is the authority
+        // for this account. Do not depend on the local ADMIN session cache here:
+        // it may be temporarily empty after process restart/activity recreation.
         FirebaseFirestore.getInstance()
             .collection("businesses")
             .document(businessId)
             .get()
             .addOnSuccessListener { businessDoc ->
-                val isApprovedAccount = SecurityStorage.getCurrentUser(context)?.role == SecurityStorage.ROLE_ADMIN
                 val isFirestoreOwner = businessDoc.exists() &&
                     businessDoc.getString("ownerUid") == authUser.uid
-                if (isApprovedAccount && isFirestoreOwner) {
+                if (isFirestoreOwner) {
                     onResult(ref, true)
                 } else {
-                    // Never expose another Gmail's backup reference for read-only pulls.
+                    // Missing documents and owner mismatches must never grant access.
                     onResult(null, false)
                 }
             }
             .addOnFailureListener { error ->
+                // If Firestore cannot verify ownership, fail closed.
                 Log.w(TAG, "Could not verify business owner; cloud sync denied.", error)
                 onResult(null, false)
             }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/cloud-sync-local-session-check
       - fix/safe-finance-partner-sync
       - feat/partner-profit-withdrawals
       - feat/partner-profit-loss-allocation
