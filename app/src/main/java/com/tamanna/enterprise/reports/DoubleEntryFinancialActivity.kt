@@ -503,11 +503,11 @@ private fun DoubleEntryFinancialScreen() {
                         else if (openingSnapshot.verified && openingSnapshot.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
                         else "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ",
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (openingBalances?.verified == true && openingBalances.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                    if (openingBalances == null) {
+                        color = if (openingSnapshot?.let { it.verified && it.date == fromDate && kotlin.math.abs(openingDifference) < 0.01 } == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    if (openingSnapshot == null) {
                         Text("শুরুর দিনের প্রকৃত নগদ, ব্যাংক, স্টক, ক্রেতার পাওনা ও দেনা এখনো লেখা হয়নি।", style = MaterialTheme.typography.bodySmall)
                     } else {
-                        Text("হিসাবের তারিখ: ${openingBalances.date}", style = MaterialTheme.typography.bodySmall)
+                        Text("হিসাবের তারিখ: ${openingSnapshot.date}", style = MaterialTheme.typography.bodySmall)
                         SummaryLine("প্রারম্ভিক নগদ", openingSnapshot.cash)
                         SummaryLine("প্রারম্ভিক ব্যাংক", openingSnapshot.bank)
                         SummaryLine("প্রারম্ভিক স্টক (ক্রয়মূল্যে)", openingSnapshot.stock)
@@ -516,9 +516,9 @@ private fun DoubleEntryFinancialScreen() {
                         SummaryLine("অন্যান্য প্রারম্ভিক দেনা", openingSnapshot.otherLiabilities)
                         SummaryLine("প্রারম্ভিক পার্টনার মূলধন (রেকর্ড অনুযায়ী)", openingCapital)
                         SummaryLine("সম্পদ − দেনা − মূলধন", openingDifference)
-                        if (!openingBalances.verified) Text("এই অঙ্কগুলো এখনো ব্যবহারকারী দ্বারা যাচাইকৃত হিসেবে চিহ্নিত হয়নি।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (!openingSnapshot.verified) Text("এই অঙ্কগুলো এখনো ব্যবহারকারী দ্বারা যাচাইকৃত হিসেবে চিহ্নিত হয়নি।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         if (kotlin.math.abs(openingDifference) >= 0.01) Text("অমিল ${money(kotlin.math.abs(openingDifference))}। এটি কোনো কাল্পনিক সম্পদ বা Suspense Account-এ বসানো হয়নি; প্রকৃত উদ্বোধনী হিসাব মিলিয়ে নিন।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        if (openingBalances.date != fromDate) Text("এই রিপোর্টের শুরুর তারিখের সঙ্গে প্রারম্ভিক ব্যালান্সের তারিখ মিলছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (openingSnapshot.date != fromDate) Text("এই রিপোর্টের শুরুর তারিখের সঙ্গে প্রারম্ভিক ব্যালান্সের তারিখ মিলছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                     Button(onClick = { showOpeningBalanceDialog = true }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (openingSnapshot == null) "প্রারম্ভিক ব্যালান্স লিখুন" else "প্রারম্ভিক ব্যালান্স সম্পাদনা করুন")
