@@ -121,6 +121,9 @@ class DashboardActivity : ComponentActivity() {
             }
         }
 
+        // Refresh visible dashboard whenever realtime/foreground sync changes local data.
+        CloudSyncManager.setDataChangedListener { renderDashboardUI() }
+
         // ১. আগে লোকাল ডাটা দিয়ে দ্রুত UI রেন্ডার করা
         renderDashboardUI()
 
@@ -163,6 +166,7 @@ class DashboardActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        CloudSyncManager.setDataChangedListener(null)
         super.onPause()
     }
 }
