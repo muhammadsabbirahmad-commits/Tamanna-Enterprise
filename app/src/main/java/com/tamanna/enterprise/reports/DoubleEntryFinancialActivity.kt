@@ -108,6 +108,21 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val sharedProfitReport = BusinessProfitCalculator.calculate(context, fromDate, toDate)
     warnings += sharedProfitReport.warnings
 
+    // Use exactly the same weighted historical purchase cost as the shared profit calculator.
+    fun historicalReturnCost(line: com.tamanna.enterprise.sales.SaleReturnLine): Double {
+        val originals = allSales.filter {
+            it.transactionId == line.transactionId &&
+                it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
+        }
+        if (originals.isEmpty()) return 0.0
+        val originalUnits = originals.sumOf { it.quantity.coerceAtLeast(0) }
+        if (originalUnits <= 0) return 0.0
+        val weightedUnitCost = originals.sumOf {
+            it.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0)
+        } / originalUnits
+        return line.quantity.coerceAtLeast(0) * weightedUnitCost
+    }
+
     capitalContributions.forEach { contribution ->
         val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name ?: "পুরোনো/মুছে ফেলা পার্টনার"
         val isRetainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
@@ -199,11 +214,12 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
         }
         returnLines.filter { it.returnId == ret.returnId }.forEach { line ->
-            val originalSale = allSales.firstOrNull {
-                it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true)
+            val originalExists = allSales.any {
+                it.transactionId == line.transactionId &&
+                    it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
             }
-            val costValue = line.quantity.coerceAtLeast(0) * (originalSale?.purchasePrice ?: 0.0)
-            if (originalSale == null) {
+            val costValue = historicalReturnCost(line)
+            if (!originalExists) {
                 warnings += "রিটার্ন ${ret.returnId}: ${line.productCode} পণ্যের মূল বিক্রয়-লাইন পাওয়া যায়নি; ফেরত পণ্যের ক্রয়মূল্য যাচাই প্রয়োজন।"
             }
             if (costValue > 0.0) rows += LedgerRow(
@@ -261,12 +277,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val withdrawalTotal = withdrawals.sumOf { it.amount.coerceAtLeast(0.0) }
     val totalCapital = PartnerStorage.getPartners(context).sumOf { it.shareAmount.coerceAtLeast(0.0) }
     val grossCogs = sales.sumOf { sale -> sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0) }
-    val returnedCost = returnLines.sumOf { line ->
-        val originalSale = allSales.firstOrNull {
-            it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true)
-        }
-        line.quantity.coerceAtLeast(0) * (originalSale?.purchasePrice ?: 0.0)
-    }
+    val returnedCost = returnLines.sumOf { line -> historicalReturnCost(line) }
     val netCogs = grossCogs - returnedCost
 
     // Reconcile each journal category against its independent source records.
