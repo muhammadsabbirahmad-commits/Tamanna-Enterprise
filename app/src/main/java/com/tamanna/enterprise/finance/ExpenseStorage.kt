@@ -161,16 +161,31 @@ object ExpenseStorage {
      * current split is used only as an explicitly marked estimate; it is never
      * presented as a confirmed historical rate.
      */
+    private fun isValidAllocation(items: List<PartnerExpenseAllocation>, amount: Double): Boolean {
+        if (items.isEmpty() || !amount.isFinite() || amount <= 0.0) return false
+        if (items.any {
+                it.partnerId <= 0L || !it.percentage.isFinite() || it.percentage < 0.0 ||
+                    !it.amount.isFinite() || it.amount < 0.0
+            }) return false
+        if (items.map { it.partnerId }.distinct().size != items.size) return false
+        return kotlin.math.abs(items.sumOf { it.percentage } - 100.0) <= 0.0001 &&
+            items.sumOf { moneyCents(it.amount) } == moneyCents(amount)
+    }
+
     private fun migrateLegacyAllocations(context: Context): JSONArray {
         val expenses = array(context, E)
         var changed = false
         for (i in 0 until expenses.length()) {
             val item = expenses.optJSONObject(i) ?: continue
-            if (item.has("allocations")) continue
+            val amount = item.optDouble("amount", 0.0)
+            val existing = parseAllocations(item.optJSONArray("allocations"))
+            // Some older entries already contain an empty/incomplete allocations array.
+            // Repair those too; only a complete 100% snapshot is considered final.
+            if (isValidAllocation(existing, amount)) continue
             val allocation = buildAllocations(
                 context,
                 item.optString("date"),
-                item.optDouble("amount", 0.0),
+                amount,
                 allowEstimatedLegacyRate = true
             )
             if (allocation != null) {
@@ -208,7 +223,7 @@ object ExpenseStorage {
         if (x.id <= 0L || !x.amount.isFinite() || x.amount <= 0.0 || !validDate(x.date)) return false
         val normalizedAmount = moneyCents(x.amount) / 100.0
         if (normalizedAmount <= 0.0) return false
-        val allocated = buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
+        val allocated = buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = true) ?: return false
         val items = array(c, E)
         if ((0 until items.length()).any { items.optJSONObject(it)?.optLong("id") == x.id }) return false
         items.put(expenseJson(x.copy(
@@ -233,10 +248,9 @@ object ExpenseStorage {
                 val oldAllocations = parseAllocations(old.optJSONArray("allocations"))
                 val sameFinancialValue = old.optString("date") == x.date &&
                     moneyCents(old.optDouble("amount", 0.0)) == moneyCents(normalizedAmount)
-                val allocated = if (sameFinancialValue && oldAllocations.isNotEmpty() &&
-                    oldAllocations.sumOf { moneyCents(it.amount) } == moneyCents(normalizedAmount)
-                ) oldAllocations to old.optBoolean("allocationEstimated", false)
-                else buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
+                val allocated = if (sameFinancialValue && isValidAllocation(oldAllocations, normalizedAmount))
+                    oldAllocations to old.optBoolean("allocationEstimated", false)
+                else buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = true) ?: return false
                 items.put(i, expenseJson(x.copy(
                     amount = normalizedAmount,
                     allocations = allocated.first,
