@@ -5,7 +5,6 @@ import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.sales.SaleReturnStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.sales.SalesTransactionStorage
-import java.util.Locale
 
 /**
  * Shared source-of-truth calculation used by profit, partner and financial summaries.
@@ -76,23 +75,22 @@ object BusinessProfitCalculator {
         returns.forEach { ret ->
             val returnDate = day(ret.date)
             if (returnDate.isBlank() || (fromDate != null && returnDate < fromDate) || (toDate != null && returnDate > toDate)) return@forEach
+            val item = bucket(returnDate)
+            // The saved return amount is the authoritative net amount actually refunded/credited.
+            item.returnRevenue += ret.amount.coerceAtLeast(0.0)
             returnLines.filter { it.returnId == ret.returnId }.forEach { line ->
-                val original = sales.firstOrNull {
+                val originals = sales.filter {
                     it.transactionId == line.transactionId &&
                         it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
                 }
-                if (original == null) {
+                if (originals.isEmpty()) {
                     warnings += "রিটার্ন ${ret.returnId}: ${line.productCode} পণ্যের মূল বিক্রয়-লাইন পাওয়া যায়নি; লাভের হিসাব যাচাই প্রয়োজন।"
                 }
-                val tx = transactions[line.transactionId]
-                val subtotal = tx?.subtotal?.coerceAtLeast(0.0) ?: 0.0
-                val discountRate = if (tx != null && subtotal > 0.0) {
-                    (tx.discount.coerceAtLeast(0.0) / subtotal).coerceIn(0.0, 1.0)
+                val originalUnits = originals.sumOf { it.quantity.coerceAtLeast(0) }
+                val weightedUnitCost = if (originalUnits > 0) {
+                    originals.sumOf { it.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0) } / originalUnits
                 } else 0.0
-                val grossReturn = line.quantity.coerceAtLeast(0) * line.unitPrice.coerceAtLeast(0.0)
-                val item = bucket(returnDate)
-                item.returnRevenue += grossReturn * (1.0 - discountRate)
-                item.returnCost += line.quantity.coerceAtLeast(0) * (original?.purchasePrice?.coerceAtLeast(0.0) ?: 0.0)
+                item.returnCost += line.quantity.coerceAtLeast(0) * weightedUnitCost
             }
         }
 
