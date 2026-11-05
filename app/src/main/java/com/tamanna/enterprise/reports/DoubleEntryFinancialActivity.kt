@@ -421,7 +421,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val capitalizedProfit = capitalContributions.filter {
         it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
     }.sumOf { it.amount }
-    val capitalReturned = capitalContributionsForPeriod.filter { it.amount < -0.004 }.sumOf { -it.amount }
+    val capitalReturned = capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount }
     checkSource("পার্টনারের নগদ মূলধন জমা", externalCapitalIn,
         rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.creditAmount })
     checkSource("অবণ্টিত মুনাফা মূলধনে স্থানান্তর", capitalizedProfit,
@@ -609,7 +609,7 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("নির্বাচিত সময়ের ড্যামেজ ক্ষতি", summary.periodDamageTotal)
             SummaryLine("পার্টনারের লভ্যাংশ উত্তোলন", summary.withdrawalTotal)
             SummaryLine("পার্টনারের মূলধন জমা", capitalContributionsForPeriod.filter { it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
-            SummaryLine("পার্টনারের মূলধন ফেরত", capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount })
+            SummaryLine("পার্টনারের মূলধন ফেরত", capitalContributionsForPeriod.filter { it.amount < -0.004 }.sumOf { -it.amount })
             SummaryLine("লভ্যাংশ থেকে মূলধনে যোগ", capitalContributionsForPeriod.filter { it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
 
             Text("নগদ প্রবাহ", style = MaterialTheme.typography.titleLarge)
