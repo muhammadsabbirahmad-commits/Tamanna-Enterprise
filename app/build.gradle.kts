@@ -74,6 +74,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore:25.1.4")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
 
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
 
