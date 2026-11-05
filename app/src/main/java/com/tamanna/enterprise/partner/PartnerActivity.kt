@@ -1,6 +1,7 @@
 package com.tamanna.enterprise.partner
 
 import android.os.Bundle
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +22,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.profit.BusinessProfitCalculator
+import com.tamanna.enterprise.profit.DailyBusinessProfit
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.settings.ThemeStorage
@@ -100,6 +102,61 @@ private fun partnerUtcMillisToDate(value: Long): String {
     return format.format(java.util.Date(value))
 }
 
+private data class PartnerRecoverySummary(
+    val dividendsByDay: Map<String, Double>,
+    val deficitByDay: Map<String, Double>
+)
+
+/**
+ * Each partner's expense share first increases their outstanding deficit.
+ * Their share of trading profit (before expenses) pays that deficit down;
+ * only the amount left after the deficit reaches zero becomes withdrawable dividend.
+ */
+private fun calculatePartnerRecovery(
+    context: Context,
+    partnerId: Long,
+    dailyResults: List<DailyBusinessProfit>
+): PartnerRecoverySummary {
+    val expensesByDay = mutableMapOf<String, Double>()
+    ExpenseStorage.getExpenses(context).forEach { expense ->
+        expense.allocations.firstOrNull { it.partnerId == partnerId }?.let { allocation ->
+            val date = expense.date.take(10)
+            expensesByDay[date] = (expensesByDay[date] ?: 0.0) + allocation.amount
+        }
+    }
+    ExpenseStorage.getDamages(context).forEach { damage ->
+        damage.allocations.firstOrNull { it.partnerId == partnerId }?.let { allocation ->
+            val date = damage.date.take(10)
+            expensesByDay[date] = (expensesByDay[date] ?: 0.0) + allocation.amount
+        }
+    }
+
+    val resultsByDay = dailyResults.associateBy { it.date }
+    val dates = (resultsByDay.keys + expensesByDay.keys).sorted()
+    var outstandingDeficit = 0.0
+    val dividends = linkedMapOf<String, Double>()
+    val deficits = linkedMapOf<String, Double>()
+
+    dates.forEach { date ->
+        val day = resultsByDay[date]
+        val tradingProfitBeforeExpenses = day?.let {
+            it.grossSales - it.salesDiscount - it.costOfGoodsSold -
+                it.returnRevenue + it.returnCost
+        } ?: 0.0
+        val percentage = PartnerStorage.getPercentageForDate(context, partnerId, date)
+        val partnerTradingShare = tradingProfitBeforeExpenses * percentage / 100.0
+        val partnerExpenseShare = expensesByDay[date] ?: 0.0
+
+        outstandingDeficit += partnerExpenseShare - partnerTradingShare
+        val dividend = (-outstandingDeficit).coerceAtLeast(0.0)
+        if (dividend > 0.0) outstandingDeficit = 0.0
+
+        dividends[date] = dividend
+        deficits[date] = outstandingDeficit.coerceAtLeast(0.0)
+    }
+    return PartnerRecoverySummary(dividends, deficits)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PartnerDatePickerDialog(
@@ -145,10 +202,6 @@ fun PartnerScreen() {
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
     val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
-    // Partner dividend/deficit must use actual daily net profit after expenses and damage.
-    // The rolling-recovery map can be zero while expenses are still being carried forward,
-    // which hides a real deficit from each partner's date-range and lifetime totals.
-    val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
@@ -163,10 +216,6 @@ fun PartnerScreen() {
     var showEndDatePicker by remember { mutableStateOf(false) }
 
     val validRange = isValidPartnerDate(fromDate) && isValidPartnerDate(toDate) && fromDate <= toDate
-    val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
-        if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
-    }
-    val lifetimeNetByDay = allDailyNet
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
     val distributionValid = kotlin.math.abs(totalPercentage - 100.0) <= 0.0001
@@ -269,18 +318,15 @@ fun PartnerScreen() {
             Text("প্রত্যেক পার্টনারের সব তথ্য ও কাজ একটিমাত্র কার্ডে রাখা হয়েছে। তারিখের পরিসর বদলালে কার্ডের সময়ভিত্তিক হিসাবও বদলাবে।", style = MaterialTheme.typography.bodySmall)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
             partners.forEach { partner ->
-                val allocatedProfit = dailyNet.sumOf { (day, net) ->
-                    maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                val recovery = remember(refresh, partner.id, profitReport) {
+                    calculatePartnerRecovery(context, partner.id, profitReport.days)
                 }
-                val allocatedLoss = dailyNet.sumOf { (day, net) ->
-                    kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
-                val lifetimeProfit = lifetimeNetByDay.entries.sumOf { (day, net) ->
-                    maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
-                val lifetimeLoss = lifetimeNetByDay.entries.sumOf { (day, net) ->
-                    kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
+                val allocatedProfit = if (validRange) recovery.dividendsByDay
+                    .filterKeys { it >= fromDate && it <= toDate }.values.sum() else 0.0
+                val allocatedLoss = if (validRange) recovery.deficitByDay.entries
+                    .lastOrNull { it.key <= toDate }?.value ?: 0.0 else 0.0
+                val lifetimeProfit = recovery.dividendsByDay.values.sum()
+                val lifetimeLoss = recovery.deficitByDay.values.lastOrNull() ?: 0.0
                 val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
                 val capitalizedProfit = PartnerStorage.getCapitalContributions(context)
                     .filter { it.partnerId == partner.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
@@ -397,16 +443,17 @@ fun PartnerScreen() {
     }
 
     withdrawingPartner?.let { selected ->
-        val earnedProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-        val allocatedLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+        val recovery = calculatePartnerRecovery(context, selected.id, profitReport.days)
+        val earnedProfit = recovery.dividendsByDay.values.sum()
+        val allocatedLoss = recovery.deficitByDay.values.lastOrNull() ?: 0.0
         val capitalized = PartnerStorage.getCapitalContributions(context)
             .filter { it.partnerId == selected.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
             .sumOf { it.amount.coerceAtLeast(0.0) }
         val balance = earnedProfit - allocatedLoss -
             withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount } - capitalized
         PartnerWithdrawalDialog(selected, balance, onDismiss = { withdrawingPartner = null }) { amount, date, note ->
-            val currentProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-            val currentLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+            val currentProfit = recovery.dividendsByDay.values.sum()
+            val currentLoss = recovery.deficitByDay.values.lastOrNull() ?: 0.0
             val currentCapitalized = PartnerStorage.getCapitalContributions(context)
                 .filter { it.partnerId == selected.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
                 .sumOf { it.amount.coerceAtLeast(0.0) }
