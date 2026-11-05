@@ -94,15 +94,8 @@ fun PartnerScreen() {
     val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
     // Partner expense cards read the immutable allocation snapshot saved with each expense.
     val expenseRecords = remember(refresh) { ExpenseStorage.getExpenses(context) }
-    val unallocatedExpenseTotal = remember(expenseRecords) {
-        expenseRecords.filter { expense ->
-            expense.allocations.isEmpty() ||
-                expense.allocations.sumOf { kotlin.math.round(it.amount * 100.0).toLong() } != kotlin.math.round(expense.amount * 100.0).toLong()
-        }.sumOf { it.amount }
-    }
-    val estimatedExpenseTotal = remember(expenseRecords) {
-        expenseRecords.filter { it.allocationEstimated }.sumOf { it.amount }
-    }
+    val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
+    val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingPartner by remember { mutableStateOf<Partner?>(null) }
