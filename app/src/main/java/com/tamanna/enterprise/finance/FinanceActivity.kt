@@ -259,13 +259,22 @@ fun DamagePane(a: ComponentActivity) {
                         if (!stockUpdated) {
                             msg = "ড্যামেজের স্টক আপডেট করা যায়নি।"
                         } else {
-                            ExpenseStorage.addDamage(a, DamageRecord(System.currentTimeMillis(), date, product.code, product.name, quantity, product.purchasePrice, reason))
-                            ActivityLogStorage.add(a, "ড্যামেজ যোগ", product.name + " × " + quantity)
-                            list = ExpenseStorage.getDamages(a)
-                            msg = "ড্যামেজ যোগ হয়েছে এবং স্টক কমেছে।"
-                            code = ""
-                            qty = ""
-                            reason = ""
+                            val saved = ExpenseStorage.addDamage(
+                                a,
+                                DamageRecord(System.currentTimeMillis(), date, product.code, product.name, quantity, product.purchasePrice, reason)
+                            )
+                            if (!saved) {
+                                // Roll stock back if the partner allocation could not be saved.
+                                ProductStorage.updateStock(a, product.code, product.stockQuantity)
+                                msg = "ড্যামেজের হিসাব সংরক্ষণ হয়নি। পার্টনারদের কার্যকর লাভের শতাংশ ১০০% আছে কি না যাচাই করুন; স্টক আগের অবস্থায় ফিরিয়ে দেওয়া হয়েছে।"
+                            } else {
+                                ActivityLogStorage.add(a, "ড্যামেজ যোগ", product.name + " × " + quantity)
+                                list = ExpenseStorage.getDamages(a)
+                                msg = "ড্যামেজ যোগ হয়েছে, স্টক কমেছে এবং পার্টনারদের শতাংশ অনুযায়ী খরচ বণ্টন সংরক্ষিত হয়েছে।"
+                                code = ""
+                                qty = ""
+                                reason = ""
+                            }
                         }
                     }
                 }
