@@ -387,10 +387,28 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         } else if (kotlin.math.abs(ret.amount - expectedReturnAmount) > 0.02) {
             warnings += "রিটার্ন ${ret.returnId}: সংরক্ষিত ফেরত মূল্য ${money(ret.amount)}; মূল বিক্রয়-লাইন ও ডিসকাউন্ট অনুযায়ী হওয়ার কথা ${money(expectedReturnAmount)}।"
         }
-        if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "রিটার্ন: ${ret.returnId}")
-        if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "রিটার্ন: ${ret.returnId}")
-        if (kotlin.math.abs(ret.amount - refunded - dueReduction) > 0.02) {
-            warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
+        val exchange = exchanges.firstOrNull { it.returnId == ret.returnId }
+        if (exchange == null) {
+            if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "রিটার্ন: ${ret.returnId}")
+            if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "রিটার্ন: ${ret.returnId}")
+            if (kotlin.math.abs(ret.amount - refunded - dueReduction) > 0.02) {
+                warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
+            }
+        } else {
+            val replacementValue = (exchange.quantity.coerceAtLeast(0) * exchange.unitPrice.coerceAtLeast(0.0))
+            val returnOffset = minOf(ret.amount.coerceAtLeast(0.0), replacementValue)
+            if (returnOffset > 0.004) {
+                rows += LedgerRow(dateKey(ret.date), "এক্সচেঞ্জ • বিকল্প পণ্যের বিক্রয়", "বিক্রয় ফেরত", "বিক্রয় আয়", returnOffset, returnOffset, "এক্সচেঞ্জ: ${exchange.exchangeId}")
+            }
+            val extraDue = exchange.difference.coerceAtLeast(0.0)
+            if (extraDue > 0.004) {
+                rows += LedgerRow(dateKey(ret.date), "এক্সচেঞ্জ • অতিরিক্ত ক্রেতার পাওনা", "ক্রেতার পাওনা", "বিক্রয় আয়", extraDue, extraDue, "এক্সচেঞ্জ: ${exchange.exchangeId}")
+            }
+            if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "এক্সচেঞ্জ • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "এক্সচেঞ্জ: ${exchange.exchangeId}")
+            if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "এক্সচেঞ্জ • পুরোনো বাকি সমন্বয়", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "এক্সচেঞ্জ: ${exchange.exchangeId}")
+            if (kotlin.math.abs(ret.amount - replacementValue - refunded - dueReduction) > 0.02) {
+                warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: ফেরত মূল্য, নতুন পণ্য ও নিট সমন্বয়ের অঙ্ক মেলেনি।"
+            }
         }
         returnLines.filter { it.returnId == ret.returnId }.forEach { line ->
             val originalExists = allSales.any {
@@ -416,8 +434,17 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows += LedgerRow(dateKey(entry.date), "ক্রেতার বাকি আদায় • ${entry.customer}", "নগদ", "ক্রেতার পাওনা", entry.amount, entry.amount, entry.note)
     }
 
+    val exchangeProducts = ProductStorage.getProducts(context)
     exchanges.forEach { exchange ->
-        warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: বিকল্প পণ্যের বিক্রয়মূল্য ও COGS এখনো স্বতন্ত্র জার্নাল এন্ট্রি নয়; এই সময়ের লাভ/ট্রায়াল ব্যালান্সে এক্সচেঞ্জ আলাদাভাবে যাচাই করুন।"
+        val product = exchangeProducts.firstOrNull { it.code.equals(exchange.productCode, ignoreCase = true) }
+        val replacementCost = product?.let {
+            exchange.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0)
+        } ?: 0.0
+        if (replacementCost > 0.004) {
+            rows += LedgerRow(dateKey(exchange.date), "এক্সচেঞ্জ • বিকল্প পণ্যের ক্রয়মূল্য • ${exchange.productName} × ${exchange.quantity}", "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", replacementCost, replacementCost, "এক্সচেঞ্জ: ${exchange.exchangeId}")
+        } else {
+            warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: বিকল্প পণ্যের বর্তমান ক্রয়মূল্য পাওয়া যায়নি; COGS যাচাই প্রয়োজন।"
+        }
     }
 
     expenses.forEach { expense ->
@@ -436,7 +463,9 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
-    val salesTotal = transactions.sumOf { it.total.coerceAtLeast(0.0) } - returns.sumOf { it.amount.coerceAtLeast(0.0) }
+    val salesTotal = transactions.sumOf { it.total.coerceAtLeast(0.0) } -
+        returns.filter { ret -> exchanges.none { it.returnId == ret.returnId } }.sumOf { it.amount.coerceAtLeast(0.0) } +
+        exchanges.sumOf { (it.quantity.coerceAtLeast(0) * it.unitPrice.coerceAtLeast(0.0)) }
     // Return due-reductions are mirrored in the customer sub-ledger as PAYMENT
     // records, but they are not cash collections. Count only actual receipts.
     val actualCustomerCollections = customerEntries.filter {
@@ -453,7 +482,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val periodDamageTotal = damages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
     val withdrawalTotal = withdrawals.sumOf { it.amount.coerceAtLeast(0.0) }
     val totalCapital = PartnerStorage.getPartners(context).sumOf { it.shareAmount.coerceAtLeast(0.0) }
-    val grossCogs = sales.sumOf { sale -> sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0) }
+    val grossCogs = sales.sumOf { sale -> sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0) } +
+        exchanges.sumOf { exchange -> exchangeProducts.firstOrNull { it.code.equals(exchange.productCode, true) }?.let { exchange.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0) } ?: 0.0 }
     val returnedCost = returnLines.sumOf { line -> historicalReturnCost(line) }
     val netCogs = grossCogs - returnedCost
 
