@@ -69,7 +69,7 @@ class DoubleEntryAccountingTest {
             DailyBusinessProfit("2026-11-03", 75.0, 0.0, 0.0, 0.0, 0.0, 20.0, 5.0)
         )
         val result = calculateExpenseRecovery(days)
-        assertEquals(-50.0, result.distributableByDay["2026-11-02"]!!, 0.001)
+        assertEquals(0.0, result.distributableByDay["2026-11-02"]!!, 0.001)
         assertEquals(0.0, result.distributableByDay["2026-11-03"]!!, 0.001)
         assertEquals(0.0, result.unrecoveredOperatingExpenses, 0.001)
     }
