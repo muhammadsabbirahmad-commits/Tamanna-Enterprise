@@ -32,6 +32,7 @@ object CloudSyncManager {
         "tamanna_partner_storage", // অংশীদার ও লাভের শতাংশ
         "tamanna_manual_cash_accounts", // হাতে যোগ করা ক্যাশ ও ব্যাংক হিসাব
         "tamanna_opening_balances", // যাচাইকৃত প্রারম্ভিক ব্যালান্স
+        "tamanna_daily_manual_balances", // তারিখভিত্তিক হাতে নগদ ও ব্যাংক এন্ট্রি
         "tamanna_inventory_prefs",
         "tamanna_customers_prefs",
         "tamanna_customer_due", // গ্রাহকের বাকি/জমা ও গ্রাহক তালিকা
@@ -289,7 +290,7 @@ object CloudSyncManager {
                             editor.apply()
                             localMap.clear()
                             localMap.putAll(merged)
-                        } else if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts" || ns == "tamanna_opening_balances") {
+                        } else if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts" || ns == "tamanna_opening_balances" || ns == "tamanna_daily_manual_balances") {
                             val merged = mergeFinanceNamespace(ns, localMap, cloudByNamespace[ns].orEmpty())
                             val editor = prefs.edit()
                             for ((key, value) in merged) {
@@ -417,6 +418,7 @@ object CloudSyncManager {
             "tamanna_enterprise_finance" -> listOf("expenses", "damages")
             "tamanna_partner_storage" -> listOf("partners", "partner_profit_withdrawals", "partner_capital_contributions", "partner_capitalized_profit_periods")
             "tamanna_manual_cash_accounts" -> listOf("accounts")
+            "tamanna_daily_manual_balances" -> listOf("entries")
             else -> emptyList()
         }
         for (key in arrayKeys) {
@@ -583,7 +585,7 @@ object CloudSyncManager {
 
         // Finance and partner data are merged by stable record ID; never clear
         // local records merely because a cloud snapshot is partial.
-        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts") {
+        if (ns == "tamanna_enterprise_finance" || ns == "tamanna_partner_storage" || ns == "tamanna_manual_cash_accounts" || ns == "tamanna_daily_manual_balances") {
             val local = prefs.all.mapNotNull { (key, value) ->
                 if (key is String && value != null) key to value else null
             }.toMap()
