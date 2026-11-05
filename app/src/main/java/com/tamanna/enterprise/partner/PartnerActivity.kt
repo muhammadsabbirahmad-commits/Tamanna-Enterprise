@@ -231,7 +231,10 @@ fun PartnerScreen() {
                             kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                         }
                         val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
-                        val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal
+                        val capitalizedProfit = PartnerStorage.getCapitalContributions(context)
+                            .filter { it.partnerId == partner.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
+                            .sumOf { it.amount.coerceAtLeast(0.0) }
+                        val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal - capitalizedProfit
                         val periodPartnerNet = allocatedProfit - allocatedLoss
                         val allocatedExpense = dailyExpenses.filterKeys { it in fromDate..toDate }.entries.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
                         val lifetimeExpense = dailyExpenses.entries.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
@@ -326,11 +329,19 @@ fun PartnerScreen() {
     withdrawingPartner?.let { selected ->
         val earnedProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
         val allocatedLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-        val balance = earnedProfit - allocatedLoss - withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount }
+        val capitalized = PartnerStorage.getCapitalContributions(context)
+            .filter { it.partnerId == selected.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
+            .sumOf { it.amount.coerceAtLeast(0.0) }
+        val balance = earnedProfit - allocatedLoss -
+            withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount } - capitalized
         PartnerWithdrawalDialog(selected, balance, onDismiss = { withdrawingPartner = null }) { amount, date, note ->
             val currentProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
             val currentLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-            val currentBalance = currentProfit - currentLoss - PartnerStorage.getWithdrawals(context).filter { it.partnerId == selected.id }.sumOf { it.amount }
+            val currentCapitalized = PartnerStorage.getCapitalContributions(context)
+                .filter { it.partnerId == selected.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
+                .sumOf { it.amount.coerceAtLeast(0.0) }
+            val currentBalance = currentProfit - currentLoss -
+                PartnerStorage.getWithdrawals(context).filter { it.partnerId == selected.id }.sumOf { it.amount } - currentCapitalized
             if (amount > currentBalance + 0.0001) {
                 Toast.makeText(context, "অবশিষ্ট ব্যালান্সের বেশি উত্তোলন করা যাবে না।", Toast.LENGTH_LONG).show()
             } else if (PartnerStorage.addWithdrawal(context, selected.id, amount, date, note)) {
