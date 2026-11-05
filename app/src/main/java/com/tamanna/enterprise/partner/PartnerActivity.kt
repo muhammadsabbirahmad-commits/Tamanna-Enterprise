@@ -110,11 +110,6 @@ fun PartnerScreen() {
     val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
         if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
-    val last30FromDate = partnerDate(29)
-    val last30ToDate = partnerDate()
-    val last30DailyNet = remember(refresh, last30FromDate, last30ToDate, allDailyNet) {
-        partnerDateRange(last30FromDate, last30ToDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
-    }
     val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
         if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
     }
@@ -169,26 +164,53 @@ fun PartnerScreen() {
             }
 
             Text("পার্টনারদের তালিকা", style = MaterialTheme.typography.titleLarge)
+            Text("প্রত্যেক পার্টনারের সব তথ্য ও কাজ একটিমাত্র কার্ডে রাখা হয়েছে। তারিখের পরিসর বদলালে কার্ডের সময়ভিত্তিক হিসাবও বদলাবে।", style = MaterialTheme.typography.bodySmall)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
             partners.forEach { partner ->
-                val profit30 = last30DailyNet.sumOf { (day, net) ->
+                val allocatedProfit = dailyNet.sumOf { (day, net) ->
                     maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
-                val loss30 = last30DailyNet.sumOf { (day, net) ->
+                val allocatedLoss = dailyNet.sumOf { (day, net) ->
                     kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
-                val expense30 = expenseRecords
-                    .filter { it.date in last30FromDate..last30ToDate }
-                    .flatMap { it.allocations }
-                    .filter { it.partnerId == partner.id }
-                    .sumOf { it.amount }
-                val lifetimeExpenses = expenseRecords
-                    .flatMap { it.allocations }
-                    .filter { it.partnerId == partner.id }
-                    .sumOf { it.amount }
-                PartnerCard(partner, canWrite, profit30, loss30, expense30, lifetimeExpenses, onAddCapital = { addingCapitalFor = partner }) {
-                    if (canWrite) editingPartner = partner
+                val lifetimeProfit = lifetimeNetByDay.entries.sumOf { (day, net) ->
+                    maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
+                val lifetimeLoss = lifetimeNetByDay.entries.sumOf { (day, net) ->
+                    kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                }
+                val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
+                val capitalizedProfit = PartnerStorage.getCapitalContributions(context)
+                    .filter { it.partnerId == partner.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
+                    .sumOf { it.amount.coerceAtLeast(0.0) }
+                val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal - capitalizedProfit
+                val periodPartnerNet = allocatedProfit - allocatedLoss
+                val allocatedExpense = expenseRecords
+                    .filter { it.date in fromDate..toDate }
+                    .flatMap { it.allocations }
+                    .filter { it.partnerId == partner.id }
+                    .sumOf { it.amount }
+                val lifetimeExpense = expenseRecords
+                    .flatMap { it.allocations }
+                    .filter { it.partnerId == partner.id }
+                    .sumOf { it.amount }
+                PartnerCard(
+                    partner = partner,
+                    canWrite = canWrite,
+                    periodProfit = allocatedProfit,
+                    periodExpense = allocatedExpense,
+                    periodLoss = allocatedLoss,
+                    periodNet = periodPartnerNet,
+                    lifetimeProfit = lifetimeProfit,
+                    lifetimeExpense = lifetimeExpense,
+                    lifetimeLoss = lifetimeLoss,
+                    withdrawnTotal = withdrawnTotal,
+                    availableBalance = availableBalance,
+                    distributionValid = distributionValid,
+                    onAddCapital = { addingCapitalFor = partner },
+                    onWithdraw = { withdrawingPartner = partner },
+                    onEdit = { if (canWrite) editingPartner = partner }
+                )
             }
 
             HorizontalDivider()
@@ -239,55 +261,6 @@ fun PartnerScreen() {
                 }
                 if (!distributionValid) {
                     Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ-লোকসান বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন.", color = MaterialTheme.colorScheme.error)
-                } else {
-                    partners.forEach { partner ->
-                        val allocatedProfit = dailyNet.sumOf { (day, net) ->
-                            maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                        }
-                        val allocatedLoss = dailyNet.sumOf { (day, net) ->
-                            kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                        }
-                        val lifetimeProfit = lifetimeNetByDay.entries.sumOf { (day, net) ->
-                            maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                        }
-                        val lifetimeLoss = lifetimeNetByDay.entries.sumOf { (day, net) ->
-                            kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                        }
-                        val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
-                        val capitalizedProfit = PartnerStorage.getCapitalContributions(context)
-                            .filter { it.partnerId == partner.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
-                            .sumOf { it.amount.coerceAtLeast(0.0) }
-                        val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal - capitalizedProfit
-                        val periodPartnerNet = allocatedProfit - allocatedLoss
-                        val allocatedExpense = expenseRecords
-                            .filter { it.date in fromDate..toDate }
-                            .flatMap { it.allocations }
-                            .filter { it.partnerId == partner.id }
-                            .sumOf { it.amount }
-                        val lifetimeExpense = expenseRecords
-                            .flatMap { it.allocations }
-                            .filter { it.partnerId == partner.id }
-                            .sumOf { it.amount }
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(partner.name, style = MaterialTheme.typography.titleMedium)
-                                Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, allocatedProfit))
-                                Text("এই সময়ের প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, allocatedExpense))
-                                Text("এই সময়ের লোকসান: ৳ %.2f".format(Locale.US, allocatedLoss), color = MaterialTheme.colorScheme.error)
-                                Text("এই সময়ের নিট ফলাফল: ৳ %.2f".format(Locale.US, periodPartnerNet),
-                                    color = if (periodPartnerNet < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                HorizontalDivider()
-                                Text("সর্বমোট লাভের অংশ: ৳ %.2f".format(Locale.US, lifetimeProfit))
-                                Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpense))
-                                Text("সর্বমোট লোকসানের অংশ: ৳ %.2f".format(Locale.US, lifetimeLoss), color = MaterialTheme.colorScheme.error)
-                                Text("মোট উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))
-                                Text("অবশিষ্ট নিট পাওনা / (ঘাটতি): ৳ %.2f".format(Locale.US, availableBalance),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = if (availableBalance < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                if (canWrite) OutlinedButton(onClick = { withdrawingPartner = partner }, enabled = availableBalance > 0.0) { Text("লভ্যাংশ উত্তোলন") }
-                            }
-                        }
-                    }
                 }
                 Text("দৈনিক লাভ / লোকসান", style = MaterialTheme.typography.titleMedium)
                 dailyNet.asReversed().forEach { (day, net) ->
@@ -388,41 +361,57 @@ fun PartnerScreen() {
 fun PartnerCard(
     partner: Partner,
     canWrite: Boolean,
-    last30Profit: Double,
-    last30Loss: Double,
-    last30Expenses: Double,
-    lifetimeExpenses: Double,
+    periodProfit: Double,
+    periodExpense: Double,
+    periodLoss: Double,
+    periodNet: Double,
+    lifetimeProfit: Double,
+    lifetimeExpense: Double,
+    lifetimeLoss: Double,
+    withdrawnTotal: Double,
+    availableBalance: Double,
+    distributionValid: Boolean,
     onAddCapital: () -> Unit,
-    onClick: () -> Unit
+    onWithdraw: () -> Unit,
+    onEdit: () -> Unit
 ) {
-    Card(Modifier.fillMaxWidth().clickable(enabled = canWrite, onClick = onClick)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(partner.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("৩০ দিনে লাভ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        Text("৳ %.2f".format(Locale.US, last30Profit), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("৩০ দিনে ঘাটতি", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                        Text("৳ %.2f".format(Locale.US, last30Loss), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
-            Text("৩০ দিনে প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, last30Expenses))
-            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpenses))
-            HorizontalDivider()
-            Text("বিনিয়োগ / মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
-            Text("লাভের হার: %.2f%%".format(Locale.US, partner.profitPercentage), color = MaterialTheme.colorScheme.primary)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(partner.name, style = MaterialTheme.typography.titleLarge)
             if (partner.note.isNotBlank()) Text("নোট: ${partner.note}", style = MaterialTheme.typography.bodySmall)
-            if (canWrite) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onAddCapital) { Text("＋ মূলধন জমা") }
-                Text("সম্পাদনা ✎", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.CenterVertically))
+            Text("বিনিয়োগ / বর্তমান মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
+            Text("লাভ বণ্টনের হার: %.2f%%".format(Locale.US, partner.profitPercentage),
+                color = MaterialTheme.colorScheme.primary)
+            HorizontalDivider()
+            Text("নির্বাচিত সময়ের হিসাব", style = MaterialTheme.typography.titleMedium)
+            Text("লাভের অংশ: ৳ %.2f".format(Locale.US, periodProfit))
+            Text("প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, periodExpense))
+            Text("লোকসানের অংশ: ৳ %.2f".format(Locale.US, periodLoss),
+                color = MaterialTheme.colorScheme.error)
+            Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNet),
+                style = MaterialTheme.typography.titleMedium,
+                color = if (periodNet < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            HorizontalDivider()
+            Text("সর্বমোট হিসাব", style = MaterialTheme.typography.titleMedium)
+            Text("সর্বমোট লাভের অংশ: ৳ %.2f".format(Locale.US, lifetimeProfit))
+            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpense))
+            Text("সর্বমোট লোকসানের অংশ: ৳ %.2f".format(Locale.US, lifetimeLoss),
+                color = MaterialTheme.colorScheme.error)
+            Text("মোট লভ্যাংশ উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))
+            Text("মূলধনে যোগ করা লভ্যাংশ উত্তোলনযোগ্য হিসাবে ধরা হয়নি.", style = MaterialTheme.typography.bodySmall)
+            Text("অবশিষ্ট নিট পাওনা / (ঘাটতি): ৳ %.2f".format(Locale.US, availableBalance),
+                style = MaterialTheme.typography.titleMedium,
+                color = if (availableBalance < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            if (!distributionValid) {
+                Text("সতর্কতা: পার্টনারদের লাভ বণ্টনের মোট হার ১০০% নয়।", color = MaterialTheme.colorScheme.error)
+            }
+            if (canWrite) {
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = onAddCapital, modifier = Modifier.weight(1f)) { Text("＋ মূলধন জমা") }
+                    TextButton(onClick = onWithdraw, enabled = availableBalance > 0.0, modifier = Modifier.weight(1f)) { Text("লভ্যাংশ উত্তোলন") }
+                    TextButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("সম্পাদনা") }
+                }
             }
         }
     }
