@@ -213,8 +213,11 @@ object PartnerStorage {
             val array = JSONArray(raw)
             (0 until array.length()).mapNotNull { index ->
                 val item = array.optJSONObject(index) ?: return@mapNotNull null
-                if (item.optString("fromDate") == fromDate && item.optString("toDate") == toDate)
-                    item.optDouble("amount").takeIf { it.isFinite() && it > 0.0 }
+                val closedFrom = item.optString("fromDate")
+                val closedTo = item.optString("toDate")
+                if (closedFrom.isNotBlank() && closedTo.isNotBlank() &&
+                    closedFrom >= fromDate && closedTo <= toDate
+                ) item.optDouble("amount").takeIf { it.isFinite() && it > 0.0 }
                 else null
             }.sum()
         }.getOrDefault(0.0)
