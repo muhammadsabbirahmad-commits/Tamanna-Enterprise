@@ -680,7 +680,7 @@ private fun DoubleEntryFinancialScreen() {
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 LedgerTotalCard("মোট ডেবিট", debitSummaryTotal, "বিস্তারিত") { selectedSide = "ডেবিট" }
-                LedgerTotalCard("মোট ক্রেডিট", partnerInvestmentTotal, "বিস্তারিত") { selectedSide = "ক্রেডিট" }
+                LedgerTotalCard("মোট ক্রেডিট", summary.totalCapital, "বিস্তারিত") { selectedSide = "ক্রেডিট" }
                 LedgerDividendCard(remainingDividend)
             }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
