@@ -161,7 +161,7 @@ object BusinessProfitCalculator {
         }
         damages.forEach { damage ->
             val key = day(damage.date)
-            if (key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)) {
+            if (key.isNotBlank() && (toDate == null || key <= toDate)) {
                 bucket(key).damageLoss += damage.totalLoss.coerceAtLeast(0.0)
             }
         }
