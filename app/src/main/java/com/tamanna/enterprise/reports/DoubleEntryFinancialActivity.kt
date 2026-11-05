@@ -345,7 +345,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }
     withdrawals.forEach { withdrawal ->
         val partner = PartnerStorage.getPartners(context).firstOrNull { it.id == withdrawal.partnerId }?.name ?: "পার্টনার"
-        rows += LedgerRow(dateKey(withdrawal.date), "পার্টনার উত্তোলন • $partner", "পার্টনার উত্তোলন", "নগদ", withdrawal.amount, withdrawal.amount, withdrawal.note)
+        rows += LedgerRow(dateKey(withdrawal.date), "পার্টনার লভ্যাংশ উত্তোলন • $partner", "লভ্যাংশ উত্তোলন", "নগদ", withdrawal.amount, withdrawal.amount, withdrawal.note)
     }
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
@@ -396,8 +396,25 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.debitAmount })
     checkSource("ক্রেতার বাকি আদায়", actualCustomerCollections.sumOf { it.amount },
         rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.debitAmount })
-    checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.debitAmount })
+    val partnerCapitalAudit = DoubleEntryAccounting.auditPartnerCapital(buildList {
+        capitalContributions.forEach { contribution ->
+            val kind = when {
+                contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") -> PartnerCapitalKind.PROFIT_CAPITALIZATION
+                contribution.amount < -0.004 -> PartnerCapitalKind.CAPITAL_RETURN
+                else -> PartnerCapitalKind.CONTRIBUTION
+            }
+            add(PartnerCapitalMovement(kind, kotlin.math.abs(contribution.amount)))
+        }
+        withdrawals.forEach { add(PartnerCapitalMovement(PartnerCapitalKind.DIVIDEND_WITHDRAWAL, it.amount)) }
+    })
+    checkSource("পার্টনারের মূলধন জমা", partnerCapitalAudit.contribution,
+        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.creditAmount })
+    checkSource("পার্টনারের মূলধন ফেরত", partnerCapitalAudit.capitalReturn,
+        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.debitAmount })
+    checkSource("লভ্যাংশ উত্তোলন", partnerCapitalAudit.dividendWithdrawal,
+        rows.filter { it.description.startsWith("পার্টনার লভ্যাংশ উত্তোলন •") }.sumOf { it.debitAmount })
+    checkSource("লভ্যাংশ মূলধনে যোগ", partnerCapitalAudit.profitCapitalization,
+        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.creditAmount })
     val externalCapitalIn = capitalContributions.filter {
         it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
     }.sumOf { it.amount }
@@ -587,7 +604,10 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("নির্বাচিত সময়ের প্রতিষ্ঠানের খরচ", summary.periodExpenseTotal)
             SummaryLine("মোট ড্যামেজ/নষ্টের ক্ষতি (শুরু থেকে)", summary.damageTotal)
             SummaryLine("নির্বাচিত সময়ের ড্যামেজ ক্ষতি", summary.periodDamageTotal)
-            SummaryLine("পার্টনারের উত্তোলন", summary.withdrawalTotal)
+            SummaryLine("পার্টনারের লভ্যাংশ উত্তোলন", summary.withdrawalTotal)
+            SummaryLine("পার্টনারের মূলধন জমা", capitalContributions.filter { it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
+            SummaryLine("পার্টনারের মূলধন ফেরত", capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount })
+            SummaryLine("লভ্যাংশ থেকে মূলধনে যোগ", capitalContributions.filter { it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
 
             Text("নগদ প্রবাহ", style = MaterialTheme.typography.titleLarge)
             SummaryLine("নথিভুক্ত নগদ এসেছে", summary.cashIn)
