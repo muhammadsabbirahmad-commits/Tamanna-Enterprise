@@ -32,30 +32,38 @@ private fun ProfitScreen(activity: ComponentActivity) {
     var to by remember { mutableStateOf(today) }
     var refresh by remember { mutableIntStateOf(0) }
 
-    val sales = remember(refresh) { SalesStorage.getSales(activity) }
-    val purchases = remember(refresh) { PurchaseStorage.getPurchases(activity) }
     val products = remember(refresh) { ProductStorage.getProducts(activity) }
-
     val validRange = from.isNotBlank() && to.isNotBlank() && from <= to
-    val rangeSales = if (validRange) sales.filter { it.date.substringBefore(" ") in from..to } else emptyList()
-    val rangePurchases = if (validRange) purchases.filter { it.date.substringBefore(" ") in from..to } else emptyList()
-
-    val salesAmount = rangeSales.sumOf { it.quantity * it.salePrice }
-    val costAmount = rangeSales.sumOf { it.quantity * it.purchasePrice }
-    val profit = salesAmount - costAmount
-    val purchasedAmount = rangePurchases.sumOf { it.quantity * it.purchasePrice }
-    val soldUnits = rangeSales.sumOf { it.quantity }
-    val purchasedUnits = rangePurchases.sumOf { it.quantity }
-    val stockUnits = products.sumOf { it.stockQuantity }
-    val expenses = if (validRange) ExpenseStorage.getExpenses(activity).filter { it.date in from..to } else emptyList()
-    val damages = if (validRange) ExpenseStorage.getDamages(activity).filter { it.date in from..to } else emptyList()
-    val institutionExpenses = expenses.sumOf { it.amount }
-    val damageLoss = damages.sumOf { it.totalLoss }
-    val sharedProfitReport = remember(refresh, from, to) { if (validRange) BusinessProfitCalculator.calculate(activity, from, to) else null }
-    val netProfit = sharedProfitReport?.netProfit ?: 0.0
-    val returnRevenue = sharedProfitReport?.returnRevenue ?: 0.0
-    val returnCost = sharedProfitReport?.returnCost ?: 0.0
-
+    val report = remember(refresh, from, to) {
+        if (validRange) BusinessProfitCalculator.calculate(activity, from, to) else null
+    }
+    val grossSales = report?.grossSales ?: 0.0
+    val salesDiscount = report?.salesDiscount ?: 0.0
+    val costAmount = report?.costOfGoodsSold ?: 0.0
+    val returnRevenue = report?.returnRevenue ?: 0.0
+    val returnCost = report?.returnCost ?: 0.0
+    val institutionExpenses = report?.expenses ?: 0.0
+    val damageLoss = report?.damageLoss ?: 0.0
+    val netProfit = report?.netProfit ?: 0.0
+    val purchasedAmount = remember(refresh, from, to) {
+        if (validRange) PurchaseStorage.getPurchases(activity)
+            .filter { it.date.substringBefore(" ") in from..to }
+            .sumOf { it.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0) }
+        else 0.0
+    }
+    val soldUnits = remember(refresh, from, to) {
+        if (validRange) SalesStorage.getSales(activity)
+            .filter { it.date.substringBefore(" ") in from..to }
+            .sumOf { it.quantity.coerceAtLeast(0) }
+        else 0
+    }
+    val purchasedUnits = remember(refresh, from, to) {
+        if (validRange) PurchaseStorage.getPurchases(activity)
+            .filter { it.date.substringBefore(" ") in from..to }
+            .sumOf { it.quantity.coerceAtLeast(0) }
+        else 0
+    }
+    val stockUnits = products.sumOf { it.stockQuantity.coerceAtLeast(0) }
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -72,14 +80,17 @@ private fun ProfitScreen(activity: ComponentActivity) {
                 if (!validRange) {
                     Text("সঠিক তারিখ দিন: YYYY-MM-DD এবং শুরু তারিখ শেষ তারিখের আগে/সমান হতে হবে।")
                 } else {
-                    SummaryCard("মোট বিক্রয়", "৳ %.2f".format(salesAmount))
-                    SummaryCard("বিক্রয়ের ক্রয়মূল্য", "৳ %.2f".format(costAmount))
-                    SummaryCard("বিক্রয়ভিত্তিক মোট লাভ", "৳ %.2f".format(profit))
+                    SummaryCard("মোট বিক্রয় (ডিসকাউন্টের আগে)", "৳ %.2f".format(grossSales))
+                    SummaryCard("বিক্রিত পণ্যের ক্রয়মূল্য", "৳ %.2f".format(costAmount))
+                    SummaryCard("বিক্রয় ডিসকাউন্ট", "৳ %.2f".format(salesDiscount))
                     SummaryCard("প্রতিষ্ঠানের খরচ", "৳ %.2f".format(institutionExpenses))
                     SummaryCard("ড্যামেজ ক্ষতি", "৳ %.2f".format(damageLoss))
                     SummaryCard("বিক্রয় ফেরতের নিট মূল্য", "৳ %.2f".format(returnRevenue))
                     SummaryCard("ফেরত পণ্যের পুনরুদ্ধারকৃত ক্রয়মূল্য", "৳ %.2f".format(returnCost))
-                    SummaryCard("নিট লাভ (ডিসকাউন্ট ও রিটার্নসহ)", "৳ %.2f".format(netProfit))
+                    SummaryCard("নিট লাভ (ডিসকাউন্ট, রিটার্ন, খরচ ও ড্যামেজ বাদে)", "৳ %.2f".format(netProfit))
+                    report?.warnings?.take(8)?.forEach { warning ->
+                        Text("• $warning", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                     SummaryCard("মোট ক্রয়", "৳ %.2f".format(purchasedAmount))
                     SummaryCard("বিক্রি হয়েছে", "$soldUnits ইউনিট".replace("$", ""))
                     SummaryCard("ক্রয় হয়েছে", "$purchasedUnits ইউনিট".replace("$", ""))
