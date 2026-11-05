@@ -422,9 +422,9 @@ private fun DoubleEntryFinancialScreen() {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp)) {
                     Text("ডেবিট–ক্রেডিট যাচাই", style = MaterialTheme.typography.titleMedium)
-                    Text(if (ledgerDifference < 0.01) "জার্নাল এন্ট্রিগুলো সমান: ${money(totalDebit)}"
+                    Text(if (ledgerDifference < 0.01) "জার্নাল এন্ট্রির দুই পাশ সমান: ${money(totalDebit)}"
                     else "ডেবিট-ক্রেডিটে অমিল: ${money(ledgerDifference)}")
-                    Text("ডেবিট ও ক্রেডিটের পৃথক মোট যোগ করে পার্থক্য যাচাই করা হচ্ছে। প্রতিটি জার্নাল এন্ট্রিতে উভয় পাশ সমান হওয়া আবশ্যক।", style = MaterialTheme.typography.bodySmall)
+                    Text("প্রতিটি লেনদেনের ডেবিট ও ক্রেডিট একই অঙ্কে লেখা হয়। তাই মোট সমান থাকাই যথেষ্ট নয়; নিচের মূল রেকর্ড যাচাইয়ের সতর্কতাও পরীক্ষা করুন।", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
