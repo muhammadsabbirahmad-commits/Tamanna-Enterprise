@@ -320,7 +320,35 @@ fun PartnerCard(
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(partner.name, style = MaterialTheme.typography.titleLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(partner.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                val statusColor = when {
+                    availableBalance > 0.004 -> MaterialTheme.colorScheme.primaryContainer
+                    availableBalance < -0.004 -> MaterialTheme.colorScheme.errorContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val statusTextColor = when {
+                    availableBalance > 0.004 -> MaterialTheme.colorScheme.onPrimaryContainer
+                    availableBalance < -0.004 -> MaterialTheme.colorScheme.onErrorContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Surface(color = statusColor, shape = MaterialTheme.shapes.small) {
+                    Text(
+                        text = when {
+                            availableBalance > 0.004 -> "লাভ ৳ %.2f".format(Locale.US, availableBalance)
+                            availableBalance < -0.004 -> "ঘাটতি ৳ %.2f".format(Locale.US, kotlin.math.abs(availableBalance))
+                            else -> "সমতা ৳ 0.00"
+                        },
+                        color = statusTextColor,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
             if (partner.note.isNotBlank()) Text("নোট: ${partner.note}", style = MaterialTheme.typography.bodySmall)
             Text("বিনিয়োগ / বর্তমান মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
             Text("লাভ বণ্টনের হার: %.2f%%".format(Locale.US, partner.profitPercentage),
