@@ -50,18 +50,7 @@ private data class LedgerRow(
     val debitAmount: Double,
     val creditAmount: Double,
     val note: String = ""
-) {
-    // Compatibility constructor for existing source transactions. Each side is stored
-    // independently; the trial balance below never derives one side from the other.
-    constructor(
-        date: String,
-        description: String,
-        debitAccount: String,
-        creditAccount: String,
-        amount: Double,
-        note: String = ""
-    ) : this(date, description, debitAccount, creditAccount, amount, amount, note)
-}
+)
 
 private data class LedgerSummary(
     val rows: List<LedgerRow>,
@@ -152,18 +141,11 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         val amount = kotlin.math.abs(contribution.amount)
         if (amount <= 0.004) return@forEach
         val openingOffsetAccount = "প্রারম্ভিক ব্যালান্স সমন্বয় (সম্পদ যাচাই বাকি)"
-        rows += LedgerRow(
-            fromDate,
-            "প্রারম্ভিক মূলধন • $partnerName",
-            when {
+        rows += LedgerRow(fromDate, "প্রারম্ভিক মূলধন • $partnerName", when {
                 retainedProfit -> "প্রারম্ভিক অবণ্টিত মুনাফা"
                 capitalReturned -> "পার্টনার মূলধন"
                 else -> openingOffsetAccount
-            },
-            if (capitalReturned) openingOffsetAccount else "পার্টনার মূলধন",
-            amount,
-            "${contribution.date} তারিখের আগের মূলধন • ${contribution.note}"
-        )
+            }, if (capitalReturned) openingOffsetAccount else "পার্টনার মূলধন", amount, amount, "${contribution.date} তারিখের আগের মূলধন • ${contribution.note}")
     }
 
     // A legacy installation may contain a current partner capital balance but only a partial
@@ -182,14 +164,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
                 val amount = kotlin.math.abs(unrecorded)
                 val isIncrease = unrecorded > 0.0
                 val openingOffsetAccount = "প্রারম্ভিক ব্যালান্স সমন্বয় (সম্পদ যাচাই বাকি)"
-                rows += LedgerRow(
-                    today,
-                    "পুরোনো মূলধনের অনথিভুক্ত পার্থক্য • ${partner.name}",
-                    if (isIncrease) openingOffsetAccount else "পার্টনার মূলধন",
-                    if (isIncrease) "পার্টনার মূলধন" else openingOffsetAccount,
-                    amount,
-                    "বর্তমান সংরক্ষিত মূলধন ও জমা/ফেরত রেকর্ডের পার্থক্য; প্রকৃত জমার তারিখ জানা নেই, তাই আজকের তারিখে আনুমানিক সমন্বয়।"
-                )
+                rows += LedgerRow(today, "পুরোনো মূলধনের অনথিভুক্ত পার্থক্য • ${partner.name}", if (isIncrease) openingOffsetAccount else "পার্টনার মূলধন", if (isIncrease) "পার্টনার মূলধন" else openingOffsetAccount, amount, amount, "বর্তমান সংরক্ষিত মূলধন ও জমা/ফেরত রেকর্ডের পার্থক্য; প্রকৃত জমার তারিখ জানা নেই, তাই আজকের তারিখে আনুমানিক সমন্বয়।")
                 warnings += "${partner.name}-এর বর্তমান মূলধন ও সংরক্ষিত জমা/ফেরত রেকর্ডে ${money(unrecorded)} পার্থক্য আছে; আজকের তারিখে আনুমানিক সমন্বয় দেখানো হয়েছে।"
             }
         }
@@ -209,14 +184,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             capitalReturned -> "পার্টনার মূলধন ফেরত • $partnerName"
             else -> "পার্টনার মূলধন জমা • $partnerName"
         }
-        rows += LedgerRow(
-            contribution.date,
-            description,
-            if (retainedProfit) "অবণ্টিত মুনাফা" else if (capitalReturned) "পার্টনার মূলধন" else "নগদ/ব্যাংক",
-            if (capitalReturned) "নগদ/ব্যাংক" else "পার্টনার মূলধন",
-            amount,
-            contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else ""
-        )
+        rows += LedgerRow(contribution.date, description, if (retainedProfit) "অবণ্টিত মুনাফা" else if (capitalReturned) "পার্টনার মূলধন" else "নগদ/ব্যাংক", if (capitalReturned) "নগদ/ব্যাংক" else "পার্টনার মূলধন", amount, amount, contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else "")
         if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
     }
 
@@ -236,16 +204,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
                 else if (groupTotal > 0.0) (dueForGroup * gross / groupTotal).coerceAtMost(gross) else 0.0
             allocatedDue += due
             val paid = (gross - due).coerceAtLeast(0.0)
-            if (paid > 0.004) rows += LedgerRow(
-                dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}",
-                "স্টক/ইনভেন্টরি", "নগদ", paid,
-                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; ক্রয়ের মোট ${money(gross)}"
-            )
-            if (due > 0.004) rows += LedgerRow(
-                dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}",
-                "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due,
-                "মেমো: ${purchase.memoNumber.ifBlank { "—" }}"
-            )
+            if (paid > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় • ${purchase.productName} × ${purchase.quantity}", "স্টক/ইনভেন্টরি", "নগদ", paid, paid, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}; ক্রয়ের মোট ${money(gross)}")
+            if (due > 0.004) rows += LedgerRow(dateKey(purchase.date), "পণ্য ক্রয় বাকি • ${purchase.productName} × ${purchase.quantity}", "স্টক/ইনভেন্টরি", "সরবরাহকারীর দেনা", due, due, "মেমো: ${purchase.memoNumber.ifBlank { "—" }}")
         }
     }
 
@@ -258,14 +218,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         if (kotlin.math.abs((tx.paid + tx.due) - gross) > 0.02) {
             warnings += "বিক্রয় ${tx.transactionId}: মোট, জমা ও বাকি টাকার মধ্যে অমিল আছে।"
         }
-        if (paid > 0.004) rows += LedgerRow(
-            dateKey(tx.date), "বিক্রয় আদায় • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
-            "নগদ", "বিক্রয় আয়", paid, "ইনভয়েস: ${tx.transactionId}"
-        )
-        if (due > 0.004) rows += LedgerRow(
-            dateKey(tx.date), "বিক্রয় বাকি • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}",
-            "ক্রেতার পাওনা", "বিক্রয় আয়", due, "ইনভয়েস: ${tx.transactionId}"
-        )
+        if (paid > 0.004) rows += LedgerRow(dateKey(tx.date), "বিক্রয় আদায় • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}", "নগদ", "বিক্রয় আয়", paid, paid, "ইনভয়েস: ${tx.transactionId}")
+        if (due > 0.004) rows += LedgerRow(dateKey(tx.date), "বিক্রয় বাকি • ${tx.customer.ifBlank { "নামহীন ক্রেতা" }}", "ক্রেতার পাওনা", "বিক্রয় আয়", due, due, "ইনভয়েস: ${tx.transactionId}")
     }
     val transactionIds = transactions.map { it.transactionId }.toSet()
     sales.filter { it.transactionId !in transactionIds }.groupBy { it.transactionId }.forEach { (id, items) ->
@@ -276,23 +230,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     // Record the full cost at sale time; returned goods reverse COGS on the actual return date below.
     sales.forEach { sale ->
         val cost = sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0)
-        if (cost > 0.0) rows += LedgerRow(
-            dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × ${sale.quantity}",
-            "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", cost
-        )
+        if (cost > 0.0) rows += LedgerRow(dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × ${sale.quantity}", "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", cost, cost)
     }
 
     returns.forEach { ret ->
         val refunded = ret.refundAmount.coerceAtLeast(0.0)
         val dueReduction = ret.dueReduction.coerceAtLeast(0.0)
-        if (refunded > 0.0) rows += LedgerRow(
-            dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded,
-            "রিটার্ন: ${ret.returnId}"
-        )
-        if (dueReduction > 0.0) rows += LedgerRow(
-            dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction,
-            "রিটার্ন: ${ret.returnId}"
-        )
+        if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "রিটার্ন: ${ret.returnId}")
+        if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "রিটার্ন: ${ret.returnId}")
         if (kotlin.math.abs(ret.amount - refunded - dueReduction) > 0.02) {
             warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
         }
@@ -305,46 +250,28 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             if (!originalExists) {
                 warnings += "রিটার্ন ${ret.returnId}: ${line.productCode} পণ্যের মূল বিক্রয়-লাইন পাওয়া যায়নি; ফেরত পণ্যের ক্রয়মূল্য যাচাই প্রয়োজন।"
             }
-            if (costValue > 0.0) rows += LedgerRow(
-                dateKey(ret.date), "ফেরত পণ্য স্টকে • ${line.productName} × ${line.quantity}",
-                "স্টক/ইনভেন্টরি", "বিক্রিত পণ্যের খরচ", costValue
-            )
+            if (costValue > 0.0) rows += LedgerRow(dateKey(ret.date), "ফেরত পণ্য স্টকে • ${line.productName} × ${line.quantity}", "স্টক/ইনভেন্টরি", "বিক্রিত পণ্যের খরচ", costValue, costValue)
         }
     }
 
     // Customer payments against previously recorded receivables.
     customerEntries.filter { it.type == "PAYMENT" && it.amount > 0.0 }.forEach { entry ->
-        rows += LedgerRow(
-            dateKey(entry.date), "ক্রেতার বাকি আদায় • ${entry.customer}",
-            "নগদ", "ক্রেতার পাওনা", entry.amount, entry.note
-        )
+        rows += LedgerRow(dateKey(entry.date), "ক্রেতার বাকি আদায় • ${entry.customer}", "নগদ", "ক্রেতার পাওনা", entry.amount, entry.amount, entry.note)
     }
 
     expenses.forEach { expense ->
-        if (expense.amount > 0.0) rows += LedgerRow(
-            dateKey(expense.date), "প্রতিষ্ঠানের খরচ • ${expense.category}",
-            "প্রতিষ্ঠানের খরচ", "নগদ", expense.amount, expense.note
-        )
+        if (expense.amount > 0.0) rows += LedgerRow(dateKey(expense.date), "প্রতিষ্ঠানের খরচ • ${expense.category}", "প্রতিষ্ঠানের খরচ", "নগদ", expense.amount, expense.amount, expense.note)
     }
     damages.forEach { damage ->
-        if (damage.totalLoss > 0.0) rows += LedgerRow(
-            dateKey(damage.date), "ড্যামেজ/নষ্ট • ${damage.productName}",
-            "ড্যামেজ ক্ষতি", "স্টক/ইনভেন্টরি", damage.totalLoss, damage.reason
-        )
+        if (damage.totalLoss > 0.0) rows += LedgerRow(dateKey(damage.date), "ড্যামেজ/নষ্ট • ${damage.productName}", "ড্যামেজ ক্ষতি", "স্টক/ইনভেন্টরি", damage.totalLoss, damage.totalLoss, damage.reason)
     }
 
     supplierEntries.filter { it.type == "PAYMENT" && it.amount < 0.0 }.forEach { entry ->
-        rows += LedgerRow(
-            dateKey(entry.date), "সরবরাহকারীকে পরিশোধ • ${entry.supplier}",
-            "সরবরাহকারীর দেনা", "নগদ", -entry.amount, entry.note
-        )
+        rows += LedgerRow(dateKey(entry.date), "সরবরাহকারীকে পরিশোধ • ${entry.supplier}", "সরবরাহকারীর দেনা", "নগদ", -entry.amount, -entry.amount, entry.note)
     }
     withdrawals.forEach { withdrawal ->
         val partner = PartnerStorage.getPartners(context).firstOrNull { it.id == withdrawal.partnerId }?.name ?: "পার্টনার"
-        rows += LedgerRow(
-            dateKey(withdrawal.date), "পার্টনার উত্তোলন • $partner",
-            "পার্টনার উত্তোলন", "নগদ", withdrawal.amount, withdrawal.note
-        )
+        rows += LedgerRow(dateKey(withdrawal.date), "পার্টনার উত্তোলন • $partner", "পার্টনার উত্তোলন", "নগদ", withdrawal.amount, withdrawal.amount, withdrawal.note)
     }
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
