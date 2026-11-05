@@ -18,6 +18,7 @@ import com.tamanna.enterprise.dashboard.TamannaTheme
 import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.partner.PartnerStorage
+import com.tamanna.enterprise.profit.BusinessProfitCalculator
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.purchase.SupplierDueStorage
@@ -104,6 +105,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
+    val sharedProfitReport = BusinessProfitCalculator.calculate(context, fromDate, toDate)
+    warnings += sharedProfitReport.warnings
 
     capitalContributions.forEach { contribution ->
         val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name ?: "পুরোনো/মুছে ফেলা পার্টনার"
@@ -265,7 +268,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         line.quantity.coerceAtLeast(0) * (originalSale?.purchasePrice ?: 0.0)
     }
     val netCogs = grossCogs - returnedCost
-    val netProfit = salesTotal - netCogs - periodExpenseTotal - periodDamageTotal
+    // Profit, partner distribution and the profit screen all use the same calculation engine.
+    val netProfit = sharedProfitReport.netProfit
 
     // Current stock is read from the live product inventory, not reconstructed from only the selected period.
     // Historical stock snapshots are not stored by the app, so this value is explicitly labelled as current.
