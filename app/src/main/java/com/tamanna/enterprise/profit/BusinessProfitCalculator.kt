@@ -64,6 +64,19 @@ object BusinessProfitCalculator {
         }.forEach { tx ->
             warnings += "ইনভয়েস ${tx.transactionId}: ইনভয়েসের রেকর্ড আছে কিন্তু বিক্রয়ের পণ্য-লাইন নেই; পণ্যের ক্রয়মূল্য ছাড়া প্রকৃত লাভ নির্ণয় সম্ভব নয়।"
         }
+        transactions.values.filter { tx ->
+            val key = day(tx.date)
+            key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)
+        }.forEach { tx ->
+            val lineSubtotal = datedSales.filter { it.transactionId == tx.transactionId }
+                .sumOf { it.quantity.coerceAtLeast(0) * it.salePrice.coerceAtLeast(0.0) }
+            if (kotlin.math.abs(lineSubtotal - tx.subtotal.coerceAtLeast(0.0)) > 0.02) {
+                warnings += "ইনভয়েস ${tx.transactionId}: পণ্যের লাইনের মোট ${lineSubtotal} টাকা, ইনভয়েস সাবটোটাল ${tx.subtotal} টাকা; ডিসকাউন্ট বণ্টনের আগে যাচাই প্রয়োজন।"
+            }
+            if (kotlin.math.abs((tx.subtotal - tx.discount) - tx.total) > 0.02) {
+                warnings += "ইনভয়েস ${tx.transactionId}: সাবটোটাল, ডিসকাউন্ট ও সর্বমোটের মধ্যে অমিল আছে।"
+            }
+        }
         val days = linkedMapOf<String, MutableDaily>()
 
         fun bucket(date: String): MutableDaily {
