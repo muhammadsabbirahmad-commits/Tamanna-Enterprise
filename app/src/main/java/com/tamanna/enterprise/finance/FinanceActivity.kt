@@ -129,12 +129,16 @@ fun ExpensePane(a: ComponentActivity) {
                     cat.isBlank() -> msg = "খরচের ধরন দিন।"
                     amount == null || amount <= 0 -> msg = "সঠিক টাকার পরিমাণ দিন।"
                     else -> {
-                        ExpenseStorage.addExpense(a, Expense(System.currentTimeMillis(), date, cat.trim(), amount, note.trim()))
-                        ActivityLogStorage.add(a, "প্রতিষ্ঠানের খরচ যোগ", cat.trim() + " — ৳ " + String.format(Locale.US, "%.2f", amount))
-                        list = ExpenseStorage.getExpenses(a)
-                        amt = ""
-                        note = ""
-                        msg = "খরচ সংরক্ষণ হয়েছে।"
+                        val saved = ExpenseStorage.addExpense(a, Expense(System.currentTimeMillis(), date, cat.trim(), amount, note.trim()))
+                        if (saved) {
+                            ActivityLogStorage.add(a, "প্রতিষ্ঠানের খরচ যোগ", cat.trim() + " — ৳ " + String.format(Locale.US, "%.2f", amount))
+                            list = ExpenseStorage.getExpenses(a)
+                            amt = ""
+                            note = ""
+                            msg = "খরচ সংরক্ষণ হয়েছে এবং কার্যকর শতাংশ অনুযায়ী পার্টনারদের মধ্যে বণ্টন সংরক্ষিত হয়েছে।"
+                        } else {
+                            msg = "খরচ সংরক্ষণ হয়নি। নির্বাচিত তারিখে পার্টনারদের কার্যকর লাভের শতাংশ ১০০% হতে হবে। পুরোনো তারিখের জন্য ঐ তারিখের শতাংশের রেকর্ড থাকতে হবে।"
+                        }
                     }
                 }
             }
@@ -174,9 +178,9 @@ fun ExpensePane(a: ComponentActivity) {
                 } else if (ExpenseStorage.updateExpense(a, updated)) {
                     ActivityLogStorage.add(a, "প্রতিষ্ঠানের খরচ সম্পাদনা", updated.category + " — " + updated.date + " — ৳ " + String.format(Locale.US, "%.2f", updated.amount))
                     list = ExpenseStorage.getExpenses(a)
-                    msg = "খরচের তথ্য ও তারিখ আপডেট হয়েছে।"
+                    msg = "খরচের তথ্য ও পার্টনারদের বরাদ্দ একসঙ্গে আপডেট হয়েছে।"
                 } else {
-                    msg = "খরচটি পাওয়া যায়নি। আবার তালিকা রিফ্রেশ করুন।"
+                    msg = "আপডেট হয়নি। খরচটি পাওয়া যায়নি অথবা ঐ তারিখের পার্টনার শতাংশ ১০০% নয়/ঐতিহাসিক হার পাওয়া যায়নি।"
                 }
                 selectedExpense = null
             }
