@@ -135,26 +135,26 @@ class DashboardActivity : ComponentActivity() {
                     if (!documents.isEmpty) {
                         val bId = documents.documents[0].id
                         BusinessStorage.setActiveBusinessId(context, bId)
-                        CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                        CloudSyncManager.smartSync(context, isAuto = false) { _, isDataSynced ->
                             if (isDataSynced) renderDashboardUI()
                         }
                     } else {
                         // Use the signed-in account UID when no owned business document is found.
                         BusinessStorage.setActiveBusinessId(context, uid)
-                        CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                        CloudSyncManager.smartSync(context, isAuto = false) { _, isDataSynced ->
                             if (isDataSynced) renderDashboardUI()
                         }
                     }
                 }
                 .addOnFailureListener {
                     BusinessStorage.setActiveBusinessId(context, uid)
-                    CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+                    CloudSyncManager.smartSync(context, isAuto = false) { _, isDataSynced ->
                         if (isDataSynced) renderDashboardUI()
                     }
                 }
         } else if (firebaseUser != null) {
             // ৩. ব্যাকগ্রাউন্ডে এককালীন সিঙ্ক সম্পন্ন হলে UI রিফ্রেশ করা
-            CloudSyncManager.smartSync(context, isAuto = true) { _, isDataSynced ->
+            CloudSyncManager.smartSync(context, isAuto = false) { _, isDataSynced ->
                 if (isDataSynced) {
                     renderDashboardUI()
                 }
