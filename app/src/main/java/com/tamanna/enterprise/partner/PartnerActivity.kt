@@ -105,8 +105,6 @@ fun PartnerScreen() {
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
     val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
     val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
-    // Partner expense cards read the immutable allocation snapshot saved with each expense.
-    val expenseRecords = remember(refresh) { ExpenseStorage.getExpenses(context) }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
@@ -198,15 +196,13 @@ fun PartnerScreen() {
                     .sumOf { it.amount.coerceAtLeast(0.0) }
                 val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal - capitalizedProfit
                 val periodPartnerNet = allocatedProfit - allocatedLoss
-                val allocatedExpense = expenseRecords
-                    .filter { it.date in fromDate..toDate }
-                    .flatMap { it.allocations }
-                    .filter { it.partnerId == partner.id }
-                    .sumOf { it.amount }
-                val lifetimeExpense = expenseRecords
-                    .flatMap { it.allocations }
-                    .filter { it.partnerId == partner.id }
-                    .sumOf { it.amount }
+                // Includes ordinary business expenses and damaged-stock losses.
+                val allocatedExpense = remember(refresh, fromDate, toDate, partner.id) {
+                    ExpenseStorage.getPartnerExpenseTotal(context, partner.id, fromDate, toDate)
+                }
+                val lifetimeExpense = remember(refresh, partner.id) {
+                    ExpenseStorage.getPartnerExpenseTotal(context, partner.id)
+                }
                 PartnerCard(
                     partner = partner,
                     canWrite = canWrite,
