@@ -463,7 +463,7 @@ object CloudSyncManager {
                 val id = key(item)
                 if (id.isBlank()) continue
                 val old = records[id]
-                if (old == null || (!localRows && item.optLong("updatedAt", 0L) > old.optLong("updatedAt", 0L))) records[id] = item
+                if (old == null || localRows || item.optLong("updatedAt", 0L) > old.optLong("updatedAt", 0L)) records[id] = item
             }
         }
         addAll(cloudRaw, false)
