@@ -145,8 +145,10 @@ fun PartnerScreen() {
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
     val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
-    // Partner profit/loss uses rolling expense recovery, not expenses deducted immediately.
-    val allDailyNet = remember(profitReport) { profitReport.partnerDistributionByDay }
+    // Partner dividend/deficit must use actual daily net profit after expenses and damage.
+    // The rolling-recovery map can be zero while expenses are still being carried forward,
+    // which hides a real deficit from each partner's date-range and lifetime totals.
+    val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
