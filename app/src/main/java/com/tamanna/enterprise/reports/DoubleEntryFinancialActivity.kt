@@ -85,6 +85,7 @@ private data class LedgerSummary(
     val withdrawalTotal: Double,
     val totalCapital: Double,
     val netProfit: Double,
+    val distributableProfit: Double,
     val cashIn: Double,
     val cashOut: Double,
     val stockWarnings: List<String>,
@@ -602,7 +603,7 @@ private fun DoubleEntryFinancialScreen() {
         PartnerStorage.getCapitalContributions(context).filter { dateKey(it.date) >= fromDate && dateKey(it.date) <= toDate }
     }
     val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
-    val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
+    val remainingDividend = summary.distributableProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
 
     // The debit detail shows four management figures. Recoverable business
@@ -698,7 +699,7 @@ private fun DoubleEntryFinancialScreen() {
                     SummaryLine("আপনার কাছে আছে (যোগ করা ক্যাশ/ব্যাংক)", totalManualCash)
                     SummaryLine("নির্বাচিত সময়ের নিট লাভ", summary.netProfit)
                     SummaryLine(if (remainingDividend >= 0.0) "অবণ্টিত লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
-                    Text("অবণ্টিত লভ্যাংশ = নির্বাচিত সময়ের নিট মুনাফা − নগদ লভ্যাংশ উত্তোলন − ইতিমধ্যে মূলধনে স্থানান্তর। মূলধনে স্থানান্তর করলে ক্যাশ বাড়ে না।", style = MaterialTheme.typography.bodySmall)
+                    Text("অবণ্টিত লভ্যাংশ = নির্বাচিত সময়ের খরচ সমন্বয়ের পর বণ্টনযোগ্য লাভ − নগদ লভ্যাংশ উত্তোলন − ইতিমধ্যে মূলধনে স্থানান্তর। মূলধনে স্থানান্তর করলে ক্যাশ বাড়ে না।", style = MaterialTheme.typography.bodySmall)
                     if (alreadyCapitalized) {
                         Text("এই তারিখের হিসাবের লভ্যাংশ ইতিমধ্যে মূলধনে যোগ করা হয়েছে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                     } else {
