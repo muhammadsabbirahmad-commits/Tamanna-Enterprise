@@ -355,7 +355,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) } +
         externalCapitalIn
     val cashOut = (purchaseTotal - purchaseDue).coerceAtLeast(0.0) +
-        supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtLeast(0.0) } +
+        supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) } +
         periodExpenseTotal + withdrawalTotal +
         returns.sumOf { it.refundAmount.coerceAtLeast(0.0) } + capitalReturned
 
