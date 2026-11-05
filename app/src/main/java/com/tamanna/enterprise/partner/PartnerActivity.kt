@@ -266,8 +266,15 @@ fun PartnerScreen() {
                             .sumOf { it.amount.coerceAtLeast(0.0) }
                         val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal - capitalizedProfit
                         val periodPartnerNet = allocatedProfit - allocatedLoss
-                        val allocatedExpense = dailyExpenses.filterKeys { it in fromDate..toDate }.entries.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
-                        val lifetimeExpense = dailyExpenses.entries.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
+                        val allocatedExpense = expenseRecords
+                            .filter { it.date in fromDate..toDate }
+                            .flatMap { it.allocations }
+                            .filter { it.partnerId == partner.id }
+                            .sumOf { it.amount }
+                        val lifetimeExpense = expenseRecords
+                            .flatMap { it.allocations }
+                            .filter { it.partnerId == partner.id }
+                            .sumOf { it.amount }
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(partner.name, style = MaterialTheme.typography.titleMedium)
