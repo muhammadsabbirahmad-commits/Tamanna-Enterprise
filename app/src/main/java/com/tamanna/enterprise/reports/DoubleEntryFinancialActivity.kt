@@ -542,9 +542,10 @@ private fun DoubleEntryFinancialScreen() {
             if (!validRange) Text("সঠিক তারিখের পরিসর দিন (YYYY-MM-DD)।", color = MaterialTheme.colorScheme.error)
             Text("নির্বাচিত সময়: $fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LedgerTotalCard("মোট ডেবিট", totalDebit, "বিস্তারিত দেখুন") { selectedSide = "ডেবিট" }
-                LedgerTotalCard("মোট ক্রেডিট", totalCredit, "বিস্তারিত দেখুন") { selectedSide = "ক্রেডিট" }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LedgerTotalCard("মোট ডেবিট", totalDebit, "বিস্তারিত") { selectedSide = "ডেবিট" }
+                LedgerTotalCard("মোট ক্রেডিট", totalCredit, "বিস্তারিত") { selectedSide = "ক্রেডিট" }
+                LedgerDividendCard(remainingDividend)
             }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp)) {
@@ -835,10 +836,39 @@ private fun RowScope.LedgerTotalCard(title: String, amount: Double, action: Stri
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(money(amount), style = MaterialTheme.typography.titleLarge)
+        Column(Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, style = MaterialTheme.typography.labelLarge)
+            Text(money(amount), style = MaterialTheme.typography.titleSmall)
             Text(action, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun RowScope.LedgerDividendCard(amount: Double) {
+    val status = when {
+        amount > 0.004 -> "লভ্যাংশ"
+        amount < -0.004 -> "ঘাটতি"
+        else -> "হিসাব সমান"
+    }
+    val container = when {
+        amount > 0.004 -> MaterialTheme.colorScheme.primaryContainer
+        amount < -0.004 -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    Card(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = container)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text("লভ্যাংশ / ঘাটতি", style = MaterialTheme.typography.labelLarge)
+            Text(money(kotlin.math.abs(amount)), style = MaterialTheme.typography.titleSmall)
+            Text(status, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
