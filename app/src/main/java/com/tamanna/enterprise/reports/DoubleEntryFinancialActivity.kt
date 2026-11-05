@@ -514,6 +514,8 @@ private fun DoubleEntryFinancialScreen() {
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
     val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.debitAmount > 0.0 }
     val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.creditAmount > 0.0 }
+    // Credit detail is limited to partner capital deposits; the headline credit total remains the full journal total.
+    val partnerInvestmentRows = creditRows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }
     // Independent totals: a missing/zero side is not silently copied from the other side.
     val totalDebit = debitRows.sumOf { it.debitAmount }
     val totalCredit = creditRows.sumOf { it.creditAmount }
@@ -806,12 +808,16 @@ private fun DoubleEntryFinancialScreen() {
     }
 
     selectedSide?.let { side ->
-        val rows = if (side == "ডেবিট") debitRows else creditRows
+        val rows = if (side == "ডেবিট") debitRows else partnerInvestmentRows
         AlertDialog(
             onDismissRequest = { selectedSide = null },
-            title = { Text("$side লেনদেনের বিস্তারিত") },
+            title = { Text(if (side == "ক্রেডিট") "পার্টনারদের বিনিয়োগ" else "$side লেনদেনের বিস্তারিত") },
             text = {
                 Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                    if (side == "ক্রেডিট") {
+                        SummaryLine("পার্টনারদের মোট বিনিয়োগ", summary.totalCapital)
+                        Text("নিচে শুধু পার্টনারদের মূলধন জমার এন্ট্রি দেখানো হয়েছে। পণ্য বিক্রি বা স্টকের এন্ট্রি এখানে দেখানো হবে না।", style = MaterialTheme.typography.bodySmall)
+                    }
                     Text("মোট এন্ট্রি: ${rows.size}টি")
                     rows.forEach { row ->
                         HorizontalDivider()
