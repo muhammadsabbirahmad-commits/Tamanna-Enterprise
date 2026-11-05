@@ -104,12 +104,6 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val withdrawals = PartnerStorage.getWithdrawals(context).filter { inRange(it.date) }
     val allCapitalContributions = PartnerStorage.getCapitalContributions(context)
     val capitalContributions = allCapitalContributions.filter { inRange(it.date) }
-    // Only movements before the selected period AND on/before its end date are opening balances.
-    // This prevents future-dated capital from leaking into a historical report.
-    val openingCapitalContributions = allCapitalContributions.filter {
-        dateKey(it.date) < fromDate && dateKey(it.date) <= toDate
-    }
-
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
     val sharedProfitReport = BusinessProfitCalculator.calculate(context, fromDate, toDate)
@@ -422,7 +416,7 @@ private fun DoubleEntryFinancialScreen() {
                     Text("ডেবিট–ক্রেডিট যাচাই", style = MaterialTheme.typography.titleMedium)
                     Text(if (ledgerDifference < 0.01) "জার্নাল এন্ট্রির দুই পাশ সমান: ${money(totalDebit)}"
                     else "ডেবিট-ক্রেডিটে অমিল: ${money(ledgerDifference)}")
-                    Text("প্রতিটি লেনদেনের ডেবিট ও ক্রেডিট একই অঙ্কে লেখা হয়। তাই মোট সমান থাকাই যথেষ্ট নয়; নিচের মূল রেকর্ড যাচাইয়ের সতর্কতাও পরীক্ষা করুন।", style = MaterialTheme.typography.bodySmall)
+                    Text("ডেবিট ও ক্রেডিট আলাদা অঙ্ক থেকে যোগ করা হয়। প্রারম্ভিক ব্যালান্সের অমিল থাকলে তা সমন্বয় করে লুকানো হয় না; মূল রেকর্ডের সতর্কতাও যাচাই করুন।", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -505,10 +499,10 @@ private fun DoubleEntryFinancialScreen() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (openingBalances == null) "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ"
-                        else if (openingBalances.verified && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
+                        else if (openingBalances.verified && openingBalances.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
                         else "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ",
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (openingBalances?.verified == true && kotlin.math.abs(openingDifference) < 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                        color = if (openingBalances?.verified == true && openingBalances.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                     if (openingBalances == null) {
                         Text("শুরুর দিনের প্রকৃত নগদ, ব্যাংক, স্টক, ক্রেতার পাওনা ও দেনা এখনো লেখা হয়নি।", style = MaterialTheme.typography.bodySmall)
                     } else {
