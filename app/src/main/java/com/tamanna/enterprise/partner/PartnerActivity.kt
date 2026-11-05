@@ -104,7 +104,6 @@ fun PartnerScreen() {
     val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
     val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
-    val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
@@ -115,18 +114,11 @@ fun PartnerScreen() {
     var withdrawingPartner by remember { mutableStateOf<Partner?>(null) }
     var fromDate by remember { mutableStateOf(partnerDate(29)) }
     var toDate by remember { mutableStateOf(partnerDate()) }
-    var message by remember { mutableStateOf("") }
 
     val validRange = isValidPartnerDate(fromDate) && isValidPartnerDate(toDate) && fromDate <= toDate
     val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
         if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
-    val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
-        if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
-    }
-    val periodTotalProfit = dailyNet.sumOf { maxOf(it.second, 0.0) }
-    val periodTotalLoss = dailyNet.sumOf { kotlin.math.abs(minOf(it.second, 0.0)) }
-    val periodNetResult = periodTotalProfit - periodTotalLoss
     val lifetimeNetByDay = allDailyNet
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
@@ -222,64 +214,6 @@ fun PartnerScreen() {
                 )
             }
 
-            HorizontalDivider()
-            Text("পার্টনারভিত্তিক লাভ-লোকসানের হিসাব", style = MaterialTheme.typography.titleLarge)
-            Text("বিক্রয়মূল্য থেকে পণ্যের ক্রয়মূল্য, প্রতিষ্ঠানের খরচ ও ড্যামেজ বাদ দিয়ে প্রতিদিনের নিট ফলাফল বের হবে। লাভ হলে লাভ এবং লোকসান হলে প্রত্যেক পার্টনারের নির্ধারিত শতাংশ অনুযায়ী লোকসান দেখানো হবে।")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { fromDate = partnerDate(); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("আজ") }
-                OutlinedButton(onClick = { fromDate = partnerDate(1); toDate = partnerDate(1) }, modifier = Modifier.weight(1f)) { Text("গতকাল") }
-                OutlinedButton(onClick = { fromDate = partnerDate(6); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("৭ দিন") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { fromDate = partnerDate(29); toDate = partnerDate() }, modifier = Modifier.weight(1f)) { Text("৩০ দিন") }
-                OutlinedButton(onClick = {
-                    val c = Calendar.getInstance()
-                    c.set(Calendar.DAY_OF_MONTH, 1)
-                    fromDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.time)
-                    toDate = partnerDate()
-                }, modifier = Modifier.weight(1f)) { Text("এই মাস") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("শুরু (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
-                OutlinedTextField(toDate, { toDate = it }, label = { Text("শেষ (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.weight(1f))
-            }
-            Button(
-                onClick = { refresh++ },
-                enabled = validRange,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("তারিখ অনুযায়ী হিসাব রিফ্রেশ করুন")
-            }
-            if (!validRange) {
-                Text("সঠিক তারিখের পরিসর দিন।", color = MaterialTheme.colorScheme.error)
-            } else {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("এই সময়ের ব্যবসার হিসাব", style = MaterialTheme.typography.titleMedium)
-                        Text("মোট লাভ: ৳ %.2f".format(Locale.US, periodTotalProfit))
-                        Text("প্রতিষ্ঠানের মোট খরচ: ৳ %.2f".format(Locale.US, periodExpenseTotal))
-                        Text("মোট লোকসান: ৳ %.2f".format(Locale.US, periodTotalLoss), color = MaterialTheme.colorScheme.error)
-                        Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNetResult), style = MaterialTheme.typography.headlineSmall,
-                            color = if (periodNetResult < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                        Text("$fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                if (profitReport.warnings.isNotEmpty()) {
-                    Text("লাভের হিসাব যাচাইয়ের সতর্কতা", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
-                    profitReport.warnings.forEach { Text("• $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                }
-                if (!distributionValid) {
-                    Text("বর্তমান পার্টনারদের শতাংশের যোগফল ১০০% না হওয়ায় লাভ-লোকসান বণ্টনের হিসাব দেখানো হচ্ছে না। শতাংশ বণ্টন ঠিক করুন.", color = MaterialTheme.colorScheme.error)
-                }
-                Text("দৈনিক লাভ / লোকসান", style = MaterialTheme.typography.titleMedium)
-                dailyNet.asReversed().forEach { (day, net) ->
-                    val label = if (net < 0.0) "লোকসান" else "লাভ"
-                    Text("$day  •  $label: ৳ %.2f".format(Locale.US, kotlin.math.abs(net)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (net < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                }
-            }
-            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
         }
     }
 
