@@ -554,8 +554,10 @@ private fun DoubleEntryFinancialScreen() {
         cumulativeCashSummary.cashIn - cumulativeCashSummary.cashOut
     val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.debitAmount > 0.0 }
     val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.creditAmount > 0.0 }
-    // Credit detail is limited to partner capital deposits; the headline credit total remains the full journal total.
+    // The credit card and its detail both represent partner capital investments.
+    // Keep the full journal credit total separate for trial-balance reconciliation.
     val partnerInvestmentRows = creditRows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }
+    val partnerInvestmentTotal = partnerInvestmentRows.sumOf { it.creditAmount }
     // Independent totals: a missing/zero side is not silently copied from the other side.
     val totalDebit = debitRows.sumOf { it.debitAmount }
     val totalCredit = creditRows.sumOf { it.creditAmount }
@@ -606,7 +608,7 @@ private fun DoubleEntryFinancialScreen() {
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 LedgerTotalCard("মোট ডেবিট", totalDebit, "বিস্তারিত") { selectedSide = "ডেবিট" }
-                LedgerTotalCard("মোট ক্রেডিট", totalCredit, "বিস্তারিত") { selectedSide = "ক্রেডিট" }
+                LedgerTotalCard("মোট ক্রেডিট", partnerInvestmentTotal, "বিস্তারিত") { selectedSide = "ক্রেডিট" }
                 LedgerDividendCard(remainingDividend)
             }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
