@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -109,7 +108,7 @@ private fun ProfitScreen(activity: ComponentActivity) {
                 if (!validRange) {
                     Text("সঠিক তারিখ দিন: YYYY-MM-DD এবং শুরু তারিখ শেষ তারিখের আগে/সমান হতে হবে।")
                 } else {
-                    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         item { SummaryCard("মোট বিক্রয় (রিটার্ন বাদে)", "৳ %.2f".format(netSalesAmount)) }
                         item { SummaryCard("বিক্রয়ের ক্রয়মূল্য (রিটার্ন বাদে)", "৳ %.2f".format(netCostAmount)) }
                         item { SummaryCard("বিক্রয়ভিত্তিক নিট লাভ", "৳ %.2f".format(profit)) }
