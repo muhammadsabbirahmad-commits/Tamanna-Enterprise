@@ -344,8 +344,8 @@ private fun DoubleEntryFinancialScreen() {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp)) {
                     Text("ডেবিট–ক্রেডিট যাচাই", style = MaterialTheme.typography.titleMedium)
-                    Text(if (kotlin.math.abs(totalDebit - totalCredit) < 0.01) "জার্নাল এন্ট্রিগুলো সমান: ${money(totalDebit)}"
-                    else "অমিল: ${money(kotlin.math.abs(totalDebit - totalCredit))}")
+                    Text(if (ledgerDifference < 0.01) "জার্নাল এন্ট্রিগুলো সমান: ${money(totalDebit)}"
+                    else "ডেবিট-ক্রেডিটে অমিল: ${money(ledgerDifference)}")
                     Text("ডেবিট ও ক্রেডিটের পৃথক মোট যোগ করে পার্থক্য যাচাই করা হচ্ছে। প্রতিটি জার্নাল এন্ট্রিতে উভয় পাশ সমান হওয়া আবশ্যক।", style = MaterialTheme.typography.bodySmall)
                 }
             }
