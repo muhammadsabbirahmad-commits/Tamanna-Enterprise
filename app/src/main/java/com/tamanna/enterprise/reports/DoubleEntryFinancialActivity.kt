@@ -570,7 +570,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.sortedWith(compareBy<LedgerRow> { it.date }.thenBy { it.description }),
         purchaseTotal, stockValue, stockUnits, salesTotal, collectionTotal, receivable,
         supplierPayable, expenseTotal, periodExpenseTotal, damageTotal, periodDamageTotal,
-        withdrawalTotal, totalCapital, netProfit, cashIn, cashOut, stockWarnings, warnings,
+        withdrawalTotal, totalCapital, netProfit, sharedProfitReport.partnerDistributionByDay.values.sum(), cashIn, cashOut, stockWarnings, warnings,
         auditedTrialBalance
     )
 }
