@@ -27,7 +27,9 @@ data class DailyBusinessProfit(
 
 data class BusinessProfitReport(
     val days: List<DailyBusinessProfit>,
-    val warnings: List<String>
+    val warnings: List<String>,
+    /** Daily partner-distributable result after carrying forward and recovering unpaid operating expenses. */
+    val partnerDistributionByDay: Map<String, Double> = emptyMap()
 ) {
     val grossSales: Double get() = days.sumOf { it.grossSales }
     val salesDiscount: Double get() = days.sumOf { it.salesDiscount }
@@ -142,12 +144,34 @@ object BusinessProfitCalculator {
             }
         }
 
+        val dailyResults = days.map { (date, item) ->
+            DailyBusinessProfit(date, item.grossSales, item.salesDiscount, item.cogs,
+                item.returnRevenue, item.returnCost, item.expenses, item.damageLoss)
+        }.sortedBy { it.date }
+
+        // Recover unpaid operating expenses gradually from positive trading profit.
+        // Damage is a direct loss and is deducted before expense recovery.
+        var unpaidOperatingExpenses = 0.0
+        val partnerDistribution = linkedMapOf<String, Double>()
+        dailyResults.forEach { result ->
+            unpaidOperatingExpenses += result.expenses.coerceAtLeast(0.0)
+            val tradingResultAfterDamage =
+                result.grossSales - result.salesDiscount - result.costOfGoodsSold -
+                    result.returnRevenue + result.returnCost - result.damageLoss
+            val distributable = if (tradingResultAfterDamage > 0.0) {
+                val recovered = minOf(tradingResultAfterDamage, unpaidOperatingExpenses)
+                unpaidOperatingExpenses = (unpaidOperatingExpenses - recovered).coerceAtLeast(0.0)
+                tradingResultAfterDamage - recovered
+            } else {
+                tradingResultAfterDamage
+            }
+            partnerDistribution[result.date] = distributable
+        }
+
         return BusinessProfitReport(
-            days = days.map { (date, item) ->
-                DailyBusinessProfit(date, item.grossSales, item.salesDiscount, item.cogs,
-                    item.returnRevenue, item.returnCost, item.expenses, item.damageLoss)
-            }.sortedBy { it.date },
-            warnings = warnings.distinct()
+            days = dailyResults,
+            warnings = warnings.distinct(),
+            partnerDistributionByDay = partnerDistribution
         )
     }
 
