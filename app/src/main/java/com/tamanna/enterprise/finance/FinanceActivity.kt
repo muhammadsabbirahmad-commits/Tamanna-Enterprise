@@ -83,6 +83,8 @@ fun ExpensePane(a: ComponentActivity) {
     val filteredExpenses = list.filter { it.date >= appliedStart && it.date <= appliedEnd }
         .sortedWith(compareByDescending<Expense> { it.date }.thenByDescending { it.id })
     val filteredTotal = filteredExpenses.sumOf { it.amount }
+    // The all-time total is independent of the selected date filter.
+    val allTimeTotal = list.sumOf { it.amount.coerceAtLeast(0.0) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text("প্রতিষ্ঠানের দৈনন্দিন/মাসিক খরচ")
@@ -107,14 +109,9 @@ fun ExpensePane(a: ComponentActivity) {
             enabled = validRange,
             modifier = Modifier.fillMaxWidth()
         ) { Text("তারিখ অনুযায়ী হিসাব রিফ্রেশ করুন") }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text("খরচের সারসংক্ষেপ", style = MaterialTheme.typography.titleSmall, maxLines = 1)
-            Text("মোট: ৳ %.2f".format(Locale.US, filteredTotal), maxLines = 1)
-            Text("এন্ট্রি: ${filteredExpenses.size}টি", maxLines = 1)
-        }
+        Text("খরচের সারসংক্ষেপ", style = MaterialTheme.typography.titleSmall)
+        Text("প্রতিষ্ঠানের সর্বমোট খরচ (শুরু থেকে): ৳ %.2f".format(Locale.US, allTimeTotal), style = MaterialTheme.typography.titleMedium)
+        Text("নির্বাচিত সময়ের খরচ: ৳ %.2f • এন্ট্রি: ${filteredExpenses.size}টি".format(Locale.US, filteredTotal), style = MaterialTheme.typography.bodyMedium)
 
         HorizontalDivider()
         Text("নতুন খরচ যোগ করুন", style = MaterialTheme.typography.titleMedium)
