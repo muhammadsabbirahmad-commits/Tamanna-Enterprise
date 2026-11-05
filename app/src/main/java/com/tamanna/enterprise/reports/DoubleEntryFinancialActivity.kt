@@ -136,7 +136,31 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     if (openingBalance == null) {
         warnings += "প্রারম্ভিক ব্যালান্স সংরক্ষণ করা হয়নি; পুরোনো মূলধনের বিপরীতে কোনো নগদ/স্টক/পাওনা অনুমান করে যোগ করা হয়নি।"
     } else if (openingBalance.date != fromDate) {
-        warnings += "প্রারম্ভিক ব্যালান্সের তারিখ ${openingBalance.date}; নির্বাচিত হিসাবের শুরুর তারিখ ${fromDate}। সঠিক উদ্বোধনী ট্রায়াল ব্যালান্সের জন্য একই তারিখ নির্বাচন করুন।"
+        warnings += "প্রারম্ভিক ব্যালান্সের তারিখ ${openingBalance.date}; নির্বাচিত হিসাবের শুরুর তারিখ ${fromDate}। উদ্বোধনী এন্ট্রি দেখতে রিপোর্টের শুরুর তারিখ একই করুন।"
+    } else {
+        // Post only the actual opening balances entered by the user. Each opening asset
+        // is an independent debit and each liability/equity is an independent credit.
+        // If the accounting equation does not balance, the trial balance stays unbalanced;
+        // no suspense/plug account is generated to conceal the difference.
+        fun openingDebit(account: String, label: String, amount: Double) {
+            if (amount > 0.004) rows += LedgerRow(fromDate, "প্রারম্ভিক $label", account, "", amount, 0.0)
+        }
+        fun openingCredit(account: String, label: String, amount: Double) {
+            if (amount > 0.004) rows += LedgerRow(fromDate, "প্রারম্ভিক $label", "", account, 0.0, amount)
+        }
+        openingDebit("নগদ", "নগদ", openingBalance.cash)
+        openingDebit("ব্যাংক", "ব্যাংক", openingBalance.bank)
+        openingDebit("স্টক/ইনভেন্টরি", "স্টক", openingBalance.stock)
+        openingDebit("ক্রেতার পাওনা", "ক্রেতার পাওনা", openingBalance.customerReceivable)
+        openingCredit("সরবরাহকারীর দেনা", "সরবরাহকারীর দেনা", openingBalance.supplierPayable)
+        openingCredit("অন্যান্য দেনা", "অন্যান্য দেনা", openingBalance.otherLiabilities)
+        val openingCapital = allCapitalContributions
+            .filter { dateKey(it.date) <= openingBalance.date }
+            .sumOf { it.amount }
+        openingCredit("পার্টনার মূলধন", "পার্টনার মূলধন", openingCapital.coerceAtLeast(0.0))
+        if (allCapitalContributions.any { dateKey(it.date) <= openingBalance.date && it.approximateDate }) {
+            warnings += "প্রারম্ভিক মূলধনের কিছু পুরোনো জমার তারিখ আনুমানিক; পার্টনারভিত্তিক মূলধন যাচাই করুন।"
+        }
     }
 
     capitalContributions.forEach { contribution ->
