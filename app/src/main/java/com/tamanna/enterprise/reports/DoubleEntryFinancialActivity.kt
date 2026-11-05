@@ -111,7 +111,7 @@ private data class DailyBalanceEntry(
 )
 
 private object DailyBalanceStorage {
-    private const val PREFS = "daily_manual_balances_v1"
+    private const val PREFS = "tamanna_daily_manual_balances"
     private const val KEY = "entries"
     fun get(context: android.content.Context): List<DailyBalanceEntry> = runCatching {
         val raw = BusinessStorage.prefs(context, PREFS).getString(KEY, "[]") ?: "[]"
@@ -587,7 +587,7 @@ private fun DoubleEntryFinancialScreen() {
     val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
 
-    // The debit detail shows only three management figures. Recoverable business
+    // The debit detail shows four management figures. Recoverable business
     // expenses are offset by cumulative trading profit (sales less discounts,
     // COGS and returns), not by gross sales revenue and not by net profit after
     // expenses (which would subtract the same expenses twice).
