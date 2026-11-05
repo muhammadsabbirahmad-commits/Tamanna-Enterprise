@@ -78,6 +78,7 @@ fun ExpensePane(a: ComponentActivity) {
     var appliedStart by remember { mutableStateOf(financeDate(29)) }
     var appliedEnd by remember { mutableStateOf(todayFinance()) }
     var selectedExpense by remember { mutableStateOf<Expense?>(null) }
+    var pendingDeleteExpense by remember { mutableStateOf<Expense?>(null) }
     val canManage = SecurityStorage.canManage(a)
     val validRange = validFinanceDate(startDate) && validFinanceDate(endDate) && startDate <= endDate
     val filteredExpenses = list.filter { it.date >= appliedStart && it.date <= appliedEnd }
@@ -160,12 +161,42 @@ fun ExpensePane(a: ComponentActivity) {
                         if (expense.note.isNotBlank()) Text(expense.note, style = MaterialTheme.typography.bodySmall)
                     }
                     if (canManage) {
-                        TextButton(onClick = { selectedExpense = expense }) { Text("এডিট") }
+                        Row {
+                            TextButton(onClick = { selectedExpense = expense }) { Text("এডিট") }
+                            TextButton(onClick = { pendingDeleteExpense = expense }) { Text("ডিলেট", color = MaterialTheme.colorScheme.error) }
+                        }
                     }
                 }
                 HorizontalDivider()
             }
         }
+    }
+
+    pendingDeleteExpense?.let { expense ->
+        var deleting by remember(expense.id) { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { if (!deleting) pendingDeleteExpense = null },
+            title = { Text("খরচ স্থায়ীভাবে ডিলেট করবেন?") },
+            text = { Text("‘${expense.category}’ — ৳ ${String.format(Locale.US, "%.2f", expense.amount)} রেকর্ডটি মুছে যাবে। সিঙ্ক হওয়া অন্য ডিভাইস থেকেও এটি আর ফিরে আসবে না।") },
+            confirmButton = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = {
+                        if (canManage && ExpenseStorage.deleteExpense(a, expense.id)) {
+                            ActivityLogStorage.add(a, "প্রতিষ্ঠানের খরচ স্থায়ীভাবে ডিলেট", expense.category + " — " + expense.date + " — ৳ " + String.format(Locale.US, "%.2f", expense.amount))
+                            list = ExpenseStorage.getExpenses(a)
+                            msg = "খরচ স্থায়ীভাবে ডিলেট হয়েছে।"
+                        } else {
+                            msg = "ডিলেট করা যায়নি। রেকর্ডটি আগে থেকেই মুছে গেছে অথবা সংরক্ষণে সমস্যা হয়েছে।"
+                        }
+                        pendingDeleteExpense = null
+                    }
+                ) { Text("স্থায়ীভাবে ডিলেট", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteExpense = null }, enabled = !deleting) { Text("বাতিল") }
+            }
+        )
     }
 
     selectedExpense?.let { expense ->
