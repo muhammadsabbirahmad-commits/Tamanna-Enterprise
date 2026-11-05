@@ -29,6 +29,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import org.json.JSONArray
+import org.json.JSONObject
 
 private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
 private fun monthStartIso(): String = todayIso().take(8) + "01"
@@ -98,6 +100,56 @@ private fun validLedgerDate(value: String): Boolean = runCatching {
 }.getOrDefault(false)
 
 private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,.2f", value)
+
+
+
+private data class DailyBalanceEntry(
+    val id: String, val date: String, val account: String,
+    val mode: String, val amount: Double, val note: String = ""
+)
+
+private object DailyBalanceStorage {
+    private const val PREFS = "daily_manual_balances_v1"
+    private const val KEY = "entries"
+    fun get(context: android.content.Context): List<DailyBalanceEntry> = runCatching {
+        val raw = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
+        val array = JSONArray(raw)
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                add(DailyBalanceEntry(item.optString("id"), item.optString("date"), item.optString("account"),
+                    item.optString("mode"), item.optDouble("amount"), item.optString("note")))
+            }
+        }.filter { it.id.isNotBlank() && validLedgerDate(it.date) && it.account in setOf("CASH","BANK") &&
+            it.mode in setOf("SET","ADD","SUB") && it.amount.isFinite() && it.amount >= 0.0 }
+    }.getOrDefault(emptyList())
+    fun save(context: android.content.Context, entry: DailyBalanceEntry): Boolean = runCatching {
+        val array = JSONArray()
+        (get(context).filterNot { it.id == entry.id } + entry).sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.id }).forEach {
+            array.put(JSONObject().put("id",it.id).put("date",it.date).put("account",it.account)
+                .put("mode",it.mode).put("amount",it.amount).put("note",it.note))
+        }
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putString(KEY,array.toString()).commit()
+    }.getOrDefault(false)
+    fun delete(context: android.content.Context, id: String): Boolean = runCatching {
+        val array = JSONArray()
+        get(context).filterNot { it.id == id }.forEach {
+            array.put(JSONObject().put("id",it.id).put("date",it.date).put("account",it.account)
+                .put("mode",it.mode).put("amount",it.amount).put("note",it.note))
+        }
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putString(KEY,array.toString()).commit()
+    }.getOrDefault(false)
+    fun balance(entries: List<DailyBalanceEntry>, account: String, toDate: String,
+        openingAmount: Double?, openingDate: String?): Double {
+        var total = if (openingDate != null && openingDate <= toDate) openingAmount ?: 0.0 else 0.0
+        entries.asSequence().filter { it.account == account && it.date <= toDate &&
+            (openingDate == null || it.date >= openingDate) }
+            .sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.id }).forEach { entry ->
+                total = when(entry.mode) { "SET" -> entry.amount; "ADD" -> total + entry.amount; "SUB" -> total - entry.amount; else -> total }
+            }
+        return total
+    }
+}
 
 private fun buildLedger(context: android.content.Context, fromDate: String, toDate: String): LedgerSummary {
     val inRange: (String) -> Boolean = { dateKey(it) >= fromDate && dateKey(it) <= toDate }
@@ -514,6 +566,10 @@ private fun DoubleEntryFinancialScreen() {
     var showToDatePicker by remember { mutableStateOf(false) }
     var accounts by remember(refresh) { mutableStateOf(CashAccountStorage.getAccounts(context)) }
     var openingBalances by remember(refresh) { mutableStateOf(OpeningBalanceStorage.get(context)) }
+    var dailyBalanceEntries by remember(refresh) { mutableStateOf(DailyBalanceStorage.get(context)) }
+    var showDailyBalanceDialog by remember { mutableStateOf(false) }
+    var editingDailyBalanceEntry by remember { mutableStateOf<DailyBalanceEntry?>(null) }
+    var dailyBalanceAccount by remember { mutableStateOf("CASH") }
     var showOpeningBalanceDialog by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<ManualCashAccount?>(null) }
@@ -542,16 +598,11 @@ private fun DoubleEntryFinancialScreen() {
     val cumulativeBusinessExpenses = cumulativeProfitReport.expenses + cumulativeProfitReport.damageLoss
     val unrecoveredBusinessExpenses = (cumulativeBusinessExpenses - cumulativeTradingProfit).coerceAtLeast(0.0)
 
-    // Cash is shown from verified opening cash plus all recorded cash movements
-    // up to the selected end date. It remains a movement-based figure if opening
-    // cash has not been verified; no artificial opening amount is created.
-    val verifiedOpeningCash = openingBalances?.takeIf { it.verified && it.date <= toDate }
-    val cashStartDate = verifiedOpeningCash?.date ?: "0001-01-01"
-    val cumulativeCashSummary = remember(refresh, toDate, verifiedOpeningCash) {
-        buildLedger(context, cashStartDate, toDate)
-    }
-    val cashInHand = (verifiedOpeningCash?.cash ?: 0.0) +
-        cumulativeCashSummary.cashIn - cumulativeCashSummary.cashOut
+    // Evening cash and bank figures are manually recorded by date, separately from estimated cash flow.
+    val cashInHand = DailyBalanceStorage.balance(dailyBalanceEntries, "CASH", toDate,
+        openingBalances?.takeIf { it.verified }?.cash, openingBalances?.takeIf { it.verified }?.date)
+    val bankBalance = DailyBalanceStorage.balance(dailyBalanceEntries, "BANK", toDate,
+        openingBalances?.takeIf { it.verified }?.bank, openingBalances?.takeIf { it.verified }?.date)
     val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.debitAmount > 0.0 }
     val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.creditAmount > 0.0 }
     // The credit card and its detail both represent partner capital investments.
@@ -561,6 +612,7 @@ private fun DoubleEntryFinancialScreen() {
     // Independent totals: a missing/zero side is not silently copied from the other side.
     val totalDebit = debitRows.sumOf { it.debitAmount }
     val totalCredit = creditRows.sumOf { it.creditAmount }
+    val debitSummaryTotal = summary.stockValue + unrecoveredBusinessExpenses + cashInHand + bankBalance
     val ledgerDifference = kotlin.math.abs(totalDebit - totalCredit)
 
     Scaffold(
@@ -607,7 +659,7 @@ private fun DoubleEntryFinancialScreen() {
             Text("নির্বাচিত সময়: $fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                LedgerTotalCard("মোট ডেবিট", totalDebit, "বিস্তারিত") { selectedSide = "ডেবিট" }
+                LedgerTotalCard("মোট ডেবিট", debitSummaryTotal, "বিস্তারিত") { selectedSide = "ডেবিট" }
                 LedgerTotalCard("মোট ক্রেডিট", partnerInvestmentTotal, "বিস্তারিত") { selectedSide = "ক্রেডিট" }
                 LedgerDividendCard(remainingDividend)
             }
@@ -805,6 +857,79 @@ private fun DoubleEntryFinancialScreen() {
         }
     }
 
+
+    if (showDailyBalanceDialog) {
+        val editing = editingDailyBalanceEntry
+        var date by remember(editing) { mutableStateOf(editing?.date ?: toDate) }
+        var amount by remember(editing) { mutableStateOf(editing?.amount?.toString() ?: "") }
+        var mode by remember(editing) { mutableStateOf(editing?.mode ?: "SET") }
+        var note by remember(editing) { mutableStateOf(editing?.note.orEmpty()) }
+        var error by remember { mutableStateOf("") }
+        val accountEntries = dailyBalanceEntries.filter { it.account == dailyBalanceAccount }
+            .sortedWith(compareByDescending<DailyBalanceEntry> { it.date }.thenByDescending { it.id })
+        AlertDialog(
+            onDismissRequest = { showDailyBalanceDialog = false; editingDailyBalanceEntry = null },
+            title = { Text(if (dailyBalanceAccount == "CASH") "হাতে নগদের হিসাব" else "ব্যাংক ব্যালান্সের হিসাব") },
+            text = {
+                Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("SET = ওই দিনের সন্ধ্যার প্রকৃত ব্যালান্স। যোগ/বিয়োগ = আগের ব্যালান্সের সঙ্গে সমন্বয়।", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(date, { date = it; error = "" }, label = { Text("তারিখ (YYYY-MM-DD)") }, singleLine = true)
+                    Text("এন্ট্রির ধরন", style = MaterialTheme.typography.labelLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = mode == "SET", onClick = { mode = "SET" }); Text("ব্যালান্স বসান") }
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = mode == "ADD", onClick = { mode = "ADD" }); Text("＋ যোগ") }
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = mode == "SUB", onClick = { mode = "SUB" }); Text("− বিয়োগ") }
+                    OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }; error = "" },
+                        label = { Text(if (mode == "SET") "সন্ধ্যার মোট ব্যালান্স (৳)" else "টাকার পরিমাণ (৳)") }, singleLine = true)
+                    OutlinedTextField(note, { note = it }, label = { Text("বিবরণ (ঐচ্ছিক)") }, singleLine = true)
+                    if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                    if (accountEntries.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text("আগের এন্ট্রি", style = MaterialTheme.typography.titleSmall)
+                        accountEntries.forEach { item ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.date + " • " + when(item.mode) { "SET" -> "ব্যালান্স"; "ADD" -> "যোগ"; else -> "বিয়োগ" },
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text(money(item.amount) + if (item.note.isBlank()) "" else " • " + item.note, style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = {
+                                    editingDailyBalanceEntry = item
+                                    date = item.date; amount = item.amount.toString(); mode = item.mode; note = item.note
+                                }) { Text("এডিট") }
+                                TextButton(onClick = {
+                                    if (DailyBalanceStorage.delete(context, item.id)) {
+                                        dailyBalanceEntries = DailyBalanceStorage.get(context); refresh++
+                                    }
+                                }) { Text("বাদ") }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val value = amount.trim().toDoubleOrNull()
+                    if (!validLedgerDate(date)) error = "সঠিক তারিখ লিখুন (YYYY-MM-DD)।"
+                    else if (value == null || !value.isFinite() || value < 0.0) error = "শূন্য বা তার বেশি সঠিক টাকার অঙ্ক লিখুন।"
+                    else {
+                        val entry = DailyBalanceEntry(editing?.id ?: java.util.UUID.randomUUID().toString(),
+                            date, dailyBalanceAccount, mode, value, note.trim())
+                        if (DailyBalanceStorage.save(context, entry)) {
+                            dailyBalanceEntries = DailyBalanceStorage.get(context)
+                            editingDailyBalanceEntry = null; showDailyBalanceDialog = false; refresh++
+                        } else error = "এন্ট্রি সংরক্ষণ করা যায়নি।"
+                    }
+                }) { Text(if (editing == null) "সংরক্ষণ" else "আপডেট") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    if (editingDailyBalanceEntry != null) editingDailyBalanceEntry = null else showDailyBalanceDialog = false
+                }) { Text(if (editingDailyBalanceEntry != null) "নতুন এন্ট্রি" else "বন্ধ") }
+            }
+        )
+    }
+
     if (showOpeningBalanceDialog) {
         val saved = openingBalances
         var date by remember(saved) { mutableStateOf(saved?.date ?: fromDate) }
@@ -919,7 +1044,15 @@ private fun DoubleEntryFinancialScreen() {
                     if (side == "ডেবিট") {
                         SummaryLine("১. মোট স্টক", summary.stockValue, "বর্তমান স্টকের মোট ক্রয়মূল্য")
                         SummaryLine("২. মোট ব্যয়", unrecoveredBusinessExpenses, "দৈনিক প্রকৃত লভ্যাংশ দিয়ে সমন্বয়ের পর অবশিষ্ট ব্যয়")
-                        SummaryLine("৩. হাতে নগদ", cashInHand, if (verifiedOpeningCash == null) "যাচাইকৃত প্রারম্ভিক নগদ নেই; রেকর্ডকৃত নগদ প্রবাহের ভিত্তিতে" else "যাচাইকৃত প্রারম্ভিক নগদ ও পরবর্তী রেকর্ডকৃত নগদ প্রবাহ")
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { SummaryLine("৩. হাতে নগদ", cashInHand, "তারিখভিত্তিক হাতে লেখা ব্যালান্স") }
+                            TextButton(onClick = { dailyBalanceAccount = "CASH"; editingDailyBalanceEntry = null; showDailyBalanceDialog = true }) { Text("＋ / −") }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { SummaryLine("৪. ব্যাংকে জমা", bankBalance, "তারিখভিত্তিক ব্যাংক ব্যালান্স") }
+                            TextButton(onClick = { dailyBalanceAccount = "BANK"; editingDailyBalanceEntry = null; showDailyBalanceDialog = true }) { Text("＋ / −") }
+                        }
+                        SummaryLine("ডেবিট সারসংক্ষেপের মোট", debitSummaryTotal)
                         Text("ব্যয় পুরোপুরি সমন্বয় হয়ে গেলে পরবর্তী দৈনিক লভ্যাংশ আর ব্যয় কমাবে না; সেটি অবশিষ্ট লভ্যাংশ হিসেবে থাকবে।", style = MaterialTheme.typography.bodySmall)
                     } else {
                         SummaryLine("পার্টনারদের মোট বিনিয়োগ", summary.totalCapital)
