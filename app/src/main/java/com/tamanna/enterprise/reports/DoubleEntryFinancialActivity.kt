@@ -435,7 +435,7 @@ private fun DoubleEntryFinancialScreen() {
                     SummaryLine("মোট ক্রেডিট", totalCredit)
                     SummaryLine("আপনার কাছে আছে (যোগ করা ক্যাশ/ব্যাংক)", totalManualCash)
                     SummaryLine("নির্বাচিত সময়ের নিট লাভ", summary.netProfit)
-                    SummaryLine(if (remainingDividend >= 0.0) "অতিরিক্ত অবশিষ্ট লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
+                    SummaryLine(if (remainingDividend >= 0.0) "অবণ্টিত লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
                     Text("অবণ্টিত লভ্যাংশ = নির্বাচিত সময়ের নিট মুনাফা − নগদ লভ্যাংশ উত্তোলন − ইতিমধ্যে মূলধনে স্থানান্তর। মূলধনে স্থানান্তর করলে ক্যাশ বাড়ে না।", style = MaterialTheme.typography.bodySmall)
                     if (alreadyCapitalized) {
                         Text("এই তারিখের হিসাবের লভ্যাংশ ইতিমধ্যে মূলধনে যোগ করা হয়েছে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
