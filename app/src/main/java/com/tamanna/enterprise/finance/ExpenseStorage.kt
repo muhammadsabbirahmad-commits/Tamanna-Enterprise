@@ -220,12 +220,18 @@ object ExpenseStorage {
     /** Editing amount/date replaces the allocation snapshot atomically with the expense. */
     fun updateExpense(c: Context, x: Expense): Boolean {
         if (!x.amount.isFinite() || x.amount <= 0.0 || !validDate(x.date)) return false
-        val allocated = buildAllocations(c, x.date, x.amount, allowEstimatedLegacyRate = false) ?: return false
         val items = array(c, E)
         var found = false
         for (i in 0 until items.length()) {
             val old = items.optJSONObject(i) ?: continue
             if (old.optLong("id") == x.id) {
+                val oldAllocations = parseAllocations(old.optJSONArray("allocations"))
+                val sameFinancialValue = old.optString("date") == x.date &&
+                    moneyCents(old.optDouble("amount", 0.0)) == moneyCents(x.amount)
+                val allocated = if (sameFinancialValue && oldAllocations.isNotEmpty() &&
+                    oldAllocations.sumOf { moneyCents(it.amount) } == moneyCents(x.amount)
+                ) oldAllocations to old.optBoolean("allocationEstimated", false)
+                else buildAllocations(c, x.date, x.amount, allowEstimatedLegacyRate = false) ?: return false
                 items.put(i, expenseJson(x.copy(
                     allocations = allocated.first,
                     allocationEstimated = allocated.second,
