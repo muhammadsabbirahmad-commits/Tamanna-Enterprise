@@ -47,9 +47,21 @@ private data class LedgerRow(
     val description: String,
     val debitAccount: String,
     val creditAccount: String,
-    val amount: Double,
+    val debitAmount: Double,
+    val creditAmount: Double,
     val note: String = ""
-)
+) {
+    // Compatibility constructor for existing source transactions. Each side is stored
+    // independently; the trial balance below never derives one side from the other.
+    constructor(
+        date: String,
+        description: String,
+        debitAccount: String,
+        creditAccount: String,
+        amount: Double,
+        note: String = ""
+    ) : this(date, description, debitAccount, creditAccount, amount, amount, note)
+}
 
 private data class LedgerSummary(
     val rows: List<LedgerRow>,
@@ -449,10 +461,11 @@ private fun DoubleEntryFinancialScreen() {
     val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
     val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
-    val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.amount > 0.0 }
-    val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.amount > 0.0 }
-    val totalDebit = debitRows.sumOf { it.amount }
-    val totalCredit = creditRows.sumOf { it.amount }
+    val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.debitAmount > 0.0 }
+    val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.creditAmount > 0.0 }
+    // Independent totals: a missing/zero side is not silently copied from the other side.
+    val totalDebit = debitRows.sumOf { it.debitAmount }
+    val totalCredit = creditRows.sumOf { it.creditAmount }
     val ledgerDifference = kotlin.math.abs(totalDebit - totalCredit)
 
     Scaffold(
@@ -638,7 +651,7 @@ private fun DoubleEntryFinancialScreen() {
                         HorizontalDivider()
                         Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
                             Text(row.description, style = MaterialTheme.typography.bodyMedium)
-                            Text(row.date + " • " + money(row.amount), style = MaterialTheme.typography.bodySmall)
+                            Text(row.date + " • " + money(if (side == "ডেবিট") row.debitAmount else row.creditAmount), style = MaterialTheme.typography.bodySmall)
                             Text(if (side == "ডেবিট") "ডেবিট: ${row.debitAccount}" else "ক্রেডিট: ${row.creditAccount}", style = MaterialTheme.typography.bodySmall)
                             if (row.note.isNotBlank()) Text(row.note, style = MaterialTheme.typography.bodySmall)
                         }
