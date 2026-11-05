@@ -196,6 +196,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
                     it.note.trim() == expectedLegacyNote
             }
         } else emptyList()
+        val duplicateLegacyPurchaseCount = if (!purchase.settlementRecorded) purchases.count {
+            !it.settlementRecorded &&
+                it.supplier.trim().equals(purchase.supplier.trim(), true) &&
+                dateKey(it.date) == dateKey(purchase.date) &&
+                it.productName == purchase.productName &&
+                it.quantity == purchase.quantity &&
+                it.memoNumber.trim() == purchase.memoNumber.trim()
+        } else 0
 
         val dueFromSource: Double? = when {
             purchase.settlementRecorded -> purchase.dueAmount
@@ -204,11 +212,11 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
                 warnings += "ক্রয় ইনভয়েস ${purchase.id}: একই ইনভয়েসে একাধিক বাকি রেকর্ড আছে; যাচাই প্রয়োজন।"
                 null
             }
-            legacyMatches.size == 1 -> {
+            legacyMatches.size == 1 && duplicateLegacyPurchaseCount == 1 -> {
                 consumedLegacyDueIds += legacyMatches.single().id
                 legacyMatches.single().amount
             }
-            legacyMatches.size > 1 -> {
+            legacyMatches.isNotEmpty() -> {
                 warnings += "পুরোনো ক্রয় ${purchase.memoNumber.ifBlank { purchase.id.toString() }}: একই মেমো/পণ্য/তারিখের একাধিক বাকি রেকর্ড মেলায় ইনভয়েসভিত্তিক ভাগ নির্ধারণ করা যায়নি।"
                 null
             }
