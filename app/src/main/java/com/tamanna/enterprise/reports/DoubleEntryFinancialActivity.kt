@@ -101,6 +101,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val returnLines = SaleReturnStorage.getLines(context).filter { line ->
         returns.any { it.returnId == line.returnId }
     }
+    val exchanges = SaleReturnStorage.getExchanges(context).filter { inRange(it.date) }
     val withdrawals = PartnerStorage.getWithdrawals(context).filter { inRange(it.date) }
     val allCapitalContributions = PartnerStorage.getCapitalContributions(context)
     val capitalContributions = allCapitalContributions.filter { inRange(it.date) }
@@ -278,6 +279,26 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     returns.forEach { ret ->
         val refunded = ret.refundAmount.coerceAtLeast(0.0)
         val dueReduction = ret.dueReduction.coerceAtLeast(0.0)
+        val originalLines = returnLines.filter { it.returnId == ret.returnId }
+        val expectedReturnAmount = originalLines.sumOf { line ->
+            val originals = allSales.filter {
+                it.transactionId == line.transactionId &&
+                    it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
+            }
+            val units = originals.sumOf { it.quantity.coerceAtLeast(0) }
+            val unitSalePrice = if (units > 0) originals.sumOf {
+                it.quantity.coerceAtLeast(0) * it.salePrice.coerceAtLeast(0.0)
+            } / units else 0.0
+            val tx = SalesTransactionStorage.getTransaction(context, line.transactionId)
+            val discountRate = if (tx != null && tx.subtotal > 0.0)
+                (tx.discount / tx.subtotal).coerceIn(0.0, 1.0) else 0.0
+            line.quantity.coerceAtLeast(0) * unitSalePrice * (1.0 - discountRate)
+        }
+        if (originalLines.isEmpty()) {
+            warnings += "রিটার্ন ${ret.returnId}: রিটার্নের পণ্য-লাইন পাওয়া যায়নি; বিক্রয় ফেরত ও স্টক/COGS মিলিয়ে দেখুন।"
+        } else if (kotlin.math.abs(ret.amount - expectedReturnAmount) > 0.02) {
+            warnings += "রিটার্ন ${ret.returnId}: সংরক্ষিত ফেরত মূল্য ${money(ret.amount)}; মূল বিক্রয়-লাইন ও ডিসকাউন্ট অনুযায়ী হওয়ার কথা ${money(expectedReturnAmount)}।"
+        }
         if (refunded > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • নগদ ফেরত", "বিক্রয় ফেরত", "নগদ", refunded, refunded, "রিটার্ন: ${ret.returnId}")
         if (dueReduction > 0.0) rows += LedgerRow(dateKey(ret.date), "বিক্রয় ফেরত • ক্রেতার বাকি কমেছে", "বিক্রয় ফেরত", "ক্রেতার পাওনা", dueReduction, dueReduction, "রিটার্ন: ${ret.returnId}")
         if (kotlin.math.abs(ret.amount - refunded - dueReduction) > 0.02) {
@@ -296,9 +317,19 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         }
     }
 
-    // Customer payments against previously recorded receivables.
-    customerEntries.filter { it.type == "PAYMENT" && it.amount > 0.0 }.forEach { entry ->
+    // Actual customer collections only. A return's dueReduction is already
+    // posted above as Sales Returns Dr / Customer Receivable Cr; its matching
+    // PAYMENT row exists only to update the customer sub-ledger and must not
+    // be posted again as a cash collection.
+    customerEntries.filter {
+        it.type == "PAYMENT" && it.amount > 0.0 &&
+            !it.note.trim().startsWith("বিক্রয় রিটার্ন:")
+    }.forEach { entry ->
         rows += LedgerRow(dateKey(entry.date), "ক্রেতার বাকি আদায় • ${entry.customer}", "নগদ", "ক্রেতার পাওনা", entry.amount, entry.amount, entry.note)
+    }
+
+    exchanges.forEach { exchange ->
+        warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: বিকল্প পণ্যের বিক্রয়মূল্য ও COGS এখনো স্বতন্ত্র জার্নাল এন্ট্রি নয়; এই সময়ের লাভ/ট্রায়াল ব্যালান্সে এক্সচেঞ্জ আলাদাভাবে যাচাই করুন।"
     }
 
     expenses.forEach { expense ->
@@ -318,8 +349,14 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     val purchaseTotal = purchases.sumOf { it.quantity * it.purchasePrice }
     val salesTotal = transactions.sumOf { it.total.coerceAtLeast(0.0) } - returns.sumOf { it.amount.coerceAtLeast(0.0) }
+    // Return due-reductions are mirrored in the customer sub-ledger as PAYMENT
+    // records, but they are not cash collections. Count only actual receipts.
+    val actualCustomerCollections = customerEntries.filter {
+        it.type == "PAYMENT" && it.amount > 0.0 &&
+            !it.note.trim().startsWith("বিক্রয় রিটার্ন:")
+    }
     val collectionTotal = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
-        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
+        actualCustomerCollections.sumOf { it.amount }
     val receivable = customerEntries.sumOf { if (it.type == "SALE") it.amount else -it.amount }.coerceAtLeast(0.0)
     val supplierPayable = supplierEntries.sumOf { it.amount }.coerceAtLeast(0.0)
     val expenseTotal = allExpenses.sumOf { it.amount.coerceAtLeast(0.0) }
@@ -356,7 +393,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীকে পরিশোধ", supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) },
         rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.debitAmount })
-    checkSource("ক্রেতার বাকি আদায়", customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) },
+    checkSource("ক্রেতার বাকি আদায়", actualCustomerCollections.sumOf { it.amount },
         rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.debitAmount })
     checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
         rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.debitAmount })
@@ -396,7 +433,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     // Cash movement is partial until manually entered opening cash/bank balances are reconciled.
     val purchaseDue = supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val cashIn = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
-        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) } +
+        actualCustomerCollections.sumOf { it.amount } +
         externalCapitalIn
     val cashOut = (purchaseTotal - purchaseDue).coerceAtLeast(0.0) +
         supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) } +

@@ -17,6 +17,7 @@ on:
       - fix/firebase-auth-session-persistence
       - audit/complete-double-entry-accounting
       - fix/supplier-invoice-due-allocation
+      - fix/sales-return-journal-reconciliation
   workflow_dispatch:
 
 permissions:
