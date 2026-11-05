@@ -15,6 +15,7 @@ on:
       - fix/partner-last-30-days-date-range
       - feature/double-entry-financial-dashboard
       - fix/firebase-auth-session-persistence
+      - audit/complete-double-entry-accounting
   workflow_dispatch:
 
 permissions:
