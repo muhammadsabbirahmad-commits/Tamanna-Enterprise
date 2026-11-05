@@ -103,8 +103,11 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val withdrawals = PartnerStorage.getWithdrawals(context).filter { inRange(it.date) }
     val allCapitalContributions = PartnerStorage.getCapitalContributions(context)
     val capitalContributions = allCapitalContributions.filter { inRange(it.date) }
-    // Prior capital movements are opening balances for the selected period, not omitted transactions.
-    val openingCapitalContributions = allCapitalContributions.filter { dateKey(it.date) < fromDate }
+    // Only movements before the selected period AND on/before its end date are opening balances.
+    // This prevents future-dated capital from leaking into a historical report.
+    val openingCapitalContributions = allCapitalContributions.filter {
+        dateKey(it.date) < fromDate && dateKey(it.date) <= toDate
+    }
 
     val rows = mutableListOf<LedgerRow>()
     val warnings = mutableListOf<String>()
@@ -136,43 +139,51 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         val capitalReturned = contribution.amount < -0.004
         val amount = kotlin.math.abs(contribution.amount)
         if (amount <= 0.004) return@forEach
+        val openingOffsetAccount = "প্রারম্ভিক ব্যালান্স সমন্বয় (সম্পদ যাচাই বাকি)"
         rows += LedgerRow(
             fromDate,
             "প্রারম্ভিক মূলধন • $partnerName",
             when {
                 retainedProfit -> "প্রারম্ভিক অবণ্টিত মুনাফা"
                 capitalReturned -> "পার্টনার মূলধন"
-                else -> "প্রারম্ভিক সম্পদ সমন্বয়"
+                else -> openingOffsetAccount
             },
-            if (capitalReturned) "প্রারম্ভিক সম্পদ সমন্বয়" else "পার্টনার মূলধন",
+            if (capitalReturned) openingOffsetAccount else "পার্টনার মূলধন",
             amount,
             "${contribution.date} তারিখের আগের মূলধন • ${contribution.note}"
         )
     }
 
-    // Some older installs may already have a partial contribution history. Reconcile only
-    // the unrecorded difference against the partner's saved current capital, and label it
-    // explicitly as an estimated opening adjustment instead of silently losing the balance.
+    // A legacy installation may contain a current partner capital balance but only a partial
+    // contribution history. Reconcile that unknown difference ONLY in a report spanning today.
+    // Never inject today's known balance into a closed historical period. The missing historical
+    // date cannot be reconstructed, so the entry is explicitly dated today and flagged.
+    val today = todayIso()
     val activePartners = PartnerStorage.getPartners(context)
-    activePartners.forEach { partner ->
-        val recordedNet = allCapitalContributions.filter { it.partnerId == partner.id }.sumOf { it.amount }
-        val unrecorded = partner.shareAmount - recordedNet
-        if (kotlin.math.abs(unrecorded) > 0.004) {
-            val amount = kotlin.math.abs(unrecorded)
-            val isIncrease = unrecorded > 0.0
-            rows += LedgerRow(
-                fromDate,
-                "প্রারম্ভিক মূলধন সমন্বয় • ${partner.name}",
-                if (isIncrease) "প্রারম্ভিক সম্পদ সমন্বয়" else "পার্টনার মূলধন",
-                if (isIncrease) "পার্টনার মূলধন" else "প্রারম্ভিক সম্পদ সমন্বয়",
-                amount,
-                "সংরক্ষিত মূলধন জমা/ফেরত রেকর্ডের সঙ্গে বর্তমান মূলধনের পার্থক্য; পুরোনো তথ্যের কারণে আনুমানিক সমন্বয়।"
-            )
-            warnings += "${partner.name}-এর বর্তমান মূলধন ও সংরক্ষিত জমা/ফেরত রেকর্ডে ${money(unrecorded)} পার্থক্য আছে; এটি প্রারম্ভিক সমন্বয় হিসেবে দেখানো হয়েছে, প্রকৃত জমার তারিখ নয়।"
+    if (fromDate <= today && toDate >= today) {
+        activePartners.forEach { partner ->
+            val recordedNet = allCapitalContributions
+                .filter { it.partnerId == partner.id && dateKey(it.date) <= toDate }
+                .sumOf { it.amount }
+            val unrecorded = partner.shareAmount - recordedNet
+            if (kotlin.math.abs(unrecorded) > 0.004) {
+                val amount = kotlin.math.abs(unrecorded)
+                val isIncrease = unrecorded > 0.0
+                val openingOffsetAccount = "প্রারম্ভিক ব্যালান্স সমন্বয় (সম্পদ যাচাই বাকি)"
+                rows += LedgerRow(
+                    today,
+                    "পুরোনো মূলধনের অনথিভুক্ত পার্থক্য • ${partner.name}",
+                    if (isIncrease) openingOffsetAccount else "পার্টনার মূলধন",
+                    if (isIncrease) "পার্টনার মূলধন" else openingOffsetAccount,
+                    amount,
+                    "বর্তমান সংরক্ষিত মূলধন ও জমা/ফেরত রেকর্ডের পার্থক্য; প্রকৃত জমার তারিখ জানা নেই, তাই আজকের তারিখে আনুমানিক সমন্বয়।"
+                )
+                warnings += "${partner.name}-এর বর্তমান মূলধন ও সংরক্ষিত জমা/ফেরত রেকর্ডে ${money(unrecorded)} পার্থক্য আছে; আজকের তারিখে আনুমানিক সমন্বয় দেখানো হয়েছে।"
+            }
         }
     }
     if (openingCapitalContributions.isNotEmpty()) {
-        warnings += "নির্বাচিত সময়ের আগের পার্টনার মূলধন প্রারম্ভিক ব্যালান্স হিসেবে দেখানো হয়েছে। ‘প্রারম্ভিক সম্পদ সমন্বয়’ নগদ/স্টক/পাওনার প্রকৃত ভাগ নয়; সম্পদের পৃথক উদ্বোধনী ব্যালান্সের সঙ্গে মিলিয়ে নিতে হবে।"
+        warnings += "নির্বাচিত সময়ের আগের মূলধন প্রারম্ভিক ব্যালান্স হিসেবে দেখানো হয়েছে। ‘প্রারম্ভিক ব্যালান্স সমন্বয়’ একটি অস্থায়ী suspense account—এটি নগদ, স্টক বা পাওনার প্রকৃত পরিমাণ নয়; সম্পদের উদ্বোধনী ব্যালান্স মিলিয়ে নিতে হবে।"
     }
 
     capitalContributions.forEach { contribution ->
@@ -548,7 +559,7 @@ private fun DoubleEntryFinancialScreen() {
             }
 
             Text("পার্টনারদের মূলধন", style = MaterialTheme.typography.titleLarge)
-            SummaryLine("পার্টনারদের মোট জমাকৃত মূলধন", summary.totalCapital, "বর্তমান মোট মূলধন; নির্বাচিত সময়ে জমা হওয়া মূলধন ডেবিট–ক্রেডিট তালিকায় আলাদাভাবে আছে")
+            SummaryLine("পার্টনারদের বর্তমান মোট মূলধন", summary.totalCapital, "এটি বর্তমান মূলধন ব্যালান্স; নির্বাচিত সময়ের আগের জমা প্রারম্ভিক ব্যালান্স এবং সময়ের ভেতরের জমা/ফেরত লেনদেন হিসেবে ক্রেডিট/ডেবিট তালিকায় আছে")
 
             if (summary.stockWarnings.isNotEmpty()) {
                 Text("স্টক যাচাইয়ের সতর্কতা", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
