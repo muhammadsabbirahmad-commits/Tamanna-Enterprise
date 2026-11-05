@@ -370,27 +370,27 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         }
     }
     checkSource("প্রতিষ্ঠানের খরচ", periodExpenseTotal,
-        rows.filter { it.description.startsWith("প্রতিষ্ঠানের খরচ •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("প্রতিষ্ঠানের খরচ •") }.sumOf { it.debitAmount })
     checkSource("ড্যামেজ ক্ষতি", periodDamageTotal,
-        rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("ড্যামেজ/নষ্ট •") }.sumOf { it.debitAmount })
     checkSource("পণ্য ক্রয়", purchaseTotal,
-        rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পণ্য ক্রয়") }.sumOf { it.debitAmount })
     checkSource("বিক্রয় ইনভয়েস", transactions.sumOf { it.total.coerceAtLeast(0.0) },
-        rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.amount })
+        rows.filter { it.creditAccount == "বিক্রয় আয়" }.sumOf { it.creditAmount })
     checkSource("বিক্রয় ফেরত", returns.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.amount })
+        rows.filter { it.debitAccount == "বিক্রয় ফেরত" }.sumOf { it.debitAmount })
     checkSource("বিক্রিত পণ্যের ক্রয়মূল্য", grossCogs,
-        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.debitAmount })
     checkSource("ফেরত পণ্যের ক্রয়মূল্য", returnedCost,
-        rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীর কাছে ক্রয়-বাকি", supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.debitAmount })
     checkSource("সরবরাহকারীকে পরিশোধ", supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) },
-        rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.debitAmount })
     checkSource("ক্রেতার বাকি আদায়", customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.debitAmount })
     checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.debitAmount })
     val externalCapitalIn = capitalContributions.filter {
         it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
     }.sumOf { it.amount }
@@ -399,19 +399,19 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }.sumOf { it.amount }
     val capitalReturned = capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount }
     checkSource("পার্টনারের নগদ মূলধন জমা", externalCapitalIn,
-        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.creditAmount })
     checkSource("অবণ্টিত মুনাফা মূলধনে স্থানান্তর", capitalizedProfit,
-        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.creditAmount })
     checkSource("পার্টনারের মূলধন ফেরত", capitalReturned,
-        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.amount })
+        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.debitAmount })
 
     // Verify each invoice's payment and receivable split independently of the balanced journal totals.
     transactions.forEach { tx ->
         val invoiceRows = rows.filter { it.note.contains("ইনভয়েস: ${tx.transactionId}") }
         checkSource("ইনভয়েস ${tx.transactionId} জমা", tx.paid.coerceAtLeast(0.0),
-            invoiceRows.filter { it.debitAccount == "নগদ" }.sumOf { it.amount })
+            invoiceRows.filter { it.debitAccount == "নগদ" }.sumOf { it.debitAmount })
         checkSource("ইনভয়েস ${tx.transactionId} বাকি", tx.due.coerceAtLeast(0.0),
-            invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.amount })
+            invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.debitAmount })
     }
 
     // Profit, partner distribution and the profit screen all use the same calculation engine.
