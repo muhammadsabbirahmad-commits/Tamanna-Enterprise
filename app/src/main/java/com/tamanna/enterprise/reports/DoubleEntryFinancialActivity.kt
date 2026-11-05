@@ -60,7 +60,9 @@ private data class LedgerSummary(
     val receivable: Double,
     val supplierPayable: Double,
     val expenseTotal: Double,
+    val periodExpenseTotal: Double,
     val damageTotal: Double,
+    val periodDamageTotal: Double,
     val withdrawalTotal: Double,
     val totalCapital: Double,
     val netProfit: Double,
@@ -83,14 +85,17 @@ private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,
 private fun buildLedger(context: android.content.Context, fromDate: String, toDate: String): LedgerSummary {
     val inRange: (String) -> Boolean = { dateKey(it) >= fromDate && dateKey(it) <= toDate }
     val purchases = PurchaseStorage.getPurchases(context).filter { inRange(it.date) }
-    val sales = SalesStorage.getSales(context).filter { inRange(it.date) }
+    val allSales = SalesStorage.getSales(context)
+    val sales = allSales.filter { inRange(it.date) }
     val transactions = SalesTransactionStorage.getTransactions(context).filter { inRange(it.date) }
-    val expenses = ExpenseStorage.getExpenses(context).filter { inRange(it.date) }
-    val damages = ExpenseStorage.getDamages(context).filter { inRange(it.date) }
+    val allExpenses = ExpenseStorage.getExpenses(context)
+    val expenses = allExpenses.filter { inRange(it.date) }
+    val allDamages = ExpenseStorage.getDamages(context)
+    val damages = allDamages.filter { inRange(it.date) }
     val supplierEntries = SupplierDueStorage.getEntries(context).filter { inRange(it.date) }
     val customerEntries = CustomerDueStorage.getEntries(context).filter { inRange(it.date) }
-    val periodTransactionIds = transactions.map { it.transactionId }.toSet()
-    val returns = SaleReturnStorage.getReturns(context).filter { inRange(it.date) && it.transactionId in periodTransactionIds }
+    // A return belongs to the period in which the return happened, even if the original sale was older.
+    val returns = SaleReturnStorage.getReturns(context).filter { inRange(it.date) }
     val returnLines = SaleReturnStorage.getLines(context).filter { line ->
         returns.any { it.returnId == line.returnId }
     }
@@ -167,14 +172,11 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     }
 
     // Cost of goods sold, separately from revenue.
+    // Record the full cost at sale time; returned goods reverse COGS on the actual return date below.
     sales.forEach { sale ->
-        val returnedQty = returnLines.filter {
-            it.transactionId == sale.transactionId && it.productCode.equals(sale.productCode, true)
-        }.sumOf { it.quantity }
-        val netQty = (sale.quantity - returnedQty).coerceAtLeast(0)
-        val cost = netQty * sale.purchasePrice
+        val cost = sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0)
         if (cost > 0.0) rows += LedgerRow(
-            dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × $netQty",
+            dateKey(sale.date), "বিক্রিত পণ্যের ক্রয়মূল্য • ${sale.productName} × ${sale.quantity}",
             "বিক্রিত পণ্যের খরচ", "স্টক/ইনভেন্টরি", cost
         )
     }
@@ -194,10 +196,13 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
             warnings += "রিটার্ন ${ret.returnId}: ফেরতের মোট টাকা ও নগদ ফেরত/বাকি সমন্বয়ের অঙ্ক মেলেনি।"
         }
         returnLines.filter { it.returnId == ret.returnId }.forEach { line ->
-            val originalCost = sales.firstOrNull {
+            val originalSale = allSales.firstOrNull {
                 it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true)
-            }?.purchasePrice ?: 0.0
-            val costValue = line.quantity * originalCost
+            }
+            val costValue = line.quantity.coerceAtLeast(0) * (originalSale?.purchasePrice ?: 0.0)
+            if (originalSale == null) {
+                warnings += "রিটার্ন ${ret.returnId}: ${line.productCode} পণ্যের মূল বিক্রয়-লাইন পাওয়া যায়নি; ফেরত পণ্যের ক্রয়মূল্য যাচাই প্রয়োজন।"
+            }
             if (costValue > 0.0) rows += LedgerRow(
                 dateKey(ret.date), "ফেরত পণ্য স্টকে • ${line.productName} × ${line.quantity}",
                 "স্টক/ইনভেন্টরি", "বিক্রিত পণ্যের খরচ", costValue
@@ -246,18 +251,21 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val receivable = customerEntries.sumOf { if (it.type == "SALE") it.amount else -it.amount }.coerceAtLeast(0.0)
     val supplierPayable = supplierEntries.sumOf { it.amount }.coerceAtLeast(0.0)
-    val expenseTotal = expenses.sumOf { it.amount.coerceAtLeast(0.0) }
-    val damageTotal = damages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
+    val expenseTotal = allExpenses.sumOf { it.amount.coerceAtLeast(0.0) }
+    val periodExpenseTotal = expenses.sumOf { it.amount.coerceAtLeast(0.0) }
+    val damageTotal = allDamages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
+    val periodDamageTotal = damages.sumOf { it.totalLoss.coerceAtLeast(0.0) }
     val withdrawalTotal = withdrawals.sumOf { it.amount.coerceAtLeast(0.0) }
     val totalCapital = PartnerStorage.getPartners(context).sumOf { it.shareAmount.coerceAtLeast(0.0) }
-    val cogs = sales.sumOf { sale ->
-        val returned = returnLines.filter { it.transactionId == sale.transactionId && it.productCode.equals(sale.productCode, true) }.sumOf { it.quantity }
-        (sale.quantity - returned).coerceAtLeast(0) * sale.purchasePrice
-    }
+    val grossCogs = sales.sumOf { sale -> sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0) }
     val returnedCost = returnLines.sumOf { line ->
-        line.quantity * (sales.firstOrNull { it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true) }?.purchasePrice ?: 0.0)
+        val originalSale = allSales.firstOrNull {
+            it.transactionId == line.transactionId && it.productCode.equals(line.productCode, true)
+        }
+        line.quantity.coerceAtLeast(0) * (originalSale?.purchasePrice ?: 0.0)
     }
-    val netProfit = salesTotal - cogs - expenseTotal - damageTotal
+    val netCogs = grossCogs - returnedCost
+    val netProfit = salesTotal - netCogs - periodExpenseTotal - periodDamageTotal
 
     // Current stock is read from the live product inventory, not reconstructed from only the selected period.
     // Historical stock snapshots are not stored by the app, so this value is explicitly labelled as current.
@@ -272,13 +280,13 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val cashOut = (purchaseTotal - purchaseDue).coerceAtLeast(0.0) +
         supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount } +
-        expenseTotal + withdrawalTotal
+        periodExpenseTotal + withdrawalTotal
 
     return LedgerSummary(
         rows.sortedWith(compareBy<LedgerRow> { it.date }.thenBy { it.description }),
         purchaseTotal, stockValue, stockUnits, salesTotal, collectionTotal, receivable,
-        supplierPayable, expenseTotal, damageTotal, withdrawalTotal, totalCapital, netProfit,
-        cashIn, cashOut, stockWarnings, warnings
+        supplierPayable, expenseTotal, periodExpenseTotal, damageTotal, periodDamageTotal,
+        withdrawalTotal, totalCapital, netProfit, cashIn, cashOut, stockWarnings, warnings
     )
 }
 
@@ -300,10 +308,11 @@ private fun DoubleEntryFinancialScreen() {
     val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
     val remainingDividend = summary.netProfit - summary.withdrawalTotal
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
-    val totalDebit = summary.rows.sumOf { it.amount }
-    val totalCredit = summary.rows.sumOf { it.amount }
-    val debitRows = summary.rows
-    val creditRows = summary.rows
+    val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.amount > 0.0 }
+    val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.amount > 0.0 }
+    val totalDebit = debitRows.sumOf { it.amount }
+    val totalCredit = creditRows.sumOf { it.amount }
+    val ledgerDifference = kotlin.math.abs(totalDebit - totalCredit)
 
     Scaffold(
         topBar = {
@@ -337,7 +346,7 @@ private fun DoubleEntryFinancialScreen() {
                     Text("ডেবিট–ক্রেডিট যাচাই", style = MaterialTheme.typography.titleMedium)
                     Text(if (kotlin.math.abs(totalDebit - totalCredit) < 0.01) "জার্নাল এন্ট্রিগুলো সমান: ${money(totalDebit)}"
                     else "অমিল: ${money(kotlin.math.abs(totalDebit - totalCredit))}")
-                    Text("প্রতিটি সংরক্ষিত এন্ট্রিতে সমপরিমাণ ডেবিট ও ক্রেডিট দেখানো হয়।", style = MaterialTheme.typography.bodySmall)
+                    Text("ডেবিট ও ক্রেডিটের পৃথক মোট যোগ করে পার্থক্য যাচাই করা হচ্ছে। প্রতিটি জার্নাল এন্ট্রিতে উভয় পাশ সমান হওয়া আবশ্যক।", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -368,8 +377,10 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("বিক্রয় থেকে মোট আদায়", summary.collectionTotal)
             SummaryLine("ক্রেতার কাছে পাওনা", summary.receivable)
             SummaryLine("সরবরাহকারীর কাছে দেনা", summary.supplierPayable)
-            SummaryLine("মোট প্রতিষ্ঠানের খরচ", summary.expenseTotal)
-            SummaryLine("ড্যামেজ/নষ্টের ক্ষতি", summary.damageTotal)
+            SummaryLine("মোট প্রতিষ্ঠানের খরচ (শুরু থেকে)", summary.expenseTotal)
+            SummaryLine("নির্বাচিত সময়ের প্রতিষ্ঠানের খরচ", summary.periodExpenseTotal)
+            SummaryLine("মোট ড্যামেজ/নষ্টের ক্ষতি (শুরু থেকে)", summary.damageTotal)
+            SummaryLine("নির্বাচিত সময়ের ড্যামেজ ক্ষতি", summary.periodDamageTotal)
             SummaryLine("পার্টনারের উত্তোলন", summary.withdrawalTotal)
 
             Text("নগদ প্রবাহ", style = MaterialTheme.typography.titleLarge)
