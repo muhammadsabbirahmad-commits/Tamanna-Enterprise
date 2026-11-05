@@ -49,6 +49,7 @@ object BusinessProfitCalculator {
         val damages = ExpenseStorage.getDamages(context)
         val returns = SaleReturnStorage.getReturns(context)
         val returnLines = SaleReturnStorage.getLines(context)
+        val exchanges = SaleReturnStorage.getExchanges(context)
         val warnings = mutableListOf<String>()
         val datedSales = sales.filter { sale ->
             val key = day(sale.date)
@@ -119,6 +120,13 @@ object BusinessProfitCalculator {
                 } else 0.0
                 item.returnCost += line.quantity.coerceAtLeast(0) * weightedUnitCost
             }
+        }
+
+        exchanges.filter { exchange ->
+            val key = day(exchange.date)
+            key.isNotBlank() && (fromDate == null || key >= fromDate) && (toDate == null || key <= toDate)
+        }.forEach { exchange ->
+            warnings += "এক্সচেঞ্জ ${exchange.exchangeId}: বিকল্প পণ্যের বিক্রয়মূল্য ও ক্রয়মূল্য আলাদা সংরক্ষিত নেই; এই এক্সচেঞ্জের প্রকৃত লাভ নিশ্চিতভাবে গণনা করা যায়নি।"
         }
 
         expenses.forEach { expense ->
