@@ -53,6 +53,15 @@ object CloudSyncManager {
     private var isAutoSyncRunning = false
     private var realtimeListener: com.google.firebase.firestore.ListenerRegistration? = null
     private var realtimeListenerStarting = false
+    @Volatile private var dataChangedListener: (() -> Unit)? = null
+
+    fun setDataChangedListener(listener: (() -> Unit)?) {
+        dataChangedListener = listener
+    }
+
+    private fun notifyLocalDataChanged() {
+        Handler(Looper.getMainLooper()).post { dataChangedListener?.invoke() }
+    }
 
     fun isAutoSyncEnabled(): Boolean = isAutoSyncRunning
 
@@ -366,6 +375,7 @@ object CloudSyncManager {
                         .addOnSuccessListener {
                             val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
                             syncPrefs.edit().putString(lastHashKey(context), finalHash).apply()
+                            notifyLocalDataChanged()
                             onResult(true)
                         }
                         .addOnFailureListener { e ->
@@ -609,6 +619,7 @@ object CloudSyncManager {
 
                             val syncPrefs = context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE)
                             syncPrefs.edit().putString(lastHashKey(context), cloudHash).apply()
+                            notifyLocalDataChanged()
                             onResult(true)
                         } catch (e: Exception) {
                             Log.e(TAG, "Exception during pullAllFromCloud processing", e)
