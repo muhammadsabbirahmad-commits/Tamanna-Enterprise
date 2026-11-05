@@ -1,5 +1,7 @@
 package com.tamanna.enterprise.reports
 
+import com.tamanna.enterprise.profit.DailyBusinessProfit
+import com.tamanna.enterprise.profit.calculateExpenseRecovery
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -60,4 +62,37 @@ class DoubleEntryAccountingTest {
             listOf(JournalLine("Cash", debit = -1.0), JournalLine("Sales", credit = 0.0)), "Test")
         assertFalse(DoubleEntryAccounting.auditEntry(entry).balanced)
     }
+    @Test fun operatingExpenseRecoveryCarriesAcrossDaysAndKeepsDamageSeparate() {
+        val days = listOf(
+            DailyBusinessProfit("2026-11-01", 0.0, 0.0, 0.0, 0.0, 0.0, 100.0, 0.0),
+            DailyBusinessProfit("2026-11-02", 60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0),
+            DailyBusinessProfit("2026-11-03", 70.0, 0.0, 0.0, 0.0, 0.0, 20.0, 5.0)
+        )
+        val result = calculateExpenseRecovery(days)
+        assertEquals(-50.0, result.distributableByDay["2026-11-02"]!!, 0.001)
+        assertEquals(0.0, result.distributableByDay["2026-11-03"]!!, 0.001)
+        assertEquals(0.0, result.unrecoveredOperatingExpenses, 0.001)
+    }
+
+    @Test fun dateRangeSelectionDoesNotResetEarlierUnpaidExpenses() {
+        val fullHistory = listOf(
+            DailyBusinessProfit("2026-10-01", 0.0, 0.0, 0.0, 0.0, 0.0, 90.0, 0.0),
+            DailyBusinessProfit("2026-11-01", 100.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        )
+        val fullResult = calculateExpenseRecovery(fullHistory)
+        val selectedPeriodResult = calculateExpenseRecovery(fullHistory)
+            .distributableByDay.filterKeys { it >= "2026-11-01" }
+        assertEquals(10.0, selectedPeriodResult["2026-11-01"]!!, 0.001)
+        assertEquals(0.0, fullResult.unrecoveredOperatingExpenses, 0.001)
+    }
+
+    @Test fun negativeTradingDayDoesNotRecoverOperatingExpenses() {
+        val result = calculateExpenseRecovery(listOf(
+            DailyBusinessProfit("2026-11-01", 0.0, 0.0, 0.0, 0.0, 0.0, 40.0, 0.0),
+            DailyBusinessProfit("2026-11-02", 10.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0)
+        ))
+        assertEquals(-10.0, result.distributableByDay["2026-11-02"]!!, 0.001)
+        assertEquals(40.0, result.unrecoveredOperatingExpenses, 0.001)
+    }
+
 }
