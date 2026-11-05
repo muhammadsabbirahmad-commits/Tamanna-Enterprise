@@ -145,7 +145,8 @@ fun PartnerScreen() {
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
     val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
-    val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
+    // Partner profit/loss uses rolling expense recovery, not expenses deducted immediately.
+    val allDailyNet = remember(profitReport) { profitReport.partnerDistributionByDay }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
@@ -208,6 +209,27 @@ fun PartnerScreen() {
                     "নোট: ৳ %.2f পুরোনো খরচের বরাদ্দ বর্তমান শতাংশ থেকে আনুমানিকভাবে তৈরি হয়েছে; মূল তারিখের শতাংশের রেকর্ড না থাকায় ১০০%% ঐতিহাসিক নিশ্চয়তা নেই।".format(Locale.US, estimatedExpenseTotal),
                     color = MaterialTheme.colorScheme.tertiary
                 )
+            }
+
+            if (profitReport.warnings.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("লাভ-লোকসানের হিসাব যাচাই প্রয়োজন", style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer)
+                        profitReport.warnings.take(8).forEach { warning ->
+                            Text("• $warning", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                        if (profitReport.warnings.size > 8) {
+                            Text("আরও ${profitReport.warnings.size - 8}টি সতর্কবার্তা আছে।",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                    }
+                }
             }
 
             Text("হিসাবের সময়সীমা", style = MaterialTheme.typography.titleLarge)
