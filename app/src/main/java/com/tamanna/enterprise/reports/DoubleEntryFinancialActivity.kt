@@ -137,6 +137,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         warnings += "প্রারম্ভিক ব্যালান্স সংরক্ষণ করা হয়নি; পুরোনো মূলধনের বিপরীতে কোনো নগদ/স্টক/পাওনা অনুমান করে যোগ করা হয়নি।"
     } else if (openingBalance.date != fromDate) {
         warnings += "প্রারম্ভিক ব্যালান্সের তারিখ ${openingBalance.date}; নির্বাচিত হিসাবের শুরুর তারিখ ${fromDate}। উদ্বোধনী এন্ট্রি দেখতে রিপোর্টের শুরুর তারিখ একই করুন।"
+    } else if (!openingBalance.verified) {
+        warnings += "প্রারম্ভিক ব্যালান্স সংরক্ষিত আছে, কিন্তু যাচাইকৃত হিসেবে নিশ্চিত করা হয়নি; তাই ট্রায়াল ব্যালান্সে পোস্ট করা হয়নি।"
     } else {
         // Post only the actual opening balances entered by the user. Each opening asset
         // is an independent debit and each liability/equity is an independent credit.
@@ -157,7 +159,8 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         val openingCapital = allCapitalContributions
             .filter { dateKey(it.date) <= openingBalance.date }
             .sumOf { it.amount }
-        openingCredit("পার্টনার মূলধন", "পার্টনার মূলধন", openingCapital.coerceAtLeast(0.0))
+        if (openingCapital >= 0.0) openingCredit("পার্টনার মূলধন", "পার্টনার মূলধন", openingCapital)
+        else openingDebit("পার্টনার মূলধন", "পার্টনার মূলধনের ঘাটতি", -openingCapital)
         if (allCapitalContributions.any { dateKey(it.date) <= openingBalance.date && it.approximateDate }) {
             warnings += "প্রারম্ভিক মূলধনের কিছু পুরোনো জমার তারিখ আনুমানিক; পার্টনারভিত্তিক মূলধন যাচাই করুন।"
         }
