@@ -86,7 +86,7 @@ object SupplierDueStorage {
         remaining.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id); put("date", it.date); put("supplier", it.supplier)
-                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId)
+                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId); put("purchaseId", it.purchaseId)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
@@ -108,7 +108,7 @@ object SupplierDueStorage {
         remaining.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id); put("date", it.date); put("supplier", it.supplier)
-                put("type", it.type); put("amount", it.amount); put("note", it.note)
+                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
@@ -128,7 +128,7 @@ object SupplierDueStorage {
         entries.forEach {
             array.put(JSONObject().apply {
                 put("id", it.id); put("date", it.date); put("supplier", it.supplier)
-                put("type", it.type); put("amount", it.amount); put("note", it.note)
+                put("type", it.type); put("amount", it.amount); put("note", it.note); put("purchaseId", it.purchaseId)
             })
         }
         BusinessStorage.prefs(context, PREFS).edit().putString(KEY, array.toString()).apply()
