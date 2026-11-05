@@ -125,13 +125,21 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
 
     capitalContributions.forEach { contribution ->
         val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name ?: "পুরোনো/মুছে ফেলা পার্টনার"
-        val isRetainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+        val retainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+        val capitalReturned = contribution.amount < -0.004
+        val amount = kotlin.math.abs(contribution.amount)
+        if (amount <= 0.004) return@forEach
+        val description = when {
+            retainedProfit -> "অবণ্টিত মুনাফা মূলধনে স্থানান্তর • $partnerName"
+            capitalReturned -> "পার্টনার মূলধন ফেরত • $partnerName"
+            else -> "পার্টনার মূলধন জমা • $partnerName"
+        }
         rows += LedgerRow(
             contribution.date,
-            if (isRetainedProfit) "অবণ্টিত লভ্যাংশ মূলধনে স্থানান্তর • $partnerName" else "পার্টনার মূলধন জমা • $partnerName",
-            if (isRetainedProfit) "অবণ্টিত লভ্যাংশ" else "নগদ/ব্যাংক",
-            "পার্টনার মূলধন",
-            contribution.amount,
+            description,
+            if (retainedProfit) "অবণ্টিত মুনাফা" else if (capitalReturned) "পার্টনার মূলধন" else "নগদ/ব্যাংক",
+            if (capitalReturned) "নগদ/ব্যাংক" else "পার্টনার মূলধন",
+            amount,
             contribution.note + if (contribution.approximateDate) " • তারিখ আনুমানিক" else ""
         )
         if (contribution.approximateDate) warnings += "$partnerName-এর পুরোনো মূলধনের প্রকৃত জমার তারিখ সংরক্ষিত ছিল না; পার্টনার তৈরির তারিখকে আনুমানিক ধরা হয়েছে।"
@@ -308,11 +316,19 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.amount })
     checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
         rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.amount })
-    checkSource("পার্টনারের মূলধন জমা ও লভ্যাংশ মূলধনীকরণ", capitalContributions.sumOf { it.amount.coerceAtLeast(0.0) },
-        rows.filter {
-            it.description.startsWith("পার্টনার মূলধন জমা •") ||
-                it.description.startsWith("অবণ্টিত লভ্যাংশ মূলধনে স্থানান্তর •")
-        }.sumOf { it.amount })
+    val externalCapitalIn = capitalContributions.filter {
+        it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+    }.sumOf { it.amount }
+    val capitalizedProfit = capitalContributions.filter {
+        it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
+    }.sumOf { it.amount }
+    val capitalReturned = capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount }
+    checkSource("পার্টনারের নগদ মূলধন জমা", externalCapitalIn,
+        rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.amount })
+    checkSource("অবণ্টিত মুনাফা মূলধনে স্থানান্তর", capitalizedProfit,
+        rows.filter { it.description.startsWith("অবণ্টিত মুনাফা মূলধনে স্থানান্তর •") }.sumOf { it.amount })
+    checkSource("পার্টনারের মূলধন ফেরত", capitalReturned,
+        rows.filter { it.description.startsWith("পার্টনার মূলধন ফেরত •") }.sumOf { it.amount })
 
     // Verify each invoice's payment and receivable split independently of the balanced journal totals.
     transactions.forEach { tx ->
@@ -336,10 +352,12 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     // Cash movement is partial until manually entered opening cash/bank balances are reconciled.
     val purchaseDue = supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) }
     val cashIn = transactions.sumOf { it.paid.coerceAtLeast(0.0) } +
-        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) }
+        customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) } +
+        externalCapitalIn
     val cashOut = (purchaseTotal - purchaseDue).coerceAtLeast(0.0) +
-        supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount } +
-        periodExpenseTotal + withdrawalTotal
+        supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtLeast(0.0) } +
+        periodExpenseTotal + withdrawalTotal +
+        returns.sumOf { it.refundAmount.coerceAtLeast(0.0) } + capitalReturned
 
     return LedgerSummary(
         rows.sortedWith(compareBy<LedgerRow> { it.date }.thenBy { it.description }),
@@ -365,7 +383,8 @@ private fun DoubleEntryFinancialScreen() {
     val totalManualCash = accounts.sumOf { it.balance.coerceAtLeast(0.0) }
     val validRange = validLedgerDate(fromDate) && validLedgerDate(toDate) && fromDate <= toDate
     val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
-    val remainingDividend = summary.netProfit - summary.withdrawalTotal
+    val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
+    val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
     val debitRows = summary.rows.filter { it.debitAccount.isNotBlank() && it.amount > 0.0 }
     val creditRows = summary.rows.filter { it.creditAccount.isNotBlank() && it.amount > 0.0 }
@@ -417,7 +436,7 @@ private fun DoubleEntryFinancialScreen() {
                     SummaryLine("আপনার কাছে আছে (যোগ করা ক্যাশ/ব্যাংক)", totalManualCash)
                     SummaryLine("নির্বাচিত সময়ের নিট লাভ", summary.netProfit)
                     SummaryLine(if (remainingDividend >= 0.0) "অতিরিক্ত অবশিষ্ট লভ্যাংশ" else "লভ্যাংশের ঘাটতি", kotlin.math.abs(remainingDividend))
-                    Text("অবশিষ্ট লভ্যাংশ = নির্বাচিত সময়ের নিট লাভ − একই সময়ের পার্টনার উত্তোলন। এটি চূড়ান্ত বণ্টনের আগে ব্যবসায় রেখে দেওয়া লাভের হিসাব।", style = MaterialTheme.typography.bodySmall)
+                    Text("অবণ্টিত লভ্যাংশ = নির্বাচিত সময়ের নিট মুনাফা − নগদ লভ্যাংশ উত্তোলন − ইতিমধ্যে মূলধনে স্থানান্তর। মূলধনে স্থানান্তর করলে ক্যাশ বাড়ে না।", style = MaterialTheme.typography.bodySmall)
                     if (alreadyCapitalized) {
                         Text("এই তারিখের হিসাবের লভ্যাংশ ইতিমধ্যে মূলধনে যোগ করা হয়েছে।", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                     } else {
