@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -71,7 +71,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
             ReturnRow(combinedSale, totalReturned, (totalSold - totalReturned).coerceAtLeast(0))
         }
     }
-    val quantities = remember(rows) { mutableStateListOf<Int>().also { list -> rows.forEach { list.add(0) } } }
+    val quantities = remember(rows) { mutableStateListOf<String>().also { list -> rows.forEach { list.add("0") } } }
     var refundMethod by remember { mutableStateOf("Cash") }
     var replacementCode by remember { mutableStateOf("") }
     var replacementQuantity by remember { mutableStateOf("1") }
@@ -85,7 +85,9 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
     val replacementQty = replacementQuantity.toIntOrNull()?.coerceAtLeast(0) ?: 0
     val replacementUnitPrice = replacementPrice.toDoubleOrNull() ?: replacementProduct?.salePrice ?: 0.0
 
-    val grossReturn = rows.indices.sumOf { quantities[it] * rows[it].sale.salePrice }
+    val grossReturn = rows.indices.sumOf { i ->
+        (quantities[i].toIntOrNull() ?: 0).coerceIn(0, rows[i].remaining) * rows[i].sale.salePrice
+    }
     val discountRate = if ((tx?.subtotal ?: 0.0) > 0.0) (tx!!.discount / tx.subtotal).coerceIn(0.0, 1.0) else 0.0
     val returnAmount = grossReturn * (1.0 - discountRate)
     val previousDueReduction = SaleReturnStorage.getDueReduction(context, transactionId)
@@ -108,18 +110,21 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                 Text("মূল বাকি: ৳ " + money(tx.due) + " • রিটার্নের পর সমন্বয়যোগ্য বাকি: ৳ " + money(remainingOriginalDue))
 
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(rows, key = { it.sale.productCode }) { row ->
-                        val index = rows.indexOf(row)
+                    itemsIndexed(rows, key = { _, row -> row.sale.productCode.trim().lowercase(Locale.ROOT) }) { index, row ->
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(10.dp)) {
                                 Text(row.sale.productName, style = MaterialTheme.typography.titleMedium)
                                 Text("কোড: ${row.sale.productCode}")
                                 Text("বিক্রি: ${row.sale.quantity} • আগে রিটার্ন: ${row.returned} • ফেরতযোগ্য: ${row.remaining}")
                                 OutlinedTextField(
-                                    value = quantities[index].toString(),
-                                    onValueChange = { value -> quantities[index] = (value.toIntOrNull() ?: 0).coerceIn(0, row.remaining) },
-                                    label = { Text("ফেরত পরিমাণ") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                                    value = quantities[index],
+                                    onValueChange = { value -> quantities[index] = value.filter(Char::isDigit) },
+                                    label = { Text("ফেরত পরিমাণ (সর্বোচ্চ ${row.remaining}টি)") }, singleLine = true, modifier = Modifier.fillMaxWidth()
                                 )
+                                val enteredQty = quantities[index].toIntOrNull() ?: 0
+                                if (enteredQty > row.remaining) {
+                                    Text("সর্বোচ্চ ${row.remaining}টি ফেরত দেওয়া যাবে।", color = MaterialTheme.colorScheme.error)
+                                }
                                 Text("ইউনিট মূল্য: ৳ " + money(row.sale.salePrice))
                             }
                         }
@@ -176,8 +181,13 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                 message = "রিটার্ন সংরক্ষণের অনুমতি নেই."
                                 return@Button
                             }
-                            if (quantities.sum() <= 0) {
-                                message = "কমপক্ষে একটি পণ্যের ফেরত পরিমাণ দিন."
+                            val requestedQuantities = quantities.map { it.toIntOrNull() ?: 0 }
+                            if (requestedQuantities.any { it < 0 } || rows.indices.any { requestedQuantities[it] > rows[it].remaining }) {
+                                message = "কোনো পণ্যের ফেরত পরিমাণ তার ফেরতযোগ্য সীমার বেশি হয়েছে।"
+                                return@Button
+                            }
+                            if (requestedQuantities.sum() <= 0) {
+                                message = "কমপক্ষে একটি পণ্যের ফেরত পরিমাণ ১ বা তার বেশি দিন।"
                                 return@Button
                             }
                             if (replacementCode.isNotBlank() && (
@@ -196,7 +206,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                             val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                             val returnId = "RT-" + SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.getDefault()).format(Date())
                             val lines = rows.indices.mapNotNull { i ->
-                                val q = quantities[i]
+                                val q = requestedQuantities[i]
                                 if (q <= 0) null else SaleReturnLine(returnId, transactionId, rows[i].sale.productCode, rows[i].sale.productName, q, rows[i].sale.salePrice)
                             }
                             // Validate against the latest saved sales and return history before touching stock.
