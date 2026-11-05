@@ -160,7 +160,10 @@ fun PartnerScreen() {
                     kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
                 val expense30 = dailyExpenses.entries.filter { it.key in last30FromDate..last30ToDate }.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
-                PartnerCard(partner, canWrite, profit30, loss30, expense30, onAddCapital = { addingCapitalFor = partner }) {
+                val lifetimeExpenses = dailyExpenses.entries.sumOf { (day, amount) ->
+                    amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
+                }
+                PartnerCard(partner, canWrite, profit30, loss30, expense30, lifetimeExpenses, onAddCapital = { addingCapitalFor = partner }) {
                     if (canWrite) editingPartner = partner
                 }
             }
@@ -347,6 +350,7 @@ fun PartnerCard(
     last30Profit: Double,
     last30Loss: Double,
     last30Expenses: Double,
+    lifetimeExpenses: Double,
     onAddCapital: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -370,6 +374,7 @@ fun PartnerCard(
                 }
             }
             Text("৩০ দিনে প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, last30Expenses))
+            Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpenses))
             HorizontalDivider()
             Text("বিনিয়োগ / মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
             Text("লাভের হার: %.2f%%".format(Locale.US, partner.profitPercentage), color = MaterialTheme.colorScheme.primary)
