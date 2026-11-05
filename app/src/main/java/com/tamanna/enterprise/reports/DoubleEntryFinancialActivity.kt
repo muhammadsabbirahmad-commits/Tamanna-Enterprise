@@ -300,6 +300,28 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         rows.filter { it.description.startsWith("বিক্রিত পণ্যের ক্রয়মূল্য •") }.sumOf { it.amount })
     checkSource("ফেরত পণ্যের ক্রয়মূল্য", returnedCost,
         rows.filter { it.description.startsWith("ফেরত পণ্য স্টকে •") }.sumOf { it.amount })
+    checkSource("সরবরাহকারীর কাছে ক্রয়-বাকি", supplierEntries.filter { it.type == "PURCHASE" }.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.description.startsWith("পণ্য ক্রয় বাকি •") }.sumOf { it.amount })
+    checkSource("সরবরাহকারীকে পরিশোধ", supplierEntries.filter { it.type == "PAYMENT" }.sumOf { -it.amount.coerceAtMost(0.0) },
+        rows.filter { it.description.startsWith("সরবরাহকারীকে পরিশোধ •") }.sumOf { it.amount })
+    checkSource("ক্রেতার বাকি আদায়", customerEntries.filter { it.type == "PAYMENT" }.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.description.startsWith("ক্রেতার বাকি আদায় •") }.sumOf { it.amount })
+    checkSource("পার্টনারের উত্তোলন", withdrawals.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter { it.description.startsWith("পার্টনার উত্তোলন •") }.sumOf { it.amount })
+    checkSource("পার্টনারের মূলধন জমা ও লভ্যাংশ মূলধনীকরণ", capitalContributions.sumOf { it.amount.coerceAtLeast(0.0) },
+        rows.filter {
+            it.description.startsWith("পার্টনার মূলধন জমা •") ||
+                it.description.startsWith("অবণ্টিত লভ্যাংশ মূলধনে স্থানান্তর •")
+        }.sumOf { it.amount })
+
+    // Verify each invoice's payment and receivable split independently of the balanced journal totals.
+    transactions.forEach { tx ->
+        val invoiceRows = rows.filter { it.note.contains("ইনভয়েস: ${tx.transactionId}") }
+        checkSource("ইনভয়েস ${tx.transactionId} জমা", tx.paid.coerceAtLeast(0.0),
+            invoiceRows.filter { it.debitAccount == "নগদ" }.sumOf { it.amount })
+        checkSource("ইনভয়েস ${tx.transactionId} বাকি", tx.due.coerceAtLeast(0.0),
+            invoiceRows.filter { it.debitAccount == "ক্রেতার পাওনা" }.sumOf { it.amount })
+    }
 
     // Profit, partner distribution and the profit screen all use the same calculation engine.
     val netProfit = sharedProfitReport.netProfit
