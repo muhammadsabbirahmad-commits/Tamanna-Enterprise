@@ -344,6 +344,9 @@ fun PartnerScreen() {
                     partner = partner,
                     canWrite = canWrite,
                     periodProfit = allocatedProfit,
+                    periodDailyDividends = if (validRange) recovery.dividendsByDay
+                        .filter { (date, amount) -> date >= fromDate && date <= toDate && amount > 0.004 }
+                    else emptyMap(),
                     periodExpense = allocatedExpense,
                     periodLoss = allocatedLoss,
                     periodNet = periodPartnerNet,
@@ -476,6 +479,7 @@ fun PartnerCard(
     partner: Partner,
     canWrite: Boolean,
     periodProfit: Double,
+    periodDailyDividends: Map<String, Double>,
     periodExpense: Double,
     periodLoss: Double,
     periodNet: Double,
@@ -497,24 +501,13 @@ fun PartnerCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(partner.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                val statusColor = when {
-                    periodNet > 0.004 -> MaterialTheme.colorScheme.primaryContainer
-                    periodNet < -0.004 -> MaterialTheme.colorScheme.errorContainer
-                    else -> MaterialTheme.colorScheme.surfaceVariant
-                }
-                val statusTextColor = when {
-                    periodNet > 0.004 -> MaterialTheme.colorScheme.onPrimaryContainer
-                    periodNet < -0.004 -> MaterialTheme.colorScheme.onErrorContainer
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                Surface(color = statusColor, shape = MaterialTheme.shapes.small) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
                     Text(
-                        text = when {
-                            periodNet > 0.004 -> "লাভ ৳ %.2f".format(Locale.US, periodNet)
-                            periodNet < -0.004 -> "ঘাটতি ৳ %.2f".format(Locale.US, kotlin.math.abs(periodNet))
-                            else -> "সমতা ৳ 0.00"
-                        },
-                        color = statusTextColor,
+                        text = "লভ্যাংশ ৳ %.2f".format(Locale.US, periodProfit),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
@@ -526,7 +519,21 @@ fun PartnerCard(
                 color = MaterialTheme.colorScheme.primary)
             HorizontalDivider()
             Text("নির্বাচিত সময়ের হিসাব", style = MaterialTheme.typography.titleMedium)
-            Text("লাভের অংশ: ৳ %.2f".format(Locale.US, periodProfit))
+            Text("নির্বাচিত সময়ের জমা লভ্যাংশ: ৳ %.2f".format(Locale.US, periodProfit))
+            Text("প্রতিদিনের লভ্যাংশ জমা", style = MaterialTheme.typography.titleSmall)
+            if (periodDailyDividends.isEmpty()) {
+                Text("এই সময়ে কোনো লভ্যাংশ জমা হয়নি।", style = MaterialTheme.typography.bodySmall)
+            } else {
+                periodDailyDividends.toSortedMap().forEach { (date, amount) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(date, style = MaterialTheme.typography.bodySmall)
+                        Text("৳ %.2f".format(Locale.US, amount), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
             Text("প্রতিষ্ঠানের খরচের অংশ (তথ্য): ৳ %.2f".format(Locale.US, periodExpense))
             Text("লোকসানের অংশ: ৳ %.2f".format(Locale.US, periodLoss),
                 color = MaterialTheme.colorScheme.error)
