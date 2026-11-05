@@ -71,7 +71,8 @@ private data class LedgerSummary(
     val cashIn: Double,
     val cashOut: Double,
     val stockWarnings: List<String>,
-    val dataWarnings: List<String>
+    val dataWarnings: List<String>,
+    val trialBalance: TrialBalanceReport
 )
 
 private fun dateKey(value: String): String = value.trim().take(10)
@@ -440,11 +441,33 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         periodExpenseTotal + withdrawalTotal +
         returns.sumOf { it.refundAmount.coerceAtLeast(0.0) } + capitalReturned
 
+    // Build one opening journal from all opening account balances, then
+    // audit every period source row independently as its own journal entry.
+    val openingRows = rows.filter { it.description.startsWith("প্রারম্ভিক ") }
+    val openingLines = openingRows.flatMap { row ->
+        buildList {
+            if (row.debitAccount.isNotBlank() && row.debitAmount > 0.004) add(JournalLine(row.debitAccount, debit = row.debitAmount))
+            if (row.creditAccount.isNotBlank() && row.creditAmount > 0.004) add(JournalLine(row.creditAccount, credit = row.creditAmount))
+        }
+    }
+    val openingJournal = if (openingLines.isEmpty()) emptyList() else listOf(
+        JournalEntry("OPENING-$fromDate", fromDate, openingLines, "Verified opening balances")
+    )
+    val periodJournal = rows.filterNot { it.description.startsWith("প্রারম্ভিক ") }.mapIndexed { index, row ->
+        val lines = buildList {
+            if (row.debitAccount.isNotBlank() && row.debitAmount > 0.004) add(JournalLine(row.debitAccount, debit = row.debitAmount))
+            if (row.creditAccount.isNotBlank() && row.creditAmount > 0.004) add(JournalLine(row.creditAccount, credit = row.creditAmount))
+        }
+        JournalEntry("PERIOD-$fromDate-$toDate-$index", row.date, lines, row.description + " " + row.note)
+    }.filter { it.lines.isNotEmpty() }
+    val auditedTrialBalance = DoubleEntryAccounting.trialBalance(openingJournal, periodJournal)
+    warnings += auditedTrialBalance.errors
     return LedgerSummary(
         rows.sortedWith(compareBy<LedgerRow> { it.date }.thenBy { it.description }),
         purchaseTotal, stockValue, stockUnits, salesTotal, collectionTotal, receivable,
         supplierPayable, expenseTotal, periodExpenseTotal, damageTotal, periodDamageTotal,
-        withdrawalTotal, totalCapital, netProfit, cashIn, cashOut, stockWarnings, warnings
+        withdrawalTotal, totalCapital, netProfit, cashIn, cashOut, stockWarnings, warnings,
+        auditedTrialBalance
     )
 }
 
@@ -529,6 +552,27 @@ private fun DoubleEntryFinancialScreen() {
                         }
                     }
                     if (capitalizationMessage.isNotBlank()) Text(capitalizationMessage, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Text("Trial Balance — Opening / Period / Closing", style = MaterialTheme.typography.titleLarge)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("প্রারম্ভিক ডেবিট: ${money(summary.trialBalance.openingDebit)}")
+                    Text("প্রারম্ভিক ক্রেডিট: ${money(summary.trialBalance.openingCredit)}")
+                    Text("সময়ের ডেবিট: ${money(summary.trialBalance.periodDebit)}")
+                    Text("সময়ের ক্রেডিট: ${money(summary.trialBalance.periodCredit)}")
+                    Text("সমাপনী ডেবিট: ${money(summary.trialBalance.closingDebit)}")
+                    Text("সমাপনী ক্রেডিট: ${money(summary.trialBalance.closingCredit)}")
+                    Text(if (summary.trialBalance.allEntriesBalanced && summary.trialBalance.closingBalanced)
+                        "সব জার্নাল এন্ট্রি ও সমাপনী Trial Balance মিলেছে"
+                    else "জার্নাল/Trial Balance-এ অমিল আছে — নিচের সতর্কবার্তা যাচাই করুন",
+                        color = if (summary.trialBalance.allEntriesBalanced && summary.trialBalance.closingBalanced)
+                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    summary.trialBalance.accounts.forEach { account ->
+                        Text("${account.account}: Opening Dr ${money(account.openingDebit)} / Cr ${money(account.openingCredit)} • Period Dr ${money(account.periodDebit)} / Cr ${money(account.periodCredit)} • Closing Dr ${money(account.closingDebit)} / Cr ${money(account.closingCredit)}",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
