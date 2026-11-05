@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.purchase.PurchaseStorage
+import com.tamanna.enterprise.profit.BusinessProfitCalculator
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
@@ -50,7 +51,10 @@ private fun ProfitScreen(activity: ComponentActivity) {
     val damages = if (validRange) ExpenseStorage.getDamages(activity).filter { it.date in from..to } else emptyList()
     val institutionExpenses = expenses.sumOf { it.amount }
     val damageLoss = damages.sumOf { it.totalLoss }
-    val netProfit = profit - institutionExpenses - damageLoss
+    val sharedProfitReport = remember(refresh, from, to) { if (validRange) BusinessProfitCalculator.calculate(activity, from, to) else null }
+    val netProfit = sharedProfitReport?.netProfit ?: 0.0
+    val returnRevenue = sharedProfitReport?.returnRevenue ?: 0.0
+    val returnCost = sharedProfitReport?.returnCost ?: 0.0
 
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
@@ -73,7 +77,9 @@ private fun ProfitScreen(activity: ComponentActivity) {
                     SummaryCard("বিক্রয়ভিত্তিক মোট লাভ", "৳ %.2f".format(profit))
                     SummaryCard("প্রতিষ্ঠানের খরচ", "৳ %.2f".format(institutionExpenses))
                     SummaryCard("ড্যামেজ ক্ষতি", "৳ %.2f".format(damageLoss))
-                    SummaryCard("নিট লাভ", "৳ %.2f".format(netProfit))
+                    SummaryCard("বিক্রয় ফেরতের নিট মূল্য", "৳ %.2f".format(returnRevenue))
+                    SummaryCard("ফেরত পণ্যের পুনরুদ্ধারকৃত ক্রয়মূল্য", "৳ %.2f".format(returnCost))
+                    SummaryCard("নিট লাভ (ডিসকাউন্ট ও রিটার্নসহ)", "৳ %.2f".format(netProfit))
                     SummaryCard("মোট ক্রয়", "৳ %.2f".format(purchasedAmount))
                     SummaryCard("বিক্রি হয়েছে", "$soldUnits ইউনিট".replace("$", ""))
                     SummaryCard("ক্রয় হয়েছে", "$purchasedUnits ইউনিট".replace("$", ""))
