@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
+import com.tamanna.enterprise.business.BusinessStorage
 import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.partner.PartnerStorage
@@ -105,46 +106,47 @@ private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,
 
 private data class DailyBalanceEntry(
     val id: String, val date: String, val account: String,
-    val mode: String, val amount: Double, val note: String = ""
+    val mode: String, val amount: Double, val note: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 private object DailyBalanceStorage {
     private const val PREFS = "daily_manual_balances_v1"
     private const val KEY = "entries"
     fun get(context: android.content.Context): List<DailyBalanceEntry> = runCatching {
-        val raw = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
+        val raw = BusinessStorage.prefs(context, PREFS).getString(KEY, "[]") ?: "[]"
         val array = JSONArray(raw)
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
                 add(DailyBalanceEntry(item.optString("id"), item.optString("date"), item.optString("account"),
-                    item.optString("mode"), item.optDouble("amount"), item.optString("note")))
+                    item.optString("mode"), item.optDouble("amount"), item.optString("note"), item.optLong("updatedAt")))
             }
         }.filter { it.id.isNotBlank() && validLedgerDate(it.date) && it.account in setOf("CASH","BANK") &&
             it.mode in setOf("SET","ADD","SUB") && it.amount.isFinite() && it.amount >= 0.0 }
     }.getOrDefault(emptyList())
     fun save(context: android.content.Context, entry: DailyBalanceEntry): Boolean = runCatching {
         val array = JSONArray()
-        (get(context).filterNot { it.id == entry.id } + entry).sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.id }).forEach {
+        (get(context).filterNot { it.id == entry.id } + entry).sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.updatedAt }).forEach {
             array.put(JSONObject().put("id",it.id).put("date",it.date).put("account",it.account)
-                .put("mode",it.mode).put("amount",it.amount).put("note",it.note))
+                .put("mode",it.mode).put("amount",it.amount).put("note",it.note).put("updatedAt",it.updatedAt))
         }
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putString(KEY,array.toString()).commit()
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY,array.toString()).commit()
     }.getOrDefault(false)
     fun delete(context: android.content.Context, id: String): Boolean = runCatching {
         val array = JSONArray()
         get(context).filterNot { it.id == id }.forEach {
             array.put(JSONObject().put("id",it.id).put("date",it.date).put("account",it.account)
-                .put("mode",it.mode).put("amount",it.amount).put("note",it.note))
+                .put("mode",it.mode).put("amount",it.amount).put("note",it.note).put("updatedAt",it.updatedAt))
         }
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putString(KEY,array.toString()).commit()
+        BusinessStorage.prefs(context, PREFS).edit().putString(KEY,array.toString()).commit()
     }.getOrDefault(false)
     fun balance(entries: List<DailyBalanceEntry>, account: String, toDate: String,
         openingAmount: Double?, openingDate: String?): Double {
         var total = if (openingDate != null && openingDate <= toDate) openingAmount ?: 0.0 else 0.0
         entries.asSequence().filter { it.account == account && it.date <= toDate &&
             (openingDate == null || it.date >= openingDate) }
-            .sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.id }).forEach { entry ->
+            .sortedWith(compareBy<DailyBalanceEntry> { it.date }.thenBy { it.updatedAt }).forEach { entry ->
                 total = when(entry.mode) { "SET" -> entry.amount; "ADD" -> total + entry.amount; "SUB" -> total - entry.amount; else -> total }
             }
         return total
@@ -914,7 +916,7 @@ private fun DoubleEntryFinancialScreen() {
                     else if (value == null || !value.isFinite() || value < 0.0) error = "শূন্য বা তার বেশি সঠিক টাকার অঙ্ক লিখুন।"
                     else {
                         val entry = DailyBalanceEntry(editing?.id ?: java.util.UUID.randomUUID().toString(),
-                            date, dailyBalanceAccount, mode, value, note.trim())
+                            date, dailyBalanceAccount, mode, value, note.trim(), System.currentTimeMillis())
                         if (DailyBalanceStorage.save(context, entry)) {
                             dailyBalanceEntries = DailyBalanceStorage.get(context)
                             editingDailyBalanceEntry = null; showDailyBalanceDialog = false; refresh++
