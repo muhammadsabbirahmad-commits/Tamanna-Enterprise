@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/profit-report-exclude-sale-returns
       - fix/safe-finance-partner-sync
       - feat/partner-profit-withdrawals
       - feat/partner-profit-loss-allocation
