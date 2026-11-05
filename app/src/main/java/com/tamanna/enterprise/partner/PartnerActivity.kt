@@ -15,8 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tamanna.enterprise.dashboard.TamannaTheme
-import com.tamanna.enterprise.finance.ExpenseStorage
-import com.tamanna.enterprise.sales.SalesStorage
+import com.tamanna.enterprise.profit.BusinessProfitCalculator
 import com.tamanna.enterprise.security.ActivityLogStorage
 import com.tamanna.enterprise.security.SecurityStorage
 import com.tamanna.enterprise.settings.ThemeStorage
@@ -88,10 +87,9 @@ fun PartnerScreen() {
     val canWrite = remember { SecurityStorage.canWrite(context) }
     var refresh by remember { mutableIntStateOf(0) }
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
-    val sales = remember(refresh) { SalesStorage.getSales(context) }
-    val expenses = remember(refresh) { ExpenseStorage.getExpenses(context) }
-    val damages = remember(refresh) { ExpenseStorage.getDamages(context) }
-    val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
+    val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
+    val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
+    val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingPartner by remember { mutableStateOf<Partner?>(null) }
@@ -102,46 +100,22 @@ fun PartnerScreen() {
     var toDate by remember { mutableStateOf(partnerDate()) }
     var message by remember { mutableStateOf("") }
 
-    val validRange = isValidPartnerDate(fromDate) &&
-        isValidPartnerDate(toDate) && fromDate <= toDate
-    val salesByDay = sales.mapNotNull { sale ->
-        normalizePartnerDate(sale.date).takeIf { it.isNotBlank() }?.let { it to sale }
-    }.groupBy({ it.first }, { it.second })
-    val expensesByDay = expenses.mapNotNull { expense ->
-        normalizePartnerDate(expense.date).takeIf { it.isNotBlank() }?.let { it to expense }
-    }.groupBy({ it.first }, { it.second })
-    val damagesByDay = damages.mapNotNull { damage ->
-        normalizePartnerDate(damage.date).takeIf { it.isNotBlank() }?.let { it to damage }
-    }.groupBy({ it.first }, { it.second })
-
-    val dailyNet = remember(refresh, fromDate, toDate) {
-        if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day ->
-            val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
-            val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
-            val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
-            day to (gross - expense - damage)
-        }
+    val validRange = isValidPartnerDate(fromDate) && isValidPartnerDate(toDate) && fromDate <= toDate
+    val dailyNet = remember(refresh, fromDate, toDate, allDailyNet) {
+        if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
     val last30FromDate = partnerDate(29)
     val last30ToDate = partnerDate()
-    val last30DailyNet = remember(refresh, last30FromDate, last30ToDate) {
-        partnerDateRange(last30FromDate, last30ToDate).map { day ->
-            val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
-            val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
-            val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
-            day to (gross - expense - damage)
-        }
+    val last30DailyNet = remember(refresh, last30FromDate, last30ToDate, allDailyNet) {
+        partnerDateRange(last30FromDate, last30ToDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
-    val periodTotalProfit = dailyNet.sumOf { maxOf(it.second, 0.0) }
-    val periodTotalLoss = dailyNet.sumOf { kotlin.math.abs(minOf(it.second, 0.0)) }
-    val periodNetResult = periodTotalProfit - periodTotalLoss
-    val allProfitDays = (salesByDay.keys + expensesByDay.keys + damagesByDay.keys).distinct().sorted()
-    val lifetimeNetByDay = allProfitDays.associateWith { day ->
-        val gross = salesByDay[day].orEmpty().sumOf { it.quantity * (it.salePrice - it.purchasePrice) }
-        val expense = expensesByDay[day].orEmpty().sumOf { it.amount }
-        val damage = damagesByDay[day].orEmpty().sumOf { it.totalLoss }
-        gross - expense - damage
+    val last30ExpenseTotal = remember(refresh, last30FromDate, last30ToDate, dailyExpenses) {
+        dailyExpenses.filterKeys { it in last30FromDate..last30ToDate }.values.sum()
     }
+    val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
+        if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
+    }
+    val lifetimeNetByDay = allDailyNet
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
     val distributionValid = kotlin.math.abs(totalPercentage - 100.0) <= 0.0001
@@ -184,7 +158,8 @@ fun PartnerScreen() {
                 val loss30 = last30DailyNet.sumOf { (day, net) ->
                     kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
                 }
-                PartnerCard(partner, canWrite, profit30, loss30, onAddCapital = { addingCapitalFor = partner }) {
+                val expense30 = last30ExpenseTotal * PartnerStorage.getPercentageForDate(context, partner.id, last30ToDate) / 100.0
+                PartnerCard(partner, canWrite, profit30, loss30, expense30, onAddCapital = { addingCapitalFor = partner }) {
                     if (canWrite) editingPartner = partner
                 }
             }
@@ -224,6 +199,7 @@ fun PartnerScreen() {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("এই সময়ের ব্যবসার হিসাব", style = MaterialTheme.typography.titleMedium)
                         Text("মোট লাভ: ৳ %.2f".format(Locale.US, periodTotalProfit))
+                        Text("প্রতিষ্ঠানের মোট খরচ: ৳ %.2f".format(Locale.US, periodExpenseTotal))
                         Text("মোট লোকসান: ৳ %.2f".format(Locale.US, periodTotalLoss), color = MaterialTheme.colorScheme.error)
                         Text("নিট ফলাফল: ৳ %.2f".format(Locale.US, periodNetResult), style = MaterialTheme.typography.headlineSmall,
                             color = if (periodNetResult < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
@@ -249,15 +225,19 @@ fun PartnerScreen() {
                         val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
                         val availableBalance = lifetimeProfit - lifetimeLoss - withdrawnTotal
                         val periodPartnerNet = allocatedProfit - allocatedLoss
+                        val allocatedExpense = dailyExpenses.filterKeys { it in fromDate..toDate }.entries.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
+                        val lifetimeExpense = dailyExpenses.entries.sumOf { (day, amount) -> amount * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0 }
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(partner.name, style = MaterialTheme.typography.titleMedium)
                                 Text("এই সময়ের লাভ: ৳ %.2f".format(Locale.US, allocatedProfit))
+                                Text("এই সময়ের প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, allocatedExpense))
                                 Text("এই সময়ের লোকসান: ৳ %.2f".format(Locale.US, allocatedLoss), color = MaterialTheme.colorScheme.error)
                                 Text("এই সময়ের নিট ফলাফল: ৳ %.2f".format(Locale.US, periodPartnerNet),
                                     color = if (periodPartnerNet < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                                 HorizontalDivider()
                                 Text("সর্বমোট লাভের অংশ: ৳ %.2f".format(Locale.US, lifetimeProfit))
+                                Text("সর্বমোট প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, lifetimeExpense))
                                 Text("সর্বমোট লোকসানের অংশ: ৳ %.2f".format(Locale.US, lifetimeLoss), color = MaterialTheme.colorScheme.error)
                                 Text("মোট উত্তোলন: ৳ %.2f".format(Locale.US, withdrawnTotal))
                                 Text("অবশিষ্ট নিট পাওনা / (ঘাটতি): ৳ %.2f".format(Locale.US, availableBalance),
@@ -361,6 +341,7 @@ fun PartnerCard(
     canWrite: Boolean,
     last30Profit: Double,
     last30Loss: Double,
+    last30Expenses: Double,
     onAddCapital: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -383,6 +364,7 @@ fun PartnerCard(
                     }
                 }
             }
+            Text("৩০ দিনে প্রতিষ্ঠানের খরচের অংশ: ৳ %.2f".format(Locale.US, last30Expenses))
             HorizontalDivider()
             Text("বিনিয়োগ / মূলধন: ৳ %.2f".format(Locale.US, partner.shareAmount))
             Text("লাভের হার: %.2f%%".format(Locale.US, partner.profitPercentage), color = MaterialTheme.colorScheme.primary)
