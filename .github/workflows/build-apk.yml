@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/partial-sale-return-quantity-input
       - fix/safe-finance-partner-sync
       - feat/partner-profit-withdrawals
       - feat/partner-profit-loss-allocation
