@@ -130,47 +130,13 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
         return line.quantity.coerceAtLeast(0) * weightedUnitCost
     }
 
-    // Bring all partner capital movements before the selected start date into the ledger
-    // as opening balances. This keeps historical capital visible without counting it as a
-    // transaction inside the selected period.
-    openingCapitalContributions.forEach { contribution ->
-        val partnerName = PartnerStorage.getPartners(context).firstOrNull { it.id == contribution.partnerId }?.name
-            ?: "পুরোনো/মুছে ফেলা পার্টনার"
-        val retainedProfit = contribution.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
-        val capitalReturned = contribution.amount < -0.004
-        val amount = kotlin.math.abs(contribution.amount)
-        if (amount <= 0.004) return@forEach
-        val openingOffsetAccount = "প্রারম্ভিক ব্যালান্স সমন্বয় (সম্পদ যাচাই বাকি)"
-        rows += LedgerRow(fromDate, "প্রারম্ভিক মূলধন • $partnerName", when {
-                retainedProfit -> "প্রারম্ভিক অবণ্টিত মুনাফা"
-                capitalReturned -> "পার্টনার মূলধন"
-                else -> openingOffsetAccount
-            }, if (capitalReturned) openingOffsetAccount else "পার্টনার মূলধন", amount, amount, "${contribution.date} তারিখের আগের মূলধন • ${contribution.note}")
-    }
-
-    // A legacy installation may contain a current partner capital balance but only a partial
-    // contribution history. Reconcile that unknown difference ONLY in a report spanning today.
-    // Never inject today's known balance into a closed historical period. The missing historical
-    // date cannot be reconstructed, so the entry is explicitly dated today and flagged.
-    val today = todayIso()
-    val activePartners = PartnerStorage.getPartners(context)
-    if (fromDate <= today && toDate >= today) {
-        activePartners.forEach { partner ->
-            val recordedNet = allCapitalContributions
-                .filter { it.partnerId == partner.id && dateKey(it.date) <= toDate }
-                .sumOf { it.amount }
-            val unrecorded = partner.shareAmount - recordedNet
-            if (kotlin.math.abs(unrecorded) > 0.004) {
-                val amount = kotlin.math.abs(unrecorded)
-                val isIncrease = unrecorded > 0.0
-                val openingOffsetAccount = "প্রারম্ভিক ব্যালান্স সমন্বয় (সম্পদ যাচাই বাকি)"
-                rows += LedgerRow(today, "পুরোনো মূলধনের অনথিভুক্ত পার্থক্য • ${partner.name}", if (isIncrease) openingOffsetAccount else "পার্টনার মূলধন", if (isIncrease) "পার্টনার মূলধন" else openingOffsetAccount, amount, amount, "বর্তমান সংরক্ষিত মূলধন ও জমা/ফেরত রেকর্ডের পার্থক্য; প্রকৃত জমার তারিখ জানা নেই, তাই আজকের তারিখে আনুমানিক সমন্বয়।")
-                warnings += "${partner.name}-এর বর্তমান মূলধন ও সংরক্ষিত জমা/ফেরত রেকর্ডে ${money(unrecorded)} পার্থক্য আছে; আজকের তারিখে আনুমানিক সমন্বয় দেখানো হয়েছে।"
-            }
-        }
-    }
-    if (openingCapitalContributions.isNotEmpty()) {
-        warnings += "নির্বাচিত সময়ের আগের মূলধন প্রারম্ভিক ব্যালান্স হিসেবে দেখানো হয়েছে। ‘প্রারম্ভিক ব্যালান্স সমন্বয়’ একটি অস্থায়ী suspense account—এটি নগদ, স্টক বা পাওনার প্রকৃত পরিমাণ নয়; সম্পদের উদ্বোধনী ব্যালান্স মিলিয়ে নিতে হবে।"
+    // Opening capital and assets are reconciled in a separate verified opening-balance
+    // panel. Never manufacture an asset counterpart from historic partner capital.
+    val openingBalance = OpeningBalanceStorage.get(context)
+    if (openingBalance == null) {
+        warnings += "প্রারম্ভিক ব্যালান্স সংরক্ষণ করা হয়নি; পুরোনো মূলধনের বিপরীতে কোনো নগদ/স্টক/পাওনা অনুমান করে যোগ করা হয়নি।"
+    } else if (openingBalance.date != fromDate) {
+        warnings += "প্রারম্ভিক ব্যালান্সের তারিখ ${openingBalance.date}; নির্বাচিত হিসাবের শুরুর তারিখ ${fromDate}। সঠিক উদ্বোধনী ট্রায়াল ব্যালান্সের জন্য একই তারিখ নির্বাচন করুন।"
     }
 
     capitalContributions.forEach { contribution ->
@@ -378,6 +344,8 @@ private fun DoubleEntryFinancialScreen() {
     var fromDate by remember { mutableStateOf(monthStartIso()) }
     var toDate by remember { mutableStateOf(todayIso()) }
     var accounts by remember(refresh) { mutableStateOf(CashAccountStorage.getAccounts(context)) }
+    var openingBalances by remember(refresh) { mutableStateOf(OpeningBalanceStorage.get(context)) }
+    var showOpeningBalanceDialog by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<ManualCashAccount?>(null) }
     var showCapitalizationDialog by remember { mutableStateOf(false) }
@@ -498,6 +466,44 @@ private fun DoubleEntryFinancialScreen() {
                 }
             }
 
+            Text("প্রারম্ভিক মূলধন ও সম্পদ যাচাই", style = MaterialTheme.typography.titleLarge)
+            val openingCapital = openingBalances?.let { opening ->
+                PartnerStorage.getCapitalContributions(context)
+                    .filter { dateKey(it.date) <= opening.date }
+                    .sumOf { it.amount }
+            } ?: 0.0
+            val openingDifference = openingBalances?.let {
+                it.totalAssets - it.totalLiabilities - openingCapital
+            } ?: 0.0
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (openingBalances == null) "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ"
+                        else if (openingBalances.verified && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
+                        else "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (openingBalances?.verified == true && kotlin.math.abs(openingDifference) < 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    if (openingBalances == null) {
+                        Text("শুরুর দিনের প্রকৃত নগদ, ব্যাংক, স্টক, ক্রেতার পাওনা ও দেনা এখনো লেখা হয়নি।", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text("হিসাবের তারিখ: ${openingBalances.date}", style = MaterialTheme.typography.bodySmall)
+                        SummaryLine("প্রারম্ভিক নগদ", openingBalances.cash)
+                        SummaryLine("প্রারম্ভিক ব্যাংক", openingBalances.bank)
+                        SummaryLine("প্রারম্ভিক স্টক (ক্রয়মূল্যে)", openingBalances.stock)
+                        SummaryLine("প্রারম্ভিক ক্রেতার পাওনা", openingBalances.customerReceivable)
+                        SummaryLine("প্রারম্ভিক সরবরাহকারী দেনা", openingBalances.supplierPayable)
+                        SummaryLine("অন্যান্য প্রারম্ভিক দেনা", openingBalances.otherLiabilities)
+                        SummaryLine("প্রারম্ভিক পার্টনার মূলধন (রেকর্ড অনুযায়ী)", openingCapital)
+                        SummaryLine("সম্পদ − দেনা − মূলধন", openingDifference)
+                        if (!openingBalances.verified) Text("এই অঙ্কগুলো এখনো ব্যবহারকারী দ্বারা যাচাইকৃত হিসেবে চিহ্নিত হয়নি।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (kotlin.math.abs(openingDifference) >= 0.01) Text("অমিল ${money(kotlin.math.abs(openingDifference))}। এটি কোনো কাল্পনিক সম্পদ বা Suspense Account-এ বসানো হয়নি; প্রকৃত উদ্বোধনী হিসাব মিলিয়ে নিন।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        if (openingBalances.date != fromDate) Text("এই রিপোর্টের শুরুর তারিখের সঙ্গে প্রারম্ভিক ব্যালান্সের তারিখ মিলছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(onClick = { showOpeningBalanceDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (openingBalances == null) "প্রারম্ভিক ব্যালান্স লিখুন" else "প্রারম্ভিক ব্যালান্স সম্পাদনা করুন")
+                    }
+                }
+            }
+
             Text("পার্টনারদের মূলধন", style = MaterialTheme.typography.titleLarge)
             SummaryLine("পার্টনারদের বর্তমান মোট মূলধন", summary.totalCapital, "এটি বর্তমান মূলধন ব্যালান্স; নির্বাচিত সময়ের আগের জমা প্রারম্ভিক ব্যালান্স এবং সময়ের ভেতরের জমা/ফেরত লেনদেন হিসেবে ক্রেডিট/ডেবিট তালিকায় আছে")
 
@@ -511,6 +517,57 @@ private fun DoubleEntryFinancialScreen() {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showOpeningBalanceDialog) {
+        val saved = openingBalances
+        var date by remember(saved) { mutableStateOf(saved?.date ?: fromDate) }
+        var cash by remember(saved) { mutableStateOf(saved?.cash?.toString() ?: "0") }
+        var bank by remember(saved) { mutableStateOf(saved?.bank?.toString() ?: "0") }
+        var stock by remember(saved) { mutableStateOf(saved?.stock?.toString() ?: "0") }
+        var receivable by remember(saved) { mutableStateOf(saved?.customerReceivable?.toString() ?: "0") }
+        var supplierDue by remember(saved) { mutableStateOf(saved?.supplierPayable?.toString() ?: "0") }
+        var otherLiabilities by remember(saved) { mutableStateOf(saved?.otherLiabilities?.toString() ?: "0") }
+        var verified by remember(saved) { mutableStateOf(saved?.verified ?: false) }
+        var error by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showOpeningBalanceDialog = false },
+            title = { Text("প্রকৃত প্রারম্ভিক ব্যালান্স") },
+            text = {
+                Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("ব্যবসার শুরুর দিনের বাস্তব অঙ্ক লিখুন। বর্তমান ব্যালান্স বা অনুমান এখানে দেবেন না।", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(date, { date = it; error = "" }, label = { Text("প্রারম্ভিক তারিখ (YYYY-MM-DD)") }, singleLine = true)
+                    OutlinedTextField(cash, { cash = it; error = "" }, label = { Text("হাতে নগদ (৳)") }, singleLine = true)
+                    OutlinedTextField(bank, { bank = it; error = "" }, label = { Text("ব্যাংক ব্যালান্স (৳)") }, singleLine = true)
+                    OutlinedTextField(stock, { stock = it; error = "" }, label = { Text("স্টকের ক্রয়মূল্য (৳)") }, singleLine = true)
+                    OutlinedTextField(receivable, { receivable = it; error = "" }, label = { Text("ক্রেতার কাছে পাওনা (৳)") }, singleLine = true)
+                    OutlinedTextField(supplierDue, { supplierDue = it; error = "" }, label = { Text("সরবরাহকারীর কাছে দেনা (৳)") }, singleLine = true)
+                    OutlinedTextField(otherLiabilities, { otherLiabilities = it; error = "" }, label = { Text("অন্যান্য দেনা (৳)") }, singleLine = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = verified, onCheckedChange = { verified = it })
+                        Text("আমি বাস্তব হিসাব দেখে অঙ্কগুলো যাচাই করেছি")
+                    }
+                    if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    fun amount(value: String) = value.trim().toDoubleOrNull()
+                    val values = listOf(amount(cash), amount(bank), amount(stock), amount(receivable), amount(supplierDue), amount(otherLiabilities))
+                    if (!validLedgerDate(date)) error = "সঠিক প্রারম্ভিক তারিখ লিখুন।"
+                    else if (values.any { it == null || !it.isFinite() || it < 0.0 }) error = "সব ঘরে শূন্য বা তার বেশি সঠিক অঙ্ক লিখুন।"
+                    else {
+                        val item = OpeningBalances(date, values[0]!!, values[1]!!, values[2]!!, values[3]!!, values[4]!!, values[5]!!, verified)
+                        if (OpeningBalanceStorage.save(context, item)) {
+                            openingBalances = item
+                            showOpeningBalanceDialog = false
+                            refresh++
+                        } else error = "প্রারম্ভিক ব্যালান্স সংরক্ষণ করা যায়নি।"
+                    }
+                }) { Text("সংরক্ষণ") }
+            },
+            dismissButton = { TextButton(onClick = { showOpeningBalanceDialog = false }) { Text("বাতিল") } }
+        )
     }
 
     if (showAccountDialog) {
