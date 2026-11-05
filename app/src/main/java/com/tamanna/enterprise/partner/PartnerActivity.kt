@@ -87,6 +87,7 @@ fun PartnerScreen() {
     val canWrite = remember { SecurityStorage.canWrite(context) }
     var refresh by remember { mutableIntStateOf(0) }
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
+    val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
     val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
     val dailyExpenses = remember(profitReport) { profitReport.days.associate { it.date to it.expenses } }
@@ -112,6 +113,9 @@ fun PartnerScreen() {
     val periodExpenseTotal = remember(refresh, fromDate, toDate, dailyExpenses) {
         if (!validRange) 0.0 else dailyExpenses.filterKeys { it in fromDate..toDate }.values.sum()
     }
+    val periodTotalProfit = dailyNet.sumOf { maxOf(it.second, 0.0) }
+    val periodTotalLoss = dailyNet.sumOf { kotlin.math.abs(minOf(it.second, 0.0)) }
+    val periodNetResult = periodTotalProfit - periodTotalLoss
     val lifetimeNetByDay = allDailyNet
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
