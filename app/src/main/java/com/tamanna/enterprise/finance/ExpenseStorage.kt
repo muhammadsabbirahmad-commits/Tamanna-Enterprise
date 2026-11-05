@@ -251,7 +251,7 @@ object ExpenseStorage {
                     moneyCents(old.optDouble("amount", 0.0)) == moneyCents(normalizedAmount)
                 val allocated = if (sameFinancialValue && isValidAllocation(oldAllocations, normalizedAmount))
                     oldAllocations to old.optBoolean("allocationEstimated", false)
-                else buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = true) ?: return false
+                else buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
                 items.put(i, expenseJson(x.copy(
                     amount = normalizedAmount,
                     allocations = allocated.first,
@@ -349,7 +349,7 @@ object ExpenseStorage {
         if (x.id <= 0L || !validDate(x.date) || x.quantity <= 0 ||
             !x.unitCost.isFinite() || x.unitCost <= 0.0) return false
         val allocation = buildAllocations(
-            c, x.date, x.totalLoss, allowEstimatedLegacyRate = true
+            c, x.date, x.totalLoss, allowEstimatedLegacyRate = false
         ) ?: return false
         val items = array(c, D)
         if ((0 until items.length()).any { items.optJSONObject(it)?.optLong("id") == x.id }) return false
