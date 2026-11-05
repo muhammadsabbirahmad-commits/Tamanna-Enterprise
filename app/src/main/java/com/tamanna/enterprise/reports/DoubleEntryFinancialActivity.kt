@@ -26,10 +26,24 @@ import com.tamanna.enterprise.sales.SaleReturnStorage
 import com.tamanna.enterprise.sales.SalesStorage
 import com.tamanna.enterprise.sales.SalesTransactionStorage
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
 private fun monthStartIso(): String = todayIso().take(8) + "01"
+
+private fun isoDateToUtcMillis(value: String): Long? = runCatching {
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        isLenient = false
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.parse(value)?.time
+}.getOrNull()
+
+private fun utcMillisToIsoDate(value: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date(value))
 
 class DoubleEntryFinancialActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -496,6 +510,8 @@ private fun DoubleEntryFinancialScreen() {
     var selectedSide by remember { mutableStateOf<String?>(null) }
     var fromDate by remember { mutableStateOf(monthStartIso()) }
     var toDate by remember { mutableStateOf(todayIso()) }
+    var showFromDatePicker by remember { mutableStateOf(false) }
+    var showToDatePicker by remember { mutableStateOf(false) }
     var accounts by remember(refresh) { mutableStateOf(CashAccountStorage.getAccounts(context)) }
     var openingBalances by remember(refresh) { mutableStateOf(OpeningBalanceStorage.get(context)) }
     var showOpeningBalanceDialog by remember { mutableStateOf(false) }
@@ -562,8 +578,28 @@ private fun DoubleEntryFinancialScreen() {
         ) {
             Text("হিসাবের সময়সীমা নির্বাচন", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(fromDate, { fromDate = it }, label = { Text("শুরুর তারিখ") }, placeholder = { Text("YYYY-MM-DD") }, singleLine = true, modifier = Modifier.weight(1f))
-                OutlinedTextField(toDate, { toDate = it }, label = { Text("শেষ তারিখ") }, placeholder = { Text("YYYY-MM-DD") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = fromDate,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("শুরুর তারিখ") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    trailingIcon = {
+                        TextButton(onClick = { showFromDatePicker = true }) { Text("ক্যালেন্ডার") }
+                    }
+                )
+                OutlinedTextField(
+                    value = toDate,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("শেষ তারিখ") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    trailingIcon = {
+                        TextButton(onClick = { showToDatePicker = true }) { Text("ক্যালেন্ডার") }
+                    }
+                )
             }
             if (!validRange) Text("সঠিক তারিখের পরিসর দিন (YYYY-MM-DD)।", color = MaterialTheme.colorScheme.error)
             Text("নির্বাচিত সময়: $fromDate থেকে $toDate", style = MaterialTheme.typography.bodySmall)
@@ -724,6 +760,46 @@ private fun DoubleEntryFinancialScreen() {
                 summary.dataWarnings.forEach { Text("• $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (showFromDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = isoDateToUtcMillis(fromDate) ?: System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showFromDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { fromDate = utcMillisToIsoDate(it) }
+                    showFromDatePicker = false
+                }) { Text("নির্বাচন") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFromDatePicker = false }) { Text("বাতিল") }
+            }
+        ) {
+            DatePicker(state = pickerState, title = { Text("হিসাবের শুরুর তারিখ") })
+        }
+    }
+
+    if (showToDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = isoDateToUtcMillis(toDate) ?: System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showToDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { toDate = utcMillisToIsoDate(it) }
+                    showToDatePicker = false
+                }) { Text("নির্বাচন") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showToDatePicker = false }) { Text("বাতিল") }
+            }
+        ) {
+            DatePicker(state = pickerState, title = { Text("হিসাবের শেষ তারিখ") })
         }
     }
 
