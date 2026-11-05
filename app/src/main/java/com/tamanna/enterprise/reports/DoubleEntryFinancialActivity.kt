@@ -421,7 +421,7 @@ private fun buildLedger(context: android.content.Context, fromDate: String, toDa
     val capitalizedProfit = capitalContributions.filter {
         it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ")
     }.sumOf { it.amount }
-    val capitalReturned = capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount }
+    val capitalReturned = capitalContributionsForPeriod.filter { it.amount < -0.004 }.sumOf { -it.amount }
     checkSource("পার্টনারের নগদ মূলধন জমা", externalCapitalIn,
         rows.filter { it.description.startsWith("পার্টনার মূলধন জমা •") }.sumOf { it.creditAmount })
     checkSource("অবণ্টিত মুনাফা মূলধনে স্থানান্তর", capitalizedProfit,
@@ -506,6 +506,9 @@ private fun DoubleEntryFinancialScreen() {
     val totalManualCash = accounts.sumOf { it.balance.coerceAtLeast(0.0) }
     val validRange = validLedgerDate(fromDate) && validLedgerDate(toDate) && fromDate <= toDate
     val summary = remember(refresh, fromDate, toDate) { if (validRange) buildLedger(context, fromDate, toDate) else buildLedger(context, "9999-12-31", "0001-01-01") }
+    val capitalContributionsForPeriod = remember(refresh, fromDate, toDate) {
+        PartnerStorage.getCapitalContributions(context).filter { dateKey(it.date) >= fromDate && dateKey(it.date) <= toDate }
+    }
     val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
     val remainingDividend = summary.netProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
@@ -605,9 +608,9 @@ private fun DoubleEntryFinancialScreen() {
             SummaryLine("মোট ড্যামেজ/নষ্টের ক্ষতি (শুরু থেকে)", summary.damageTotal)
             SummaryLine("নির্বাচিত সময়ের ড্যামেজ ক্ষতি", summary.periodDamageTotal)
             SummaryLine("পার্টনারের লভ্যাংশ উত্তোলন", summary.withdrawalTotal)
-            SummaryLine("পার্টনারের মূলধন জমা", capitalContributions.filter { it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
+            SummaryLine("পার্টনারের মূলধন জমা", capitalContributionsForPeriod.filter { it.amount > 0.004 && !it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
             SummaryLine("পার্টনারের মূলধন ফেরত", capitalContributions.filter { it.amount < -0.004 }.sumOf { -it.amount })
-            SummaryLine("লভ্যাংশ থেকে মূলধনে যোগ", capitalContributions.filter { it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
+            SummaryLine("লভ্যাংশ থেকে মূলধনে যোগ", capitalContributionsForPeriod.filter { it.amount > 0.004 && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }.sumOf { it.amount })
 
             Text("নগদ প্রবাহ", style = MaterialTheme.typography.titleLarge)
             SummaryLine("নথিভুক্ত নগদ এসেছে", summary.cashIn)
