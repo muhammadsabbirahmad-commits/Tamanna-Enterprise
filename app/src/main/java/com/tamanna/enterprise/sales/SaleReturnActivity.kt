@@ -92,11 +92,19 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
     val returnAmount = grossReturn * (1.0 - discountRate)
     val previousDueReduction = SaleReturnStorage.getDueReduction(context, transactionId)
     val remainingOriginalDue = ((tx?.due ?: 0.0) - previousDueReduction).coerceAtLeast(0.0)
-    // A customer-ledger due can only be reduced when the invoice has a named customer.
-    val dueReduction = if (!tx?.customer.isNullOrBlank()) returnAmount.coerceAtMost(remainingOriginalDue) else 0.0
-    val refundAmount = (returnAmount - dueReduction).coerceAtLeast(0.0)
     val exchangeTotal = replacementUnitPrice * replacementQty
     val exchangeDifference = exchangeTotal - returnAmount
+    // For an exchange, only the net credit after deducting the replacement item
+    // can reduce the old invoice due or be refunded in cash.
+    val exchangeCredit = (-exchangeDifference).coerceAtLeast(0.0)
+    val dueReduction = if (!tx?.customer.isNullOrBlank()) {
+        (if (replacementProduct != null) exchangeCredit else returnAmount).coerceAtMost(remainingOriginalDue)
+    } else 0.0
+    val refundAmount = if (replacementProduct != null) {
+        (exchangeCredit - dueReduction).coerceAtLeast(0.0)
+    } else {
+        (returnAmount - dueReduction).coerceAtLeast(0.0)
+    }
 
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -259,8 +267,7 @@ private fun SaleReturnScreen(transactionId: String, onDone: () -> Unit) {
                                     context,
                                     SaleReturn(
                                         returnId, transactionId, now, returnAmount, dueReduction,
-                                        if (replacementProduct != null) (-exchangeDifference).coerceAtLeast(0.0) else refundAmount,
-                                        refundMethod
+                                        refundAmount, refundMethod
                                     ),
                                     lines
                                 )
