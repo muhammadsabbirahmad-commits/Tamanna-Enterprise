@@ -206,10 +206,13 @@ object ExpenseStorage {
     /** New expenses are rejected unless the effective partner split is exactly 100%. */
     fun addExpense(c: Context, x: Expense): Boolean {
         if (x.id <= 0L || !x.amount.isFinite() || x.amount <= 0.0 || !validDate(x.date)) return false
-        val allocated = buildAllocations(c, x.date, x.amount, allowEstimatedLegacyRate = false) ?: return false
+        val normalizedAmount = moneyCents(x.amount) / 100.0
+        if (normalizedAmount <= 0.0) return false
+        val allocated = buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
         val items = array(c, E)
         if ((0 until items.length()).any { items.optJSONObject(it)?.optLong("id") == x.id }) return false
         items.put(expenseJson(x.copy(
+            amount = normalizedAmount,
             allocations = allocated.first,
             allocationEstimated = allocated.second,
             updatedAt = System.currentTimeMillis()
@@ -220,6 +223,8 @@ object ExpenseStorage {
     /** Editing amount/date replaces the allocation snapshot atomically with the expense. */
     fun updateExpense(c: Context, x: Expense): Boolean {
         if (!x.amount.isFinite() || x.amount <= 0.0 || !validDate(x.date)) return false
+        val normalizedAmount = moneyCents(x.amount) / 100.0
+        if (normalizedAmount <= 0.0) return false
         val items = array(c, E)
         var found = false
         for (i in 0 until items.length()) {
@@ -227,12 +232,13 @@ object ExpenseStorage {
             if (old.optLong("id") == x.id) {
                 val oldAllocations = parseAllocations(old.optJSONArray("allocations"))
                 val sameFinancialValue = old.optString("date") == x.date &&
-                    moneyCents(old.optDouble("amount", 0.0)) == moneyCents(x.amount)
+                    moneyCents(old.optDouble("amount", 0.0)) == moneyCents(normalizedAmount)
                 val allocated = if (sameFinancialValue && oldAllocations.isNotEmpty() &&
-                    oldAllocations.sumOf { moneyCents(it.amount) } == moneyCents(x.amount)
+                    oldAllocations.sumOf { moneyCents(it.amount) } == moneyCents(normalizedAmount)
                 ) oldAllocations to old.optBoolean("allocationEstimated", false)
-                else buildAllocations(c, x.date, x.amount, allowEstimatedLegacyRate = false) ?: return false
+                else buildAllocations(c, x.date, normalizedAmount, allowEstimatedLegacyRate = false) ?: return false
                 items.put(i, expenseJson(x.copy(
+                    amount = normalizedAmount,
                     allocations = allocated.first,
                     allocationEstimated = allocated.second,
                     updatedAt = System.currentTimeMillis()
