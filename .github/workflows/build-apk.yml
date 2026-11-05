@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/all-time-expense-and-ledger-balance
       - fix/safe-finance-partner-sync
       - feat/partner-profit-withdrawals
       - feat/partner-profit-loss-allocation
