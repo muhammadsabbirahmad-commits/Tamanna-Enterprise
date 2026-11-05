@@ -488,18 +488,19 @@ private fun DoubleEntryFinancialScreen() {
             }
 
             Text("প্রারম্ভিক মূলধন ও সম্পদ যাচাই", style = MaterialTheme.typography.titleLarge)
-            val openingCapital = openingBalances?.let { opening ->
+            val openingSnapshot = openingBalances
+            val openingCapital = openingSnapshot?.let { opening ->
                 PartnerStorage.getCapitalContributions(context)
                     .filter { dateKey(it.date) <= opening.date }
                     .sumOf { it.amount }
             } ?: 0.0
-            val openingDifference = openingBalances?.let {
+            val openingDifference = openingSnapshot?.let {
                 it.totalAssets - it.totalLiabilities - openingCapital
             } ?: 0.0
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (openingBalances == null) "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ"
-                        else if (openingBalances.verified && openingBalances.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
+                    Text(if (openingSnapshot == null) "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ"
+                        else if (openingSnapshot.verified && openingSnapshot.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) "প্রারম্ভিক ব্যালান্স: মিলেছে"
                         else "প্রারম্ভিক ব্যালান্স: অসম্পূর্ণ",
                         style = MaterialTheme.typography.titleMedium,
                         color = if (openingBalances?.verified == true && openingBalances.date == fromDate && kotlin.math.abs(openingDifference) < 0.01) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
@@ -507,12 +508,12 @@ private fun DoubleEntryFinancialScreen() {
                         Text("শুরুর দিনের প্রকৃত নগদ, ব্যাংক, স্টক, ক্রেতার পাওনা ও দেনা এখনো লেখা হয়নি।", style = MaterialTheme.typography.bodySmall)
                     } else {
                         Text("হিসাবের তারিখ: ${openingBalances.date}", style = MaterialTheme.typography.bodySmall)
-                        SummaryLine("প্রারম্ভিক নগদ", openingBalances.cash)
-                        SummaryLine("প্রারম্ভিক ব্যাংক", openingBalances.bank)
-                        SummaryLine("প্রারম্ভিক স্টক (ক্রয়মূল্যে)", openingBalances.stock)
-                        SummaryLine("প্রারম্ভিক ক্রেতার পাওনা", openingBalances.customerReceivable)
-                        SummaryLine("প্রারম্ভিক সরবরাহকারী দেনা", openingBalances.supplierPayable)
-                        SummaryLine("অন্যান্য প্রারম্ভিক দেনা", openingBalances.otherLiabilities)
+                        SummaryLine("প্রারম্ভিক নগদ", openingSnapshot.cash)
+                        SummaryLine("প্রারম্ভিক ব্যাংক", openingSnapshot.bank)
+                        SummaryLine("প্রারম্ভিক স্টক (ক্রয়মূল্যে)", openingSnapshot.stock)
+                        SummaryLine("প্রারম্ভিক ক্রেতার পাওনা", openingSnapshot.customerReceivable)
+                        SummaryLine("প্রারম্ভিক সরবরাহকারী দেনা", openingSnapshot.supplierPayable)
+                        SummaryLine("অন্যান্য প্রারম্ভিক দেনা", openingSnapshot.otherLiabilities)
                         SummaryLine("প্রারম্ভিক পার্টনার মূলধন (রেকর্ড অনুযায়ী)", openingCapital)
                         SummaryLine("সম্পদ − দেনা − মূলধন", openingDifference)
                         if (!openingBalances.verified) Text("এই অঙ্কগুলো এখনো ব্যবহারকারী দ্বারা যাচাইকৃত হিসেবে চিহ্নিত হয়নি।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -520,7 +521,7 @@ private fun DoubleEntryFinancialScreen() {
                         if (openingBalances.date != fromDate) Text("এই রিপোর্টের শুরুর তারিখের সঙ্গে প্রারম্ভিক ব্যালান্সের তারিখ মিলছে না।", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                     Button(onClick = { showOpeningBalanceDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (openingBalances == null) "প্রারম্ভিক ব্যালান্স লিখুন" else "প্রারম্ভিক ব্যালান্স সম্পাদনা করুন")
+                        Text(if (openingSnapshot == null) "প্রারম্ভিক ব্যালান্স লিখুন" else "প্রারম্ভিক ব্যালান্স সম্পাদনা করুন")
                     }
                 }
             }
