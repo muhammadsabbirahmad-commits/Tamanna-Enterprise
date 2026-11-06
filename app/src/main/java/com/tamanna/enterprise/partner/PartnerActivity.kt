@@ -58,6 +58,70 @@ private fun normalizePartnerDate(value: String): String {
     return date.takeIf(::isValidPartnerDate).orEmpty()
 }
 
+private data class PartnerProfitTotals(
+    val profitByPartner: Map<Long, Double>,
+    val lossByPartner: Map<Long, Double>
+)
+
+/**
+ * Splits each day's distributable profit/loss as one complete amount.
+ * Largest-remainder rounding guarantees that partner shares add up to the
+ * exact daily amount in paisa when the effective rates total 100%.
+ */
+private fun allocatePartnerProfitByDay(
+    context: android.content.Context,
+    partners: List<Partner>,
+    dailyNet: Map<String, Double>
+): PartnerProfitTotals {
+    val profitTotals = partners.associate { it.id to 0L }.toMutableMap()
+    val lossTotals = partners.associate { it.id to 0L }.toMutableMap()
+
+    fun splitCents(amountCents: Long, rates: List<Pair<Long, Double>>, target: MutableMap<Long, Long>) {
+        if (amountCents <= 0L || rates.isEmpty()) return
+        val totalRate = rates.sumOf { it.second }
+        if (totalRate <= 0.0) return
+        val rawShares = rates.map { (partnerId, percentage) ->
+            partnerId to (amountCents.toDouble() * percentage / totalRate)
+        }
+        val baseShares = rawShares.associate { (id, raw) -> id to kotlin.math.floor(raw).toLong() }
+        var remaining = amountCents - baseShares.values.sum()
+        val order = rawShares.sortedWith(
+            compareByDescending<Pair<Long, Double>> { it.second - kotlin.math.floor(it.second) }
+                .thenBy { it.first }
+        )
+        val allocated = baseShares.toMutableMap()
+        var index = 0
+        while (remaining > 0L && order.isNotEmpty()) {
+            val partnerId = order[index % order.size].first
+            allocated[partnerId] = (allocated[partnerId] ?: 0L) + 1L
+            remaining--
+            index++
+        }
+        allocated.forEach { (partnerId, cents) ->
+            target[partnerId] = (target[partnerId] ?: 0L) + cents
+        }
+    }
+
+    dailyNet.toSortedMap().forEach { (day, net) ->
+        if (!net.isFinite()) return@forEach
+        val rates = partners.map { partner ->
+            partner.id to PartnerStorage.getPercentageForDate(context, partner.id, day)
+        }
+        val validRates = rates.all { it.second.isFinite() && it.second >= 0.0 && it.second <= 100.0 }
+        val totalRate = rates.sumOf { it.second }
+        if (!validRates || kotlin.math.abs(totalRate - 100.0) > 0.0001) return@forEach
+
+        val cents = kotlin.math.round(kotlin.math.abs(net) * 100.0).toLong()
+        if (net >= 0.0) splitCents(cents, rates, profitTotals)
+        else splitCents(cents, rates, lossTotals)
+    }
+
+    return PartnerProfitTotals(
+        profitByPartner = profitTotals.mapValues { it.value / 100.0 },
+        lossByPartner = lossTotals.mapValues { it.value / 100.0 }
+    )
+}
+
 private fun partnerDateRange(fromDate: String, toDate: String): List<String> {
     val start = parsePartnerDate(fromDate) ?: return emptyList()
     val end = parsePartnerDate(toDate) ?: return emptyList()
@@ -168,6 +232,12 @@ fun PartnerScreen() {
         if (!validRange) emptyList() else partnerDateRange(fromDate, toDate).map { day -> day to (allDailyNet[day] ?: 0.0) }
     }
     val lifetimeNetByDay = allDailyNet
+    val periodProfitTotals = remember(refresh, dailyNet, partners) {
+        allocatePartnerProfitByDay(context, partners, dailyNet.toMap())
+    }
+    val lifetimeProfitTotals = remember(refresh, lifetimeNetByDay, partners) {
+        allocatePartnerProfitByDay(context, partners, lifetimeNetByDay)
+    }
     val totalCapital = partners.sumOf { it.shareAmount }
     val totalPercentage = partners.sumOf { it.profitPercentage }
     val distributionValid = kotlin.math.abs(totalPercentage - 100.0) <= 0.0001
@@ -270,18 +340,10 @@ fun PartnerScreen() {
             Text("প্রত্যেক পার্টনারের সব তথ্য ও কাজ একটিমাত্র কার্ডে রাখা হয়েছে। তারিখের পরিসর বদলালে কার্ডের সময়ভিত্তিক হিসাবও বদলাবে।", style = MaterialTheme.typography.bodySmall)
             if (partners.isEmpty()) Text("এখনও কোনো পার্টনারের তথ্য যোগ করা হয়নি।")
             partners.forEach { partner ->
-                val allocatedProfit = dailyNet.sumOf { (day, net) ->
-                    maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
-                val allocatedLoss = dailyNet.sumOf { (day, net) ->
-                    kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
-                val lifetimeProfit = lifetimeNetByDay.entries.sumOf { (day, net) ->
-                    maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
-                val lifetimeLoss = lifetimeNetByDay.entries.sumOf { (day, net) ->
-                    kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, partner.id, day) / 100.0
-                }
+                val allocatedProfit = periodProfitTotals.profitByPartner[partner.id] ?: 0.0
+                val allocatedLoss = periodProfitTotals.lossByPartner[partner.id] ?: 0.0
+                val lifetimeProfit = lifetimeProfitTotals.profitByPartner[partner.id] ?: 0.0
+                val lifetimeLoss = lifetimeProfitTotals.lossByPartner[partner.id] ?: 0.0
                 val withdrawnTotal = withdrawals.filter { it.partnerId == partner.id }.sumOf { it.amount }
                 val capitalizedProfit = PartnerStorage.getCapitalContributions(context)
                     .filter { it.partnerId == partner.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
@@ -398,16 +460,16 @@ fun PartnerScreen() {
     }
 
     withdrawingPartner?.let { selected ->
-        val earnedProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-        val allocatedLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+        val earnedProfit = lifetimeProfitTotals.profitByPartner[selected.id] ?: 0.0
+        val allocatedLoss = lifetimeProfitTotals.lossByPartner[selected.id] ?: 0.0
         val capitalized = PartnerStorage.getCapitalContributions(context)
             .filter { it.partnerId == selected.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
             .sumOf { it.amount.coerceAtLeast(0.0) }
         val balance = earnedProfit - allocatedLoss -
             withdrawals.filter { it.partnerId == selected.id }.sumOf { it.amount } - capitalized
         PartnerWithdrawalDialog(selected, balance, onDismiss = { withdrawingPartner = null }) { amount, date, note ->
-            val currentProfit = lifetimeNetByDay.entries.sumOf { (day, net) -> maxOf(net, 0.0) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
-            val currentLoss = lifetimeNetByDay.entries.sumOf { (day, net) -> kotlin.math.abs(minOf(net, 0.0)) * PartnerStorage.getPercentageForDate(context, selected.id, day) / 100.0 }
+            val currentProfit = lifetimeProfitTotals.profitByPartner[selected.id] ?: 0.0
+            val currentLoss = lifetimeProfitTotals.lossByPartner[selected.id] ?: 0.0
             val currentCapitalized = PartnerStorage.getCapitalContributions(context)
                 .filter { it.partnerId == selected.id && it.note.startsWith("অবণ্টিত লভ্যাংশ মূলধনে যোগ") }
                 .sumOf { it.amount.coerceAtLeast(0.0) }
