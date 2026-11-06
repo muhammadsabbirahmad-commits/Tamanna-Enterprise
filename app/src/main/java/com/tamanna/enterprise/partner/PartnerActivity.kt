@@ -145,10 +145,11 @@ fun PartnerScreen() {
     val partners = remember(refresh) { PartnerStorage.getPartners(context) }
     val withdrawals = remember(refresh) { PartnerStorage.getWithdrawals(context) }
     val profitReport = remember(refresh) { BusinessProfitCalculator.calculate(context) }
-    // Partner dividend/deficit must use actual daily net profit after expenses and damage.
-    // The rolling-recovery map can be zero while expenses are still being carried forward,
-    // which hides a real deficit from each partner's date-range and lifetime totals.
-    val allDailyNet = remember(profitReport) { profitReport.days.associate { it.date to it.netProfit } }
+    // Partner shares must use the calculator's distributable daily result.
+    // It carries unrecovered operating expenses forward, while treating damage as a
+    // direct loss. Using DailyBusinessProfit.netProfit here double-counted expenses
+    // against the partner allocation flow and made the displayed split disagree.
+    val allDailyNet = remember(profitReport) { profitReport.partnerDistributionByDay }
     val unallocatedExpenseTotal = remember(refresh) { ExpenseStorage.getUnallocatedExpenseTotal(context) }
     val estimatedExpenseTotal = remember(refresh) { ExpenseStorage.getEstimatedAllocationExpenseTotal(context) }
 
@@ -463,7 +464,7 @@ fun PartnerCard(
                 Surface(color = statusColor, shape = MaterialTheme.shapes.small) {
                     Text(
                         text = when {
-                            periodNet > 0.004 -> "লাভ ৳ %.2f".format(Locale.US, periodNet)
+                            periodNet > 0.004 -> "লভ্যাংশ ৳ %.2f".format(Locale.US, periodNet)
                             periodNet < -0.004 -> "ঘাটতি ৳ %.2f".format(Locale.US, kotlin.math.abs(periodNet))
                             else -> "সমতা ৳ 0.00"
                         },
