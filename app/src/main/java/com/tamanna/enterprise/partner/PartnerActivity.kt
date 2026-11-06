@@ -78,8 +78,10 @@ private fun allocatePartnerProfitByDay(
 
     fun splitCents(amountCents: Long, rates: List<Pair<Long, Double>>, target: MutableMap<Long, Long>) {
         if (amountCents <= 0L || rates.isEmpty()) return
+        val totalRate = rates.sumOf { it.second }
+        if (totalRate <= 0.0) return
         val rawShares = rates.map { (partnerId, percentage) ->
-            partnerId to (amountCents.toDouble() * percentage / 100.0)
+            partnerId to (amountCents.toDouble() * percentage / totalRate)
         }
         val baseShares = rawShares.associate { (id, raw) -> id to kotlin.math.floor(raw).toLong() }
         var remaining = amountCents - baseShares.values.sum()
@@ -87,13 +89,16 @@ private fun allocatePartnerProfitByDay(
             compareByDescending<Pair<Long, Double>> { it.second - kotlin.math.floor(it.second) }
                 .thenBy { it.first }
         )
-        order.forEachIndexed { index, (id, _) ->
-            if (remaining > 0L) {
-                target[id] = (target[id] ?: 0L) + (baseShares[id] ?: 0L) + 1L
-                remaining--
-            } else {
-                target[id] = (target[id] ?: 0L) + (baseShares[id] ?: 0L)
-            }
+        val allocated = baseShares.toMutableMap()
+        var index = 0
+        while (remaining > 0L && order.isNotEmpty()) {
+            val partnerId = order[index % order.size].first
+            allocated[partnerId] = (allocated[partnerId] ?: 0L) + 1L
+            remaining--
+            index++
+        }
+        allocated.forEach { (partnerId, cents) ->
+            target[partnerId] = (target[partnerId] ?: 0L) + cents
         }
     }
 
