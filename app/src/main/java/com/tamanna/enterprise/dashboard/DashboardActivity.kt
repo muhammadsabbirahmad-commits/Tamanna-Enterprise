@@ -67,7 +67,7 @@ class DashboardActivity : ComponentActivity() {
         // ড্যাশবোর্ডের ডাটা হিসাব করে UI সেট করার ফাংশন
         fun renderDashboardUI() {
             val loggedIn = SecurityStorage.getCurrentUser(context) != null
-            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             
             // Data Fetching
             val sales = if (loggedIn) SalesStorage.getSales(context) else emptyList()
