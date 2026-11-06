@@ -103,10 +103,19 @@ object BusinessProfitCalculator {
             }
         }
         val days = linkedMapOf<String, MutableDaily>()
+        // Partner allocation is restated against the original sale date when a
+        // return is recorded. The user-facing profit report still records the
+        // cash/credit return on its actual return date.
+        val partnerDays = linkedMapOf<String, MutableDaily>()
 
         fun bucket(date: String): MutableDaily {
             val key = day(date)
             return days.getOrPut(key) { MutableDaily() }
+        }
+
+        fun partnerBucket(date: String): MutableDaily {
+            val key = day(date)
+            return partnerDays.getOrPut(key) { MutableDaily() }
         }
 
         sales.forEach { sale ->
@@ -122,6 +131,11 @@ object BusinessProfitCalculator {
             item.grossSales += gross
             item.salesDiscount += discount
             item.cogs += sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0)
+
+            val partnerItem = partnerBucket(key)
+            partnerItem.grossSales += gross
+            partnerItem.salesDiscount += discount
+            partnerItem.cogs += sale.quantity.coerceAtLeast(0) * sale.purchasePrice.coerceAtLeast(0.0)
         }
 
         returns.forEach { ret ->
@@ -130,7 +144,11 @@ object BusinessProfitCalculator {
             val item = bucket(returnDate)
             // The saved return amount is the authoritative net amount actually refunded/credited.
             item.returnRevenue += ret.amount.coerceAtLeast(0.0)
-            returnLines.filter { it.returnId == ret.returnId }.forEach { line ->
+            val linesForReturn = returnLines.filter { it.returnId == ret.returnId }
+            val grossReturnedValue = linesForReturn.sumOf {
+                it.quantity.coerceAtLeast(0) * it.unitPrice.coerceAtLeast(0.0)
+            }
+            linesForReturn.forEach { line ->
                 val originals = sales.filter {
                     it.transactionId == line.transactionId &&
                         it.productCode.trim().equals(line.productCode.trim(), ignoreCase = true)
@@ -142,7 +160,21 @@ object BusinessProfitCalculator {
                 val weightedUnitCost = if (originalUnits > 0) {
                     originals.sumOf { it.quantity.coerceAtLeast(0) * it.purchasePrice.coerceAtLeast(0.0) } / originalUnits
                 } else 0.0
-                item.returnCost += line.quantity.coerceAtLeast(0) * weightedUnitCost
+                val returnedCost = line.quantity.coerceAtLeast(0) * weightedUnitCost
+                item.returnCost += returnedCost
+
+                // Reverse the returned quantity from the original sale day for
+                // partner dividends. This removes the original profit instead of
+                // leaving it in lifetime profit and showing a separate later loss.
+                val originalDate = originals.firstOrNull()?.date?.let(::day).orEmpty()
+                if (originalDate.isNotBlank() && grossReturnedValue > 0.0) {
+                    val grossLineValue = line.quantity.coerceAtLeast(0) * line.unitPrice.coerceAtLeast(0.0)
+                    val netLineReturn = ret.amount.coerceAtLeast(0.0) * grossLineValue / grossReturnedValue
+                    val partnerItem = partnerBucket(originalDate)
+                    partnerItem.grossSales -= grossLineValue
+                    partnerItem.salesDiscount -= (grossLineValue - netLineReturn)
+                    partnerItem.cogs -= returnedCost
+                }
             }
         }
 
@@ -157,12 +189,14 @@ object BusinessProfitCalculator {
             val key = day(expense.date)
             if (key.isNotBlank() && (toDate == null || key <= toDate)) {
                 bucket(key).expenses += expense.amount.coerceAtLeast(0.0)
+                partnerBucket(key).expenses += expense.amount.coerceAtLeast(0.0)
             }
         }
         damages.forEach { damage ->
             val key = day(damage.date)
             if (key.isNotBlank() && (toDate == null || key <= toDate)) {
                 bucket(key).damageLoss += damage.totalLoss.coerceAtLeast(0.0)
+                partnerBucket(key).damageLoss += damage.totalLoss.coerceAtLeast(0.0)
             }
         }
 
@@ -174,7 +208,11 @@ object BusinessProfitCalculator {
         // Run recovery from the beginning of the available business history through toDate.
         // Only the displayed rows are filtered by fromDate, so changing the calendar
         // start date never resets the opening unpaid-expense balance.
-        val recovery = calculateExpenseRecovery(dailyResults)
+        val partnerDailyResults = partnerDays.map { (date, item) ->
+            DailyBusinessProfit(date, item.grossSales, item.salesDiscount, item.cogs,
+                item.returnRevenue, item.returnCost, item.expenses, item.damageLoss)
+        }.sortedBy { it.date }
+        val recovery = calculateExpenseRecovery(partnerDailyResults)
         val visibleDays = dailyResults.filter { fromDate == null || it.date >= fromDate }
         val visibleDistribution = recovery.distributableByDay.filterKeys { fromDate == null || it >= fromDate }
 
