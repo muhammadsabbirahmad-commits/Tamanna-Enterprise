@@ -64,14 +64,15 @@ private fun SalesScreen(onNewSale: () -> Unit) {
     val canWrite = SecurityStorage.canWrite(context)
     var selectedGroup by remember { mutableStateOf<SaleGroup?>(null) }
     var editingGroup by remember { mutableStateOf<SaleGroup?>(null) }
+    var dataRefresh by remember { mutableStateOf(0) }
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var appliedStart by remember { mutableStateOf("") }
     var appliedEnd by remember { mutableStateOf("") }
     var dateMessage by remember { mutableStateOf("") }
 
-    val sales = remember { SalesStorage.getSales(context) }
-    val transactions = remember { SalesTransactionStorage.getTransactions(context) }
+    val sales = remember(dataRefresh) { SalesStorage.getSales(context) }
+    val transactions = remember(dataRefresh) { SalesTransactionStorage.getTransactions(context) }
 
     val allGroups = sales.groupBy { it.transactionId }.values
         .map { lines ->
@@ -286,6 +287,7 @@ private fun SalesScreen(onNewSale: () -> Unit) {
                     if (!SalesStorage.replaceTransactionSales(context, group.transactionId, updatedLines) ||
                         !SalesTransactionStorage.updateTransaction(context, updatedTx)
                     ) throw IllegalStateException("ইনভয়েস সংরক্ষণ ব্যর্থ")
+                    dataRefresh++
                     editingGroup = null
                     Toast.makeText(context, "ইনভয়েস আপডেট হয়েছে।", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
