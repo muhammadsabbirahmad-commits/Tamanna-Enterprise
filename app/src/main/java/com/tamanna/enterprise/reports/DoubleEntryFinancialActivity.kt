@@ -20,6 +20,7 @@ import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.finance.ExpenseStorage
 import com.tamanna.enterprise.partner.PartnerStorage
 import com.tamanna.enterprise.profit.BusinessProfitCalculator
+import com.tamanna.enterprise.profit.DailyBusinessProfit
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.purchase.PurchaseStorage
 import com.tamanna.enterprise.purchase.SupplierDueStorage
@@ -102,6 +103,65 @@ private fun validLedgerDate(value: String): Boolean = runCatching {
 }.getOrDefault(false)
 
 private fun money(value: Double): String = "৳ " + String.format(Locale.US, "%,.2f", value)
+
+/**
+ * Uses the same partner recovery rules as the Partner screen:
+ * allocated expenses/damage first increase deficit; each partner's daily
+ * trading-profit share clears that deficit before any dividend is earned.
+ * The opening deficit is carried forward even when the selected range starts later.
+ */
+private fun calculatePartnerDividendOrDeficit(
+    context: android.content.Context,
+    fromDate: String,
+    toDate: String
+): Double {
+    if (!validLedgerDate(fromDate) || !validLedgerDate(toDate) || fromDate > toDate) return 0.0
+
+    val dailyResults = BusinessProfitCalculator.calculate(context).days
+    val resultsByDay = dailyResults.associateBy { it.date }
+    val expensesByPartner = PartnerStorage.getPartners(context).associate { partner ->
+        val byDay = mutableMapOf<String, Double>()
+        ExpenseStorage.getExpenses(context).forEach { expense ->
+            expense.allocations.firstOrNull { it.partnerId == partner.id }?.let { allocation ->
+                val date = expense.date.take(10)
+                byDay[date] = (byDay[date] ?: 0.0) + allocation.amount
+            }
+        }
+        ExpenseStorage.getDamages(context).forEach { damage ->
+            damage.allocations.firstOrNull { it.partnerId == partner.id }?.let { allocation ->
+                val date = damage.date.take(10)
+                byDay[date] = (byDay[date] ?: 0.0) + allocation.amount
+            }
+        }
+        partner.id to byDay
+    }
+
+    return PartnerStorage.getPartners(context).sumOf { partner ->
+        val partnerExpenses = expensesByPartner[partner.id].orEmpty()
+        val dates = (resultsByDay.keys + partnerExpenses.keys)
+            .filter { it <= toDate }
+            .sorted()
+        var outstandingDeficit = 0.0
+        var selectedPeriodDividend = 0.0
+
+        dates.forEach { date ->
+            val day: DailyBusinessProfit? = resultsByDay[date]
+            val tradingProfitBeforeExpenses = day?.let {
+                it.grossSales - it.salesDiscount - it.costOfGoodsSold -
+                    it.returnRevenue + it.returnCost
+            } ?: 0.0
+            val partnerTradingShare = tradingProfitBeforeExpenses *
+                PartnerStorage.getPercentageForDate(context, partner.id, date) / 100.0
+            outstandingDeficit += (partnerExpenses[date] ?: 0.0) - partnerTradingShare
+
+            val dailyDividend = (-outstandingDeficit).coerceAtLeast(0.0)
+            if (dailyDividend > 0.0) outstandingDeficit = 0.0
+            if (date >= fromDate) selectedPeriodDividend += dailyDividend
+        }
+
+        selectedPeriodDividend - outstandingDeficit.coerceAtLeast(0.0)
+    }
+}
 
 
 
@@ -603,7 +663,10 @@ private fun DoubleEntryFinancialScreen() {
         PartnerStorage.getCapitalContributions(context).filter { dateKey(it.date) >= fromDate && dateKey(it.date) <= toDate }
     }
     val alreadyCapitalizedAmount = PartnerStorage.getCapitalizedProfitAmount(context, fromDate, toDate)
-    val remainingDividend = summary.distributableProfit - summary.withdrawalTotal - alreadyCapitalizedAmount
+    val partnerDividendOrDeficit = remember(refresh, fromDate, toDate) {
+        if (validRange) calculatePartnerDividendOrDeficit(context, fromDate, toDate) else 0.0
+    }
+    val remainingDividend = partnerDividendOrDeficit - summary.withdrawalTotal - alreadyCapitalizedAmount
     val alreadyCapitalized = PartnerStorage.isProfitPeriodCapitalized(context, fromDate, toDate)
 
     // The debit detail shows four management figures. Recoverable business
