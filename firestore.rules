@@ -3,143 +3,217 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    // Only the designated app owner may approve/revoke other Gmail accounts.
-    function enterpriseAdmin() {
-      return signedIn()
-        && (
-          (
-            exists(/databases/$(database)/documents/appConfig/admin)
-            && get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
-            && get(/databases/$(database)/documents/appConfig/admin).data.role == "ADMIN"
-          )
-          || (
-            exists(/databases/$(database)/documents/accessUsers/$(request.auth.uid))
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.uid == request.auth.uid
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.role == "ADMIN"
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.approved == true
-            && get(/databases/$(database)/documents/accessUsers/$(request.auth.uid)).data.blocked != true
-          )
-        );
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    function approvedUser() {
-      return signedIn()
-        && (
-          enterpriseAdmin()
-          || (
-            exists(/databases/$(database)/documents/accessRequests/$(request.auth.uid))
-            && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.uid == request.auth.uid
-            && get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.status == "ACTIVE"
-            && (
-              get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.expiresAt == 0
-              || get(/databases/$(database)/documents/accessRequests/$(request.auth.uid)).data.expiresAt > request.time.toMillis()
-            )
-          )
-        );
+    function incoming() {
+      return request.resource.data;
     }
 
-    function isBusinessOwner(businessId) {
-      return approvedUser()
-        && get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid;
+    function existing() {
+      return resource.data;
     }
 
-
-    match /accessRequests/{userId} {
-      allow get: if signedIn() && request.auth.uid == userId;
-      allow list: if enterpriseAdmin();
-
-      allow create: if signedIn()
-        && request.auth.uid == userId
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.status == "PENDING"
-        && request.resource.data.startAt == 0
-        && request.resource.data.expiresAt == 0
-        && request.resource.data.notificationsEnabled == false;
-
-      allow update: if enterpriseAdmin()
-        && request.resource.data.uid == resource.data.uid
-        && request.resource.data.email == resource.data.email
-        && request.resource.data.status in ["PENDING", "ACTIVE", "BLOCKED", "REJECTED", "EXPIRED"]
-        && request.resource.data.startAt is int
-        && request.resource.data.expiresAt is int
-        && request.resource.data.notificationsEnabled is bool;
-
-      allow delete: if enterpriseAdmin();
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    match /accessUsers/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || enterpriseAdmin());
-
-      allow create: if signedIn()
-        && request.auth.uid == userId
-        && request.resource.data.uid == request.auth.uid
-        && request.auth.token.email_verified == true
-        && request.resource.data.role == "ADMIN"
-        && request.resource.data.approved == true
-        && request.resource.data.email == request.auth.token.email
-        && (
-          !exists(/databases/$(database)/documents/appConfig/admin)
-          || get(/databases/$(database)/documents/appConfig/admin).data.uid == request.auth.uid
-        );
-
-      allow update, delete: if enterpriseAdmin();
+    function isValidShop(data, shopId) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'ownerEmail',
+          'shopName',
+          'updatedAt',
+          'serverCreatedAt',
+          'serverUpdatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'ownerEmail',
+          'shopName',
+          'updatedAt',
+          'serverCreatedAt',
+          'serverUpdatedAt'
+        ])
+        && data.ownerUid is string
+        && data.ownerUid == request.auth.uid
+        && data.ownerUid == shopId
+        && data.ownerUid.size() >= 1
+        && data.ownerUid.size() <= 128
+        && data.ownerUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerEmail is string
+        && data.ownerEmail.size() <= 254
+        && data.shopName is string
+        && data.shopName.size() >= 1
+        && data.shopName.size() <= 120
+        && (data.updatedAt is int || data.updatedAt is float)
+        && data.updatedAt >= 0
+        && data.serverCreatedAt is timestamp
+        && data.serverUpdatedAt is timestamp;
     }
 
-    match /appConfig/admin {
-      allow read: if signedIn();
-
-      allow create: if signedIn()
-        && request.auth.token.email_verified == true
-        && !exists(/databases/$(database)/documents/appConfig/admin)
-        && request.resource.data.role == "ADMIN"
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == request.auth.token.email;
-
-      allow update, delete: if enterpriseAdmin();
+    function isValidCollectionKey(key) {
+      return key in [
+        'products',
+        'inventory_meta',
+        'stock_history',
+        'sales',
+        'sale_transactions',
+        'sale_returns',
+        'sale_return_lines',
+        'sale_exchanges',
+        'purchases',
+        'suppliers',
+        'supplier_dues',
+        'customers',
+        'customer_dues',
+        'expenses',
+        'damages',
+        'partners',
+        'partner_rates',
+        'partner_capital',
+        'partner_withdrawals',
+        'partner_capitalized',
+        'cash_accounts',
+        'opening_balance',
+        'daily_balances',
+        'activity_logs',
+        'settings'
+      ];
     }
 
-    match /businesses/{businessId} {
-      allow read: if isBusinessOwner(businessId);
-      allow create: if approvedUser() && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if isBusinessOwner(businessId);
+    function isValidRecord(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'businessId',
+          'collectionKey',
+          'itemId',
+          'payload',
+          'deleted',
+          'updatedAt',
+          'serverCreatedAt',
+          'serverUpdatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'businessId',
+          'collectionKey',
+          'itemId',
+          'payload',
+          'deleted',
+          'updatedAt',
+          'serverCreatedAt',
+          'serverUpdatedAt'
+        ])
+        && data.ownerUid is string
+        && data.ownerUid == request.auth.uid
+        && data.ownerUid.size() >= 1
+        && data.ownerUid.size() <= 128
+        && data.ownerUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.businessId is string
+        && data.businessId.size() >= 1
+        && data.businessId.size() <= 64
+        && data.businessId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.collectionKey is string
+        && data.collectionKey.size() >= 1
+        && data.collectionKey.size() <= 64
+        && isValidCollectionKey(data.collectionKey)
+        && data.itemId is string
+        && data.itemId.size() >= 1
+        && data.itemId.size() <= 128
+        && data.payload is map
+        && data.payload.keys().size() <= 40
+        && data.deleted is bool
+        && (data.updatedAt is int || data.updatedAt is float)
+        && data.updatedAt >= 0
+        && data.serverCreatedAt is timestamp
+        && data.serverUpdatedAt is timestamp;
+    }
 
-      match /members/{memberId} {
-        allow read: if isBusinessOwner(businessId);
+    function isShopOwner(shopId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/shops/$(shopId))
+        && get(/databases/$(database)/documents/shops/$(shopId)).data.ownerUid == request.auth.uid;
+    }
 
-        allow create, update: if signedIn()
-          && memberId == request.auth.uid
-          && isBusinessOwner(businessId)
-          && request.resource.data.uid == request.auth.uid
-          && request.resource.data.email == request.auth.token.email
-          && request.resource.data.role == "OWNER"
-          && request.resource.data.approved == true
-          && request.resource.data.blocked == false;
+    match /shops/{shopId} {
+      allow get: if isSignedIn() && isValidId(shopId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && existing().ownerUid == request.auth.uid;
 
-        allow delete: if signedIn()
-          && memberId == request.auth.uid
-          && isBusinessOwner(businessId);
+      allow create: if isVerifiedUser()
+        && isValidId(shopId)
+        && isValidShop(incoming(), shopId)
+        && incoming().serverCreatedAt == request.time
+        && incoming().serverUpdatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(shopId)
+        && existing().ownerUid == request.auth.uid
+        && isValidShop(incoming(), shopId)
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().serverCreatedAt == existing().serverCreatedAt
+        && incoming().serverUpdatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'ownerEmail',
+          'shopName',
+          'updatedAt',
+          'serverUpdatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /records/{recordId} {
+        allow get: if isSignedIn()
+          && isValidId(shopId)
+          && isValidId(recordId)
+          && existing().ownerUid == request.auth.uid
+          && isShopOwner(shopId);
+
+        allow list: if isSignedIn() && existing().ownerUid == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isValidId(shopId)
+          && isValidId(recordId)
+          && isValidRecord(incoming())
+          && incoming().serverCreatedAt == request.time
+          && incoming().serverUpdatedAt == request.time
+          && isShopOwner(shopId);
+
+        allow update: if isVerifiedUser()
+          && isValidId(shopId)
+          && isValidId(recordId)
+          && existing().ownerUid == request.auth.uid
+          && isValidRecord(incoming())
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().businessId == existing().businessId
+          && incoming().collectionKey == existing().collectionKey
+          && incoming().itemId == existing().itemId
+          && incoming().serverCreatedAt == existing().serverCreatedAt
+          && incoming().serverUpdatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'payload',
+            'deleted',
+            'updatedAt',
+            'serverUpdatedAt'
+          ])
+          && isShopOwner(shopId);
+
+        allow delete: if isVerifiedUser()
+          && isValidId(shopId)
+          && isValidId(recordId)
+          && existing().ownerUid == request.auth.uid
+          && isShopOwner(shopId);
       }
-
-      match /data/{document} {
-        allow read: if isBusinessOwner(businessId);
-        allow write: if isBusinessOwner(businessId);
-
-        // CloudSyncManager stores each SharedPreferences namespace below
-        // businesses/{businessId}/data/backup/backupData/{namespace}.
-        match /backupData/{namespace} {
-          allow read: if isBusinessOwner(businessId);
-          allow write: if isBusinessOwner(businessId);
-        }
-      }
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

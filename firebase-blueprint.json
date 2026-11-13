@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "ShopWorkspace": {
+      "title": "ShopWorkspace",
+      "description": "Root workspace document for a merchant's Gmail-synced shop, acting as the Master Gate for all synchronized shop records.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the Gmail owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Gmail address of the shop owner.",
+          "maxLength": 254
+        },
+        "shopName": {
+          "type": "string",
+          "description": "Display name of the shop.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Client update timestamp in milliseconds."
+        },
+        "serverCreatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server creation timestamp."
+        },
+        "serverUpdatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "ownerUid",
+        "ownerEmail",
+        "shopName",
+        "updatedAt",
+        "serverCreatedAt",
+        "serverUpdatedAt"
+      ]
+    },
+    "SyncRecord": {
+      "title": "SyncRecord",
+      "description": "Individual business record (product, sale, transaction, return, exchange, purchase, due, expense, damage, partner, balance, setting) stored as a native Firestore map with soft-delete support for conflict-free multi-device offline/online sync.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner matching the parent shop.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "businessId": {
+          "type": "string",
+          "description": "Scoped business identifier (e.g. default).",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "collectionKey": {
+          "type": "string",
+          "description": "Domain collection identifier.",
+          "enum": [
+            "products",
+            "inventory_meta",
+            "stock_history",
+            "sales",
+            "sale_transactions",
+            "sale_returns",
+            "sale_return_lines",
+            "sale_exchanges",
+            "purchases",
+            "suppliers",
+            "supplier_dues",
+            "customers",
+            "customer_dues",
+            "expenses",
+            "damages",
+            "partners",
+            "partner_rates",
+            "partner_capital",
+            "partner_withdrawals",
+            "partner_capitalized",
+            "cash_accounts",
+            "opening_balance",
+            "daily_balances",
+            "activity_logs",
+            "settings"
+          ],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "itemId": {
+          "type": "string",
+          "description": "Domain item identifier within the collectionKey.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "payload": {
+          "type": "object",
+          "description": "Native Firestore Map containing the domain record fields."
+        },
+        "deleted": {
+          "type": "boolean",
+          "description": "Soft-delete tombstone flag for multi-device offline conflict resolution."
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Client modification timestamp in milliseconds."
+        },
+        "serverCreatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server creation timestamp."
+        },
+        "serverUpdatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "ownerUid",
+        "businessId",
+        "collectionKey",
+        "itemId",
+        "payload",
+        "deleted",
+        "updatedAt",
+        "serverCreatedAt",
+        "serverUpdatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/shops/{shopId}": {
+      "schema": {
+        "$ref": "#/entities/ShopWorkspace"
+      },
+      "description": "Root workspace document per Gmail account (shopId equals ownerUid)."
+    },
+    "/shops/{shopId}/records/{recordId}": {
+      "schema": {
+        "$ref": "#/entities/SyncRecord"
+      },
+      "description": "Per-item synchronized records belonging to the shop workspace."
+    }
+  }
+}
