@@ -52,6 +52,7 @@ import com.tamanna.enterprise.due.CustomerDueStorage
 import com.tamanna.enterprise.product.Product
 import com.tamanna.enterprise.product.ProductStorage
 import com.tamanna.enterprise.security.ActivityLogStorage
+import com.tamanna.enterprise.sync.CloudSyncManager
 import com.tamanna.enterprise.security.SecurityStorage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -553,6 +554,17 @@ private fun NewSaleScreen(
                                     }
                                     message = "বিক্রয় সংরক্ষণ ব্যর্থ হয়েছে। কোনো পরিবর্তন রাখা হয়নি।"
                                     return@Button
+                                }
+
+                                // Upload the saved sale immediately. Keep local data if Firebase is unavailable.
+                                CloudSyncManager.pushLocalChangesToCloud(context) { uploaded ->
+                                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            if (uploaded) "বিক্রয় Firebase-এ সিঙ্ক হয়েছে।" else "বিক্রয় ফোনে সেভ আছে; Firebase সিঙ্ক বাকি।",
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                 }
 
                                 // বিক্রয় সফলভাবে সম্পন্ন হলে ডাটা রিসেট করে স্টেপ ১-এ ফেরত পাঠানো হবে
