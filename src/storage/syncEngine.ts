@@ -453,6 +453,7 @@ class CloudSyncService {
   private bulkUnsub: (() => void) | null = null;
   private initialized = false;
   private shopVerifiedForUid: string | null = null;
+  private hasInitialSnapshot = false;
   private remoteDocs = new Map<string, RemoteDocState>();
   private lastKnownLocalHashes = new Map<string, Map<string, string>>();
   private pushQueueTimer: ReturnType<typeof setTimeout> | null = null;
@@ -544,6 +545,7 @@ class CloudSyncService {
     this.snapshotUnsub?.();
     this.snapshotUnsub = null;
     this.shopVerifiedForUid = null;
+    this.hasInitialSnapshot = false;
     this.remoteDocs.clear();
     await signOut(auth);
     this.updateStatus({
@@ -659,12 +661,23 @@ class CloudSyncService {
     if (this.shopVerifiedForUid === user.uid) return;
     const shopRef = doc(db, 'shops', user.uid);
     const path = `shops/${user.uid}`;
-    const shopName = SettingsStorage.getShopName().slice(0, 120) || 'Tamanna Enterprise';
+    const shopName = SettingsStorage.getShopName().trim().slice(0, 120) || 'Tamanna Enterprise';
     const ownerEmail = (user.email || '').slice(0, 254);
 
+    let snapExists = false;
     try {
       const snap = await getDoc(shopRef);
-      if (snap.exists()) {
+      snapExists = snap.exists();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '';
+      if (msg.includes('offline') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        return;
+      }
+      handleFirestoreError(error, OperationType.GET, path);
+    }
+
+    try {
+      if (snapExists) {
         await updateDoc(shopRef, {
           ownerEmail,
           shopName,
@@ -685,24 +698,16 @@ class CloudSyncService {
     } catch (error) {
       const msg = error instanceof Error ? error.message : '';
       if (msg.includes('offline') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-        await setDoc(shopRef, {
-          ownerUid: user.uid,
-          ownerEmail,
-          shopName,
-          updatedAt: Date.now(),
-          serverCreatedAt: serverTimestamp(),
-          serverUpdatedAt: serverTimestamp(),
-        }).catch(() => {});
-        this.shopVerifiedForUid = user.uid;
         return;
       }
-      handleFirestoreError(error, OperationType.WRITE, path);
+      handleFirestoreError(error, snapExists ? OperationType.UPDATE : OperationType.CREATE, path);
     }
   }
 
   private async handleAuthChanged(user: User | null): Promise<void> {
     this.snapshotUnsub?.();
     this.snapshotUnsub = null;
+    this.hasInitialSnapshot = false;
     this.remoteDocs.clear();
 
     if (!user) {
@@ -730,7 +735,15 @@ class CloudSyncService {
       error: null,
     });
 
-    await this.ensureShopDocument(user);
+    try {
+      await this.ensureShopDocument(user);
+    } catch (err) {
+      this.updateStatus({
+        syncing: false,
+        error: err instanceof Error ? err.message : 'ক্লাউড সিঙ্ক শুরু করা যায়নি',
+      });
+      throw err;
+    }
 
     const recordsPath = `shops/${user.uid}/records`;
     const q = query(collection(db, 'shops', user.uid, 'records'), where('ownerUid', '==', user.uid));
@@ -760,6 +773,7 @@ class CloudSyncService {
         });
 
         this.remoteDocs = nextRemote;
+        this.hasInitialSnapshot = true;
         const applied = this.mergeRemoteIntoLocal(nextRemote, getActiveBusinessId());
 
         this.updateStatus({
@@ -939,7 +953,7 @@ class CloudSyncService {
 
   private async flushPendingPushes(): Promise<void> {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user || !this.hasInitialSnapshot) return;
     await this.ensureShopDocument(user);
 
     const businessId = getActiveBusinessId();

@@ -147,7 +147,10 @@ service cloud.firestore {
     }
 
     match /shops/{shopId} {
-      allow get: if isSignedIn() && isValidId(shopId) && existing().ownerUid == request.auth.uid;
+      allow get: if isSignedIn()
+        && isValidId(shopId)
+        && ((resource == null && shopId == request.auth.uid)
+          || (resource != null && existing().ownerUid == request.auth.uid));
       allow list: if isSignedIn() && existing().ownerUid == request.auth.uid;
 
       allow create: if isVerifiedUser()
@@ -176,7 +179,8 @@ service cloud.firestore {
         allow get: if isSignedIn()
           && isValidId(shopId)
           && isValidId(recordId)
-          && existing().ownerUid == request.auth.uid
+          && ((resource == null && shopId == request.auth.uid)
+            || (resource != null && existing().ownerUid == request.auth.uid))
           && isShopOwner(shopId);
 
         allow list: if isSignedIn() && existing().ownerUid == request.auth.uid;
