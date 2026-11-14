@@ -22,7 +22,7 @@ export default defineConfig({
         short_name: 'Tamanna',
         description:
           'আন্তর্জাতিক মানের দোকান ব্যবস্থাপনা, ডাবল-এন্ট্রি হিসাব, রিটার্ন-এক্সচেঞ্জ ও অফলাইন-অনলাইন সিঙ্ক।',
-        theme_color: '#1b5e20',
+        theme_color: '#047857',
         background_color: '#f8fafc',
         display: 'standalone',
         start_url: '/',

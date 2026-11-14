@@ -155,8 +155,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     try {
       await cloudSync.signInWithGoogle();
       notify('গুগল (Gmail) রিয়েল-টাইম সিঙ্ক সফলভাবে চালু হয়েছে', 'success');
-    } catch {
-      notify('গুগল সাইন-ইন ব্যর্থ হয়েছে', 'error');
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : 'গুগল সাইন-ইন ব্যর্থ হয়েছে';
+      notify(msg, 'error');
     }
   };
 

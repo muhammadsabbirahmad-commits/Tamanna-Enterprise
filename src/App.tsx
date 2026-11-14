@@ -62,8 +62,12 @@ export function App() {
     try {
       await cloudSync.signInWithGoogle();
       notify('গুগল অ্যাকাউন্টের সাথে রিয়েল-টাইম সিঙ্ক চালু হয়েছে', 'success');
-    } catch {
-      notify('গুগল সাইন-ইন সম্পন্ন করা যায়নি; অনুগ্রহ করে সেটিংস থেকে আবার চেষ্টা করুন', 'error');
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'গুগল সাইন-ইন সম্পন্ন করা যায়নি; অনুগ্রহ করে সেটিংস থেকে আবার চেষ্টা করুন';
+      notify(msg, 'error');
     }
   }, [notify]);
 
